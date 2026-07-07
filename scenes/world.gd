@@ -49,7 +49,8 @@ func _spawn_player(id: int) -> void:
 	var player: CharacterBody3D = PLAYER_SCENE.instantiate()
 	player.name = str(id)
 	var angle := randf() * TAU
-	player.position = Vector3(cos(angle), 0, sin(angle)) * INITIAL_SPAWN_RADIUS + Vector3.UP
+	# 地面の高さがゾーンごとに違うため、高めから落として着地させる
+	player.position = Vector3(cos(angle), 0, sin(angle)) * INITIAL_SPAWN_RADIUS + Vector3(0, 4, 0)
 	players.add_child(player)
 
 

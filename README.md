@@ -6,25 +6,30 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
 ## ルール
 
 - ラウンド開始時に全員から **Runner（逃げ）1人** をランダム選出。残り全員が **Hunter（鬼）**
-- **3分間** 逃げ切れば Runner の勝ち。Hunter が **1.5m 以内** に近づくとタッチ成立で Hunter の勝ち
-- コンパス表示: **Hunter → Runner の方向（緑矢印）** / **Runner → 最寄りの鬼の方向（赤矢印）**、いずれも距離付き
-- Hunter の画面にはさらに、壁越しに見える **光点マーカー** が Runner の頭上に表示される
+- 開始直後は **20秒のヘッドスタート**: 鬼（人間・CPU とも）は動けず、Runner だけ逃げられる
+- ヘッドスタート後 **3分間** 逃げ切れば Runner の勝ち。Hunter が **1.5m 以内** に近づくとタッチ成立で Hunter の勝ち
+- **索敵情報の非対称**:
+  - Hunter は「Runner がいる **色エリア名**」だけ分かる（方向・距離・マーカーは無し）
+  - Runner は **全体の2Dマップ**（右上）で鬼全員の位置が見え、最寄りの鬼への**赤矢印＋距離**も表示される
 - 鬼の人数による速度補正: 鬼1人 = **100%** / 2人 = **90%** / 3人以上 = **80%**
 - 結果表示の5秒後、役割を再抽選して自動で次ラウンド開始
-- **ソロモード**: ホスト1人だけで Enter を押すと自分が Runner になり、**CPU の鬼**（ナビメッシュ経路探索で追跡）が出現する
+- **ソロモード**: ホスト1人だけで Enter を押すと自分が Runner になり、**CPU の鬼が3人**出現する。
+  CPU はナビメッシュで経路追跡し、壁・段差・スロープでは**ジャンプして登り**、
+  ジャンプしないと届かない場所（1m のジャンプ台の上など）にいる Runner も捕まえに来る
 
 ## マップ
 
-60×60m。エリアは東西南北で色分けされている:
+60×60m。エリアごとに **地面の標高自体が異なる段丘構造** で、色分けされている:
 
-| エリア | 色 | 特徴 |
-| --- | --- | --- |
-| 東 | 赤 | 大型ブロックと裏路地 |
-| 西 | 青 | 2段の高台（スロープで1.5m→3m） |
-| 南 | 緑 | 迷路状の壁と高さ2.5mの物見台 |
-| 北 | 黄 | 高さ3mのタワー（スロープ付き）とジグザグ壁 |
+| エリア | 色 | 地面の高さ | 特徴 |
+| --- | --- | --- | --- |
+| 中央 | 灰 | 0m | ハブ。各エリアへのスロープが集まる |
+| 東 | 赤 | 1m | 大型ブロック・裏路地・ジャンプ台 |
+| 西 | 青 | 3m | 最も高い台地（中央から大スロープで接続） |
+| 南 | 緑 | 0m | 迷路状の壁と高さ2.5mの物見台 |
+| 北 | 黄 | 2m | 高台の上にさらにタワー（頂上4m）とジグザグ壁 |
 
-高低差とスロープはすべて CPU 鬼のナビメッシュでも通行可能。
+1m の段差はジャンプで直接登れる（CPU も跳んで追ってくる）。2m 以上はスロープ経由。
 
 ## 操作
 
@@ -63,7 +68,8 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
 | 場所 | 定数 |
 | --- | --- |
 | [scenes/player.gd](scenes/player.gd) | 移動速度・ダッシュ倍率・スタミナ消費/回復・マウス感度 |
-| [autoload/game_manager.gd](autoload/game_manager.gd) | タッチ距離・制限時間・結果表示時間・速度補正テーブル |
+| [scenes/cpu_hunter.gd](scenes/cpu_hunter.gd) | CPU の速度・ジャンプ頻度・直接追跡に切り替える距離 |
+| [autoload/game_manager.gd](autoload/game_manager.gd) | タッチ距離・制限時間・ヘッドスタート秒数・CPU数・速度補正 |
 | [autoload/network_manager.gd](autoload/network_manager.gd) | ポート番号 |
 
 ## UI が英語表記な理由（日本語化する場合）
@@ -79,14 +85,17 @@ Godot 4 標準フォントに日本語グリフがなく、**Web エクスポー
 
 ```
 autoload/network_manager.gd  WebSocket 接続・切断・シーン遷移
-autoload/game_manager.gd     役割抽選・速度補正・タイマー・タッチ判定・ソロモード（ホスト権威）
+autoload/game_manager.gd     役割抽選・速度補正・タイマー・ヘッドスタート・タッチ判定・ソロモード
 scenes/main.tscn(.gd)        ロビー（HOST / JOIN）
-scenes/world.tscn(.gd)       マップ（4色ゾーン）・ナビメッシュ・スポーン管理
+scenes/world.tscn(.gd)       段丘マップ（4色ゾーン）・ナビメッシュ・スポーン管理
 scenes/player.tscn(.gd)      移動・ダッシュ・TPSカメラ・位置同期
-scenes/cpu_hunter.tscn(.gd)  ソロモード用 CPU 鬼（NavigationAgent3D で追跡）
-scenes/humanoid.tscn(.gd)    ブロック調の人型モデル（プレイヤー/CPU共用、役割色を反映）
-scenes/hud.tscn(.gd)         スタミナ・タイマー・コンパス・結果表示
+scenes/cpu_hunter.tscn(.gd)  CPU 鬼（NavigationAgent3D 追跡 + ジャンプ + 近距離直接追跡）
+scenes/humanoid.tscn(.gd)    人型モデル（KayKit Knight, CC0）とアニメーション制御
+scenes/hud.tscn(.gd)         スタミナ・タイマー・ゾーン表示・2Dマップ・結果表示
+assets/kaykit/               Knight.glb（KayKit Adventurers, CC0ライセンス同梱）
 ```
 
-キャラクターモデルはプリミティブ製の人型。差し替える場合は CC0 の glb
-（Kenney / Quaternius など）を `humanoid.tscn` の各パーツと入れ替えればよい。
+キャラクターモデルは [KayKit Adventurers](https://kaylousberg.itch.io/kaykit-adventurers)
+の Knight（CC0）。Idle / Walking_A / Running_A / Jump_Idle を速度に応じて再生する。
+※ もしキャラが進行方向と逆を向いて走る場合は `humanoid.tscn` の Model ノードの
+`rotation.y`（180°）を 0 にする。
