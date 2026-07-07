@@ -1,21 +1,11 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scenes/player.gd" id="1_player"]
+[ext_resource type="PackedScene" path="res://scenes/humanoid.tscn" id="2_humanoid"]
 
 [sub_resource type="CapsuleShape3D" id="capsule_shape"]
 radius = 0.35
 height = 1.8
-
-[sub_resource type="CapsuleMesh" id="capsule_mesh"]
-radius = 0.35
-height = 1.8
-
-[sub_resource type="StandardMaterial3D" id="nose_mat"]
-albedo_color = Color(0.12, 0.12, 0.16, 1)
-
-[sub_resource type="BoxMesh" id="nose_mesh"]
-material = SubResource("nose_mat")
-size = Vector3(0.16, 0.16, 0.3)
 
 [sub_resource type="Gradient" id="marker_gradient"]
 offsets = PackedFloat32Array(0, 0.5, 1)
@@ -44,13 +34,7 @@ script = ExtResource("1_player")
 position = Vector3(0, 0.9, 0)
 shape = SubResource("capsule_shape")
 
-[node name="Body" type="MeshInstance3D" parent="."]
-position = Vector3(0, 0.9, 0)
-mesh = SubResource("capsule_mesh")
-
-[node name="Nose" type="MeshInstance3D" parent="."]
-position = Vector3(0, 1.45, -0.4)
-mesh = SubResource("nose_mesh")
+[node name="Humanoid" parent="." instance=ExtResource("2_humanoid")]
 
 [node name="SpringArm3D" type="SpringArm3D" parent="."]
 position = Vector3(0, 1.6, 0)

@@ -1,4 +1,4 @@
-[gd_scene load_steps=28 format=3]
+[gd_scene load_steps=64 format=3]
 
 [ext_resource type="Script" path="res://scenes/world.gd" id="1_world"]
 [ext_resource type="PackedScene" path="res://scenes/hud.tscn" id="2_hud"]
@@ -12,24 +12,70 @@ sky_material = SubResource("sky_mat")
 background_mode = 2
 sky = SubResource("sky")
 
-[sub_resource type="StandardMaterial3D" id="mat_floor"]
-albedo_color = Color(0.35, 0.42, 0.35, 1)
+[sub_resource type="NavigationMesh" id="nav_mesh"]
+geometry_parsed_geometry_type = 1
+agent_height = 1.8
+agent_radius = 0.45
+agent_max_climb = 0.3
 
 [sub_resource type="StandardMaterial3D" id="mat_wall"]
-albedo_color = Color(0.45, 0.4, 0.5, 1)
+albedo_color = Color(0.45, 0.42, 0.48, 1)
 
-[sub_resource type="StandardMaterial3D" id="mat_obstacle"]
-albedo_color = Color(0.58, 0.52, 0.4, 1)
+[sub_resource type="StandardMaterial3D" id="mat_gray"]
+albedo_color = Color(0.52, 0.52, 0.56, 1)
 
-[sub_resource type="StandardMaterial3D" id="mat_platform"]
-albedo_color = Color(0.38, 0.5, 0.62, 1)
+[sub_resource type="StandardMaterial3D" id="mat_floor_c"]
+albedo_color = Color(0.38, 0.4, 0.38, 1)
 
-[sub_resource type="BoxMesh" id="mesh_floor"]
-material = SubResource("mat_floor")
-size = Vector3(60, 1, 60)
+[sub_resource type="StandardMaterial3D" id="mat_floor_e"]
+albedo_color = Color(0.45, 0.32, 0.3, 1)
 
-[sub_resource type="BoxShape3D" id="shape_floor"]
-size = Vector3(60, 1, 60)
+[sub_resource type="StandardMaterial3D" id="mat_floor_w"]
+albedo_color = Color(0.3, 0.34, 0.46, 1)
+
+[sub_resource type="StandardMaterial3D" id="mat_floor_s"]
+albedo_color = Color(0.32, 0.42, 0.33, 1)
+
+[sub_resource type="StandardMaterial3D" id="mat_floor_n"]
+albedo_color = Color(0.5, 0.47, 0.29, 1)
+
+[sub_resource type="StandardMaterial3D" id="mat_red"]
+albedo_color = Color(0.7, 0.25, 0.2, 1)
+
+[sub_resource type="StandardMaterial3D" id="mat_blue"]
+albedo_color = Color(0.25, 0.35, 0.7, 1)
+
+[sub_resource type="StandardMaterial3D" id="mat_green"]
+albedo_color = Color(0.25, 0.55, 0.3, 1)
+
+[sub_resource type="StandardMaterial3D" id="mat_yellow"]
+albedo_color = Color(0.75, 0.65, 0.2, 1)
+
+[sub_resource type="BoxMesh" id="mesh_floor_c"]
+material = SubResource("mat_floor_c")
+size = Vector3(20, 1, 20)
+
+[sub_resource type="BoxMesh" id="mesh_floor_e"]
+material = SubResource("mat_floor_e")
+size = Vector3(20, 1, 20)
+
+[sub_resource type="BoxMesh" id="mesh_floor_w"]
+material = SubResource("mat_floor_w")
+size = Vector3(20, 1, 20)
+
+[sub_resource type="BoxMesh" id="mesh_floor_n"]
+material = SubResource("mat_floor_n")
+size = Vector3(60, 1, 20)
+
+[sub_resource type="BoxMesh" id="mesh_floor_s"]
+material = SubResource("mat_floor_s")
+size = Vector3(60, 1, 20)
+
+[sub_resource type="BoxShape3D" id="shape_floor_20"]
+size = Vector3(20, 1, 20)
+
+[sub_resource type="BoxShape3D" id="shape_floor_60"]
+size = Vector3(60, 1, 20)
 
 [sub_resource type="BoxMesh" id="mesh_wall_ns"]
 material = SubResource("mat_wall")
@@ -45,47 +91,129 @@ size = Vector3(1, 4, 61)
 [sub_resource type="BoxShape3D" id="shape_wall_ew"]
 size = Vector3(1, 4, 61)
 
-[sub_resource type="BoxMesh" id="mesh_boxa"]
-material = SubResource("mat_obstacle")
+[sub_resource type="BoxMesh" id="mesh_tower_n"]
+material = SubResource("mat_yellow")
 size = Vector3(8, 3, 8)
 
-[sub_resource type="BoxShape3D" id="shape_boxa"]
+[sub_resource type="BoxShape3D" id="shape_tower"]
 size = Vector3(8, 3, 8)
 
-[sub_resource type="BoxMesh" id="mesh_block"]
-material = SubResource("mat_obstacle")
-size = Vector3(12, 2, 4)
+[sub_resource type="BoxMesh" id="mesh_ramp_n"]
+material = SubResource("mat_yellow")
+size = Vector3(10.4, 0.4, 4)
 
-[sub_resource type="BoxShape3D" id="shape_block"]
-size = Vector3(12, 2, 4)
+[sub_resource type="BoxShape3D" id="shape_ramp_n"]
+size = Vector3(10.4, 0.4, 4)
 
-[sub_resource type="BoxMesh" id="mesh_pillar"]
-material = SubResource("mat_obstacle")
+[sub_resource type="BoxMesh" id="mesh_zig_a"]
+material = SubResource("mat_yellow")
+size = Vector3(10, 3, 1)
+
+[sub_resource type="BoxShape3D" id="shape_zig_a"]
+size = Vector3(10, 3, 1)
+
+[sub_resource type="BoxMesh" id="mesh_zig_b"]
+material = SubResource("mat_yellow")
+size = Vector3(1, 3, 10)
+
+[sub_resource type="BoxShape3D" id="shape_zig_b"]
+size = Vector3(1, 3, 10)
+
+[sub_resource type="BoxMesh" id="mesh_pillar_y"]
+material = SubResource("mat_yellow")
+size = Vector3(2, 4, 2)
+
+[sub_resource type="BoxMesh" id="mesh_pillar_r"]
+material = SubResource("mat_red")
+size = Vector3(2, 4, 2)
+
+[sub_resource type="BoxMesh" id="mesh_pillar_b"]
+material = SubResource("mat_blue")
 size = Vector3(2, 4, 2)
 
 [sub_resource type="BoxShape3D" id="shape_pillar"]
 size = Vector3(2, 4, 2)
 
-[sub_resource type="BoxMesh" id="mesh_tower"]
-material = SubResource("mat_platform")
-size = Vector3(8, 2.7, 8)
+[sub_resource type="BoxMesh" id="mesh_block_e"]
+material = SubResource("mat_red")
+size = Vector3(8, 4, 8)
 
-[sub_resource type="BoxShape3D" id="shape_tower"]
-size = Vector3(8, 2.7, 8)
+[sub_resource type="BoxShape3D" id="shape_block"]
+size = Vector3(8, 4, 8)
 
-[sub_resource type="BoxMesh" id="mesh_step1"]
-material = SubResource("mat_platform")
-size = Vector3(4, 0.9, 2)
+[sub_resource type="BoxMesh" id="mesh_cover_e"]
+material = SubResource("mat_red")
+size = Vector3(1, 3, 8)
 
-[sub_resource type="BoxShape3D" id="shape_step1"]
-size = Vector3(4, 0.9, 2)
+[sub_resource type="BoxShape3D" id="shape_cover"]
+size = Vector3(1, 3, 8)
 
-[sub_resource type="BoxMesh" id="mesh_step2"]
-material = SubResource("mat_platform")
-size = Vector3(4, 1.8, 2)
+[sub_resource type="BoxMesh" id="mesh_maze_a"]
+material = SubResource("mat_green")
+size = Vector3(16, 3, 1)
 
-[sub_resource type="BoxShape3D" id="shape_step2"]
-size = Vector3(4, 1.8, 2)
+[sub_resource type="BoxShape3D" id="shape_maze_a"]
+size = Vector3(16, 3, 1)
+
+[sub_resource type="BoxMesh" id="mesh_maze_b"]
+material = SubResource("mat_green")
+size = Vector3(1, 3, 10)
+
+[sub_resource type="BoxMesh" id="mesh_plat_s"]
+material = SubResource("mat_green")
+size = Vector3(6, 2.5, 6)
+
+[sub_resource type="BoxShape3D" id="shape_plat_s"]
+size = Vector3(6, 2.5, 6)
+
+[sub_resource type="BoxMesh" id="mesh_ramp_s"]
+material = SubResource("mat_green")
+size = Vector3(4, 0.4, 9)
+
+[sub_resource type="BoxShape3D" id="shape_ramp_s"]
+size = Vector3(4, 0.4, 9)
+
+[sub_resource type="BoxMesh" id="mesh_tier1"]
+material = SubResource("mat_blue")
+size = Vector3(10, 1.5, 10)
+
+[sub_resource type="BoxShape3D" id="shape_tier1"]
+size = Vector3(10, 1.5, 10)
+
+[sub_resource type="BoxMesh" id="mesh_tier2"]
+material = SubResource("mat_blue")
+size = Vector3(6, 3, 6)
+
+[sub_resource type="BoxShape3D" id="shape_tier2"]
+size = Vector3(6, 3, 6)
+
+[sub_resource type="BoxMesh" id="mesh_ramp_w1"]
+material = SubResource("mat_blue")
+size = Vector3(4, 0.4, 6.2)
+
+[sub_resource type="BoxShape3D" id="shape_ramp_w1"]
+size = Vector3(4, 0.4, 6.2)
+
+[sub_resource type="BoxMesh" id="mesh_ramp_w2"]
+material = SubResource("mat_blue")
+size = Vector3(3, 0.3, 5.2)
+
+[sub_resource type="BoxShape3D" id="shape_ramp_w2"]
+size = Vector3(3, 0.3, 5.2)
+
+[sub_resource type="BoxMesh" id="mesh_cwall_a"]
+material = SubResource("mat_gray")
+size = Vector3(8, 2.5, 1)
+
+[sub_resource type="BoxShape3D" id="shape_cwall_a"]
+size = Vector3(8, 2.5, 1)
+
+[sub_resource type="BoxMesh" id="mesh_cwall_b"]
+material = SubResource("mat_gray")
+size = Vector3(1, 2.5, 8)
+
+[sub_resource type="BoxShape3D" id="shape_cwall_b"]
+size = Vector3(1, 2.5, 8)
 
 [node name="World" type="Node3D"]
 script = ExtResource("1_world")
@@ -97,138 +225,298 @@ shadow_enabled = true
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("env")
 
-[node name="Map" type="Node3D" parent="."]
+[node name="NavRegion" type="NavigationRegion3D" parent="."]
+navigation_mesh = SubResource("nav_mesh")
 
-[node name="Floor" type="StaticBody3D" parent="Map"]
+[node name="Map" type="Node3D" parent="NavRegion"]
+
+[node name="FloorC" type="StaticBody3D" parent="NavRegion/Map"]
 position = Vector3(0, -0.5, 0)
 
-[node name="Mesh" type="MeshInstance3D" parent="Map/Floor"]
-mesh = SubResource("mesh_floor")
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/FloorC"]
+mesh = SubResource("mesh_floor_c")
 
-[node name="Shape" type="CollisionShape3D" parent="Map/Floor"]
-shape = SubResource("shape_floor")
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/FloorC"]
+shape = SubResource("shape_floor_20")
 
-[node name="WallN" type="StaticBody3D" parent="Map"]
+[node name="FloorE" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(20, -0.5, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/FloorE"]
+mesh = SubResource("mesh_floor_e")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/FloorE"]
+shape = SubResource("shape_floor_20")
+
+[node name="FloorW" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(-20, -0.5, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/FloorW"]
+mesh = SubResource("mesh_floor_w")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/FloorW"]
+shape = SubResource("shape_floor_20")
+
+[node name="FloorN" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(0, -0.5, -20)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/FloorN"]
+mesh = SubResource("mesh_floor_n")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/FloorN"]
+shape = SubResource("shape_floor_60")
+
+[node name="FloorS" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(0, -0.5, 20)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/FloorS"]
+mesh = SubResource("mesh_floor_s")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/FloorS"]
+shape = SubResource("shape_floor_60")
+
+[node name="WallN" type="StaticBody3D" parent="NavRegion/Map"]
 position = Vector3(0, 2, -30.5)
 
-[node name="Mesh" type="MeshInstance3D" parent="Map/WallN"]
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/WallN"]
 mesh = SubResource("mesh_wall_ns")
 
-[node name="Shape" type="CollisionShape3D" parent="Map/WallN"]
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/WallN"]
 shape = SubResource("shape_wall_ns")
 
-[node name="WallS" type="StaticBody3D" parent="Map"]
+[node name="WallS" type="StaticBody3D" parent="NavRegion/Map"]
 position = Vector3(0, 2, 30.5)
 
-[node name="Mesh" type="MeshInstance3D" parent="Map/WallS"]
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/WallS"]
 mesh = SubResource("mesh_wall_ns")
 
-[node name="Shape" type="CollisionShape3D" parent="Map/WallS"]
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/WallS"]
 shape = SubResource("shape_wall_ns")
 
-[node name="WallE" type="StaticBody3D" parent="Map"]
+[node name="WallE" type="StaticBody3D" parent="NavRegion/Map"]
 position = Vector3(30.5, 2, 0)
 
-[node name="Mesh" type="MeshInstance3D" parent="Map/WallE"]
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/WallE"]
 mesh = SubResource("mesh_wall_ew")
 
-[node name="Shape" type="CollisionShape3D" parent="Map/WallE"]
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/WallE"]
 shape = SubResource("shape_wall_ew")
 
-[node name="WallW" type="StaticBody3D" parent="Map"]
+[node name="WallW" type="StaticBody3D" parent="NavRegion/Map"]
 position = Vector3(-30.5, 2, 0)
 
-[node name="Mesh" type="MeshInstance3D" parent="Map/WallW"]
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/WallW"]
 mesh = SubResource("mesh_wall_ew")
 
-[node name="Shape" type="CollisionShape3D" parent="Map/WallW"]
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/WallW"]
 shape = SubResource("shape_wall_ew")
 
-[node name="BoxA1" type="StaticBody3D" parent="Map"]
-position = Vector3(10, 1.5, 22)
+[node name="TowerN" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(16, 1.5, -20)
 
-[node name="Mesh" type="MeshInstance3D" parent="Map/BoxA1"]
-mesh = SubResource("mesh_boxa")
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/TowerN"]
+mesh = SubResource("mesh_tower_n")
 
-[node name="Shape" type="CollisionShape3D" parent="Map/BoxA1"]
-shape = SubResource("shape_boxa")
-
-[node name="BoxA2" type="StaticBody3D" parent="Map"]
-position = Vector3(-16, 1.5, 6)
-
-[node name="Mesh" type="MeshInstance3D" parent="Map/BoxA2"]
-mesh = SubResource("mesh_boxa")
-
-[node name="Shape" type="CollisionShape3D" parent="Map/BoxA2"]
-shape = SubResource("shape_boxa")
-
-[node name="Block" type="StaticBody3D" parent="Map"]
-position = Vector3(0, 1, -18)
-
-[node name="Mesh" type="MeshInstance3D" parent="Map/Block"]
-mesh = SubResource("mesh_block")
-
-[node name="Shape" type="CollisionShape3D" parent="Map/Block"]
-shape = SubResource("shape_block")
-
-[node name="Pillar1" type="StaticBody3D" parent="Map"]
-position = Vector3(-6, 2, 18)
-
-[node name="Mesh" type="MeshInstance3D" parent="Map/Pillar1"]
-mesh = SubResource("mesh_pillar")
-
-[node name="Shape" type="CollisionShape3D" parent="Map/Pillar1"]
-shape = SubResource("shape_pillar")
-
-[node name="Pillar2" type="StaticBody3D" parent="Map"]
-position = Vector3(20, 2, -4)
-
-[node name="Mesh" type="MeshInstance3D" parent="Map/Pillar2"]
-mesh = SubResource("mesh_pillar")
-
-[node name="Shape" type="CollisionShape3D" parent="Map/Pillar2"]
-shape = SubResource("shape_pillar")
-
-[node name="Pillar3" type="StaticBody3D" parent="Map"]
-position = Vector3(-20, 2, -20)
-
-[node name="Mesh" type="MeshInstance3D" parent="Map/Pillar3"]
-mesh = SubResource("mesh_pillar")
-
-[node name="Shape" type="CollisionShape3D" parent="Map/Pillar3"]
-shape = SubResource("shape_pillar")
-
-[node name="Tower" type="StaticBody3D" parent="Map"]
-position = Vector3(16, 1.35, -18)
-
-[node name="Mesh" type="MeshInstance3D" parent="Map/Tower"]
-mesh = SubResource("mesh_tower")
-
-[node name="Shape" type="CollisionShape3D" parent="Map/Tower"]
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/TowerN"]
 shape = SubResource("shape_tower")
 
-[node name="Step2" type="StaticBody3D" parent="Map"]
-position = Vector3(16, 0.9, -13)
+[node name="RampN" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(6.8, 1.5, -20)
+rotation = Vector3(0, 0, 0.29)
 
-[node name="Mesh" type="MeshInstance3D" parent="Map/Step2"]
-mesh = SubResource("mesh_step2")
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/RampN"]
+mesh = SubResource("mesh_ramp_n")
 
-[node name="Shape" type="CollisionShape3D" parent="Map/Step2"]
-shape = SubResource("shape_step2")
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/RampN"]
+shape = SubResource("shape_ramp_n")
 
-[node name="Step1" type="StaticBody3D" parent="Map"]
-position = Vector3(16, 0.45, -11)
+[node name="ZigN1" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(-8, 1.5, -24)
 
-[node name="Mesh" type="MeshInstance3D" parent="Map/Step1"]
-mesh = SubResource("mesh_step1")
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/ZigN1"]
+mesh = SubResource("mesh_zig_a")
 
-[node name="Shape" type="CollisionShape3D" parent="Map/Step1"]
-shape = SubResource("shape_step1")
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/ZigN1"]
+shape = SubResource("shape_zig_a")
+
+[node name="ZigN2" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(-13, 1.5, -16)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/ZigN2"]
+mesh = SubResource("mesh_zig_b")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/ZigN2"]
+shape = SubResource("shape_zig_b")
+
+[node name="ZigN3" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(-20, 1.5, -12)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/ZigN3"]
+mesh = SubResource("mesh_zig_a")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/ZigN3"]
+shape = SubResource("shape_zig_a")
+
+[node name="PillarN" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(24, 2, -24)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/PillarN"]
+mesh = SubResource("mesh_pillar_y")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/PillarN"]
+shape = SubResource("shape_pillar")
+
+[node name="BlockE" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(24, 2, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/BlockE"]
+mesh = SubResource("mesh_block_e")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/BlockE"]
+shape = SubResource("shape_block")
+
+[node name="CoverE" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(14, 1.5, -2)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/CoverE"]
+mesh = SubResource("mesh_cover_e")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/CoverE"]
+shape = SubResource("shape_cover")
+
+[node name="PillarE" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(26, 2, -7)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/PillarE"]
+mesh = SubResource("mesh_pillar_r")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/PillarE"]
+shape = SubResource("shape_pillar")
+
+[node name="MazeS1" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(-6, 1.5, 16)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/MazeS1"]
+mesh = SubResource("mesh_maze_a")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/MazeS1"]
+shape = SubResource("shape_maze_a")
+
+[node name="MazeS2" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(2, 1.5, 22)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/MazeS2"]
+mesh = SubResource("mesh_maze_b")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/MazeS2"]
+shape = SubResource("shape_zig_b")
+
+[node name="MazeS3" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(10, 1.5, 26)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/MazeS3"]
+mesh = SubResource("mesh_maze_a")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/MazeS3"]
+shape = SubResource("shape_maze_a")
+
+[node name="MazeS4" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(-14, 1.5, 21)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/MazeS4"]
+mesh = SubResource("mesh_maze_b")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/MazeS4"]
+shape = SubResource("shape_zig_b")
+
+[node name="PlatformS" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(20, 1.25, 20)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/PlatformS"]
+mesh = SubResource("mesh_plat_s")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/PlatformS"]
+shape = SubResource("shape_plat_s")
+
+[node name="RampS" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(20, 1.25, 12.7)
+rotation = Vector3(-0.284, 0, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/RampS"]
+mesh = SubResource("mesh_ramp_s")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/RampS"]
+shape = SubResource("shape_ramp_s")
+
+[node name="Tier1W" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(-22, 0.75, 2)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/Tier1W"]
+mesh = SubResource("mesh_tier1")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/Tier1W"]
+shape = SubResource("shape_tier1")
+
+[node name="Tier2W" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(-24, 1.5, -6)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/Tier2W"]
+mesh = SubResource("mesh_tier2")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/Tier2W"]
+shape = SubResource("shape_tier2")
+
+[node name="RampW1" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(-22, 0.75, 10)
+rotation = Vector3(0.245, 0, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/RampW1"]
+mesh = SubResource("mesh_ramp_w1")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/RampW1"]
+shape = SubResource("shape_ramp_w1")
+
+[node name="RampW2" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(-24, 2.25, -0.5)
+rotation = Vector3(0.293, 0, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/RampW2"]
+mesh = SubResource("mesh_ramp_w2")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/RampW2"]
+shape = SubResource("shape_ramp_w2")
+
+[node name="PillarW" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(-14, 2, 6)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/PillarW"]
+mesh = SubResource("mesh_pillar_b")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/PillarW"]
+shape = SubResource("shape_pillar")
+
+[node name="CWall1" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(-3, 1.25, -8)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/CWall1"]
+mesh = SubResource("mesh_cwall_a")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/CWall1"]
+shape = SubResource("shape_cwall_a")
+
+[node name="CWall2" type="StaticBody3D" parent="NavRegion/Map"]
+position = Vector3(7, 1.25, 4)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavRegion/Map/CWall2"]
+mesh = SubResource("mesh_cwall_b")
+
+[node name="Shape" type="CollisionShape3D" parent="NavRegion/Map/CWall2"]
+shape = SubResource("shape_cwall_b")
 
 [node name="Players" type="Node3D" parent="."]
 
 [node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="."]
-_spawnable_scenes = PackedStringArray("res://scenes/player.tscn")
+_spawnable_scenes = PackedStringArray("res://scenes/player.tscn", "res://scenes/cpu_hunter.tscn")
 spawn_path = NodePath("../Players")
 
 [node name="HUD" parent="." instance=ExtResource("2_hud")]

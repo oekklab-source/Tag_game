@@ -24,12 +24,11 @@ var stamina := STAMINA_MAX
 var exhausted := false
 var is_dashing := false
 
-var _body_material := StandardMaterial3D.new()
 var _current_color := Color.TRANSPARENT
 
 @onready var spring_arm: SpringArm3D = $SpringArm3D
 @onready var camera: Camera3D = $SpringArm3D/Camera3D
-@onready var body_mesh: MeshInstance3D = $Body
+@onready var humanoid: Node3D = $Humanoid
 @onready var runner_marker: Sprite3D = $RunnerMarker
 
 
@@ -40,7 +39,6 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	add_to_group("players")
-	body_mesh.material_override = _body_material
 	if is_multiplayer_authority():
 		camera.current = true
 		spring_arm.add_excluded_object(get_rid())
@@ -126,7 +124,7 @@ func _update_role_visuals() -> void:
 		color = COLOR_RUNNER if my_id == GameManager.runner_id else COLOR_HUNTER
 	if color != _current_color:
 		_current_color = color
-		_body_material.albedo_color = color
+		humanoid.set_color(color)
 	runner_marker.visible = (
 		GameManager.state == GameManager.State.PLAYING
 		and my_id == GameManager.runner_id

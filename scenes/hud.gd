@@ -1,11 +1,13 @@
 extends CanvasLayer
 
 ## ローカルプレイヤー向け HUD。
-## スタミナ・役割・残り時間・結果表示に加え、
-## 鬼（Hunter）のときだけ Runner の方向を指すコンパス矢印と距離を表示する。
+## スタミナ・役割・残り時間・結果表示に加え、コンパス矢印と距離を表示する。
+## 鬼（Hunter）→ Runner の方向（緑）/ Runner → 最寄りの鬼の方向（赤）。
 
-const ARROW_COLOR := Color(1.0, 0.35, 0.2)
+const ARROW_COLOR_TO_RUNNER := Color(0.3, 1.0, 0.5)
+const ARROW_COLOR_TO_HUNTER := Color(1.0, 0.3, 0.25)
 
+var _arrow_color := Color.WHITE
 var _local_player: CharacterBody3D
 
 @onready var role_label: Label = $RoleLabel
@@ -60,31 +62,60 @@ func _update_labels() -> void:
 	if GameManager.state == GameManager.State.WAITING:
 		if multiplayer.is_server():
 			var count := get_tree().get_nodes_in_group("players").size()
-			lines.append("Players: %d   Press Enter to start round (2+ players)" % count)
+			lines.append("Players: %d   Press Enter to start round (alone = vs CPU)" % count)
 		else:
 			lines.append("Waiting for the host to start the round...")
 	info_label.text = "\n".join(lines)
 
 
 func _update_compass(player: CharacterBody3D) -> void:
-	var runner: Node3D = GameManager.get_runner()
-	var show_compass := (
-		GameManager.local_is_hunter()
-		and player != null
-		and runner != null
-		and runner != player
-	)
-	compass.visible = show_compass
-	distance_label.visible = show_compass
-	if not show_compass:
+	var target: Node3D = null
+	if player and GameManager.state == GameManager.State.PLAYING:
+		if GameManager.local_is_hunter():
+			var runner: Node3D = GameManager.get_runner()
+			if runner and runner != player:
+				target = runner
+				_set_arrow_color(ARROW_COLOR_TO_RUNNER)
+		else:
+			# Runner には最寄りの鬼（人間 or CPU）の方向と距離を示す
+			target = _nearest_hunter(player)
+			_set_arrow_color(ARROW_COLOR_TO_HUNTER)
+	compass.visible = target != null
+	distance_label.visible = target != null
+	if target == null:
 		return
 	var forward: Vector3 = -player.camera.global_transform.basis.z
-	var to_runner: Vector3 = runner.global_position - player.global_position
+	var to_target: Vector3 = target.global_position - player.global_position
 	var f2 := Vector2(forward.x, forward.z)
-	var t2 := Vector2(to_runner.x, to_runner.z)
+	var t2 := Vector2(to_target.x, to_target.z)
 	if f2.length_squared() > 0.0001 and t2.length_squared() > 0.0001:
 		compass.rotation = f2.angle_to(t2)
-	distance_label.text = "%.1f m" % to_runner.length()
+	distance_label.text = "%.1f m" % to_target.length()
+
+
+func _nearest_hunter(player: CharacterBody3D) -> Node3D:
+	var best: Node3D = null
+	var best_dist := INF
+	var runner_name := str(GameManager.runner_id)
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.name == runner_name:
+			continue
+		var d: float = p.global_position.distance_to(player.global_position)
+		if d < best_dist:
+			best_dist = d
+			best = p
+	for cpu in get_tree().get_nodes_in_group("cpu_hunters"):
+		var d: float = cpu.global_position.distance_to(player.global_position)
+		if d < best_dist:
+			best_dist = d
+			best = cpu
+	return best
+
+
+func _set_arrow_color(color: Color) -> void:
+	if color != _arrow_color:
+		_arrow_color = color
+		compass.queue_redraw()
 
 
 func _on_compass_draw() -> void:
@@ -95,7 +126,7 @@ func _on_compass_draw() -> void:
 		c + Vector2(0, 6),
 		c + Vector2(-17, 15),
 	])
-	compass.draw_colored_polygon(points, ARROW_COLOR)
+	compass.draw_colored_polygon(points, _arrow_color)
 
 
 func _get_local_player() -> CharacterBody3D:

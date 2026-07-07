@@ -9,7 +9,7 @@ enum State { WAITING, PLAYING, RESULT }
 const TAG_DISTANCE := 1.5
 const ROUND_TIME := 180.0
 const RESULT_TIME := 5.0
-const MIN_PLAYERS := 2
+const SOLO_CPU_COUNT := 1
 const RUNNER_SPAWN := Vector3(0, 1, 0)
 const HUNTER_SPAWN_RADIUS := 12.0
 
@@ -64,17 +64,25 @@ func request_start_round() -> void:
 	if not multiplayer.is_server() or state == State.PLAYING:
 		return
 	var players := get_tree().get_nodes_in_group("players")
-	if players.size() < MIN_PLAYERS:
+	if players.is_empty():
 		return
+	_clear_cpu_hunters()
 	var ids: Array[int] = []
 	for p in players:
 		ids.append(String(p.name).to_int())
-	var new_runner: int = ids.pick_random()
-	var hunter_count := ids.size() - 1
-	var mult := hunter_mult_for(hunter_count)
+	# 1人だけならソロモード: 自分が Runner になり CPU 鬼が追う
+	var solo := ids.size() == 1
+	var new_runner: int
+	var mult := 1.0
+	if solo:
+		new_runner = ids[0]
+	else:
+		new_runner = ids.pick_random()
+		mult = hunter_mult_for(ids.size() - 1)
 	# スポーン位置: Runner は中央、Hunter は半径12mの円周上に等間隔
 	var spawns := {}
 	spawns[new_runner] = RUNNER_SPAWN
+	var hunter_count := maxi(ids.size() - 1, 1)
 	var i := 0
 	for id in ids:
 		if id == new_runner:
@@ -83,6 +91,18 @@ func request_start_round() -> void:
 		spawns[id] = Vector3(cos(angle), 0, sin(angle)) * HUNTER_SPAWN_RADIUS + Vector3.UP
 		i += 1
 	_start_round.rpc(new_runner, mult, spawns)
+	if solo:
+		var world := get_tree().current_scene
+		for n in SOLO_CPU_COUNT:
+			var angle := TAU * n / SOLO_CPU_COUNT
+			var pos := Vector3(cos(angle), 0, sin(angle)) * HUNTER_SPAWN_RADIUS + Vector3.UP
+			if world.has_method("spawn_cpu_hunter"):
+				world.spawn_cpu_hunter(pos)
+
+
+func _clear_cpu_hunters() -> void:
+	for cpu in get_tree().get_nodes_in_group("cpu_hunters"):
+		cpu.queue_free()
 
 
 func _physics_process(delta: float) -> void:
@@ -102,6 +122,10 @@ func _physics_process(delta: float) -> void:
 		if p == runner:
 			continue
 		if p.global_position.distance_to(runner.global_position) <= TAG_DISTANCE:
+			_end_round.rpc("HUNTERS WIN!  (runner tagged)")
+			return
+	for cpu in get_tree().get_nodes_in_group("cpu_hunters"):
+		if cpu.global_position.distance_to(runner.global_position) <= TAG_DISTANCE:
 			_end_round.rpc("HUNTERS WIN!  (runner tagged)")
 			return
 
@@ -165,6 +189,8 @@ func _end_round(text: String) -> void:
 func _back_to_waiting() -> void:
 	state = State.WAITING
 	runner_id = -1
+	if multiplayer.is_server():
+		_clear_cpu_hunters()
 
 
 @rpc("authority", "call_remote", "reliable")
