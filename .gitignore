@@ -1,0 +1,10 @@
+# Godot
+.godot/
+*.translation
+
+# エクスポート出力
+export/
+*.zip
+*.pck
+*.exe
+*.wasm

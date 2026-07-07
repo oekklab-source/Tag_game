@@ -1,0 +1,48 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/main.gd" id="1_main"]
+
+[node name="Main" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_main")
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBox" type="VBoxContainer" parent="CenterContainer"]
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/VBox"]
+theme_override_font_sizes/font_size = 40
+text = "3D CHASE GAME"
+horizontal_alignment = 1
+
+[node name="StatusLabel" type="Label" parent="CenterContainer/VBox"]
+theme_override_colors/font_color = Color(1, 0.5, 0.4, 1)
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+
+[node name="HostButton" type="Button" parent="CenterContainer/VBox"]
+custom_minimum_size = Vector2(280, 44)
+text = "HOST (PC only)"
+
+[node name="JoinRow" type="HBoxContainer" parent="CenterContainer/VBox"]
+theme_override_constants/separation = 8
+
+[node name="AddressEdit" type="LineEdit" parent="CenterContainer/VBox/JoinRow"]
+custom_minimum_size = Vector2(216, 44)
+text = "127.0.0.1"
+placeholder_text = "host IP address"
+
+[node name="JoinButton" type="Button" parent="CenterContainer/VBox/JoinRow"]
+custom_minimum_size = Vector2(56, 44)
+text = "JOIN"
+
+[node name="HelpLabel" type="Label" parent="CenterContainer/VBox"]
+theme_override_font_sizes/font_size = 14
+text = "Host: run on PC, listens on port 9999
+Client: enter the host IP and press JOIN
+(Browser build can only join, not host)"
+horizontal_alignment = 1
