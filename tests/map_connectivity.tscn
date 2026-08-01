@@ -1,0 +1,23 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://tests/map_connectivity.gd" id="1_verify"]
+
+[sub_resource type="NavigationMesh" id="nav_mesh"]
+geometry_parsed_geometry_type = 1
+geometry_collision_mask = 1
+cell_size = 0.4
+agent_height = 1.8
+agent_radius = 0.45
+agent_max_climb = 0.3
+
+[node name="VerifyMap" type="Node3D"]
+script = ExtResource("1_verify")
+
+[node name="NavRegion" type="NavigationRegion3D" parent="."]
+navigation_mesh = SubResource("nav_mesh")
+
+[node name="Map" type="Node3D" parent="NavRegion"]
+
+[node name="Gimmicks" type="Node3D" parent="NavRegion"]
+
+[node name="Decor" type="Node3D" parent="."]

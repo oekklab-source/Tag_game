@@ -3,28 +3,45 @@
 [ext_resource type="Script" path="res://scenes/world.gd" id="1_world"]
 [ext_resource type="PackedScene" path="res://scenes/hud.tscn" id="2_hud"]
 
+; 天頂を紫寄り・地平を淡いピンクにして、空そのものをグラデーションにする。
+; sky_curve を小さくするとグラデーションの帯が広がり、青一色の抜けが減る
 [sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
-sky_top_color = Color(0.25, 0.55, 1, 1)
-sky_horizon_color = Color(0.75, 0.92, 1, 1)
-ground_bottom_color = Color(0.35, 0.65, 0.35, 1)
-ground_horizon_color = Color(0.75, 0.92, 1, 1)
+sky_top_color = Color(0.36, 0.44, 0.92, 1)
+sky_horizon_color = Color(0.98, 0.88, 0.94, 1)
+sky_curve = 0.12
+ground_bottom_color = Color(0.56, 0.6, 0.86, 1)
+ground_horizon_color = Color(0.98, 0.88, 0.94, 1)
+ground_curve = 0.12
 sun_angle_max = 25.0
-sun_curve = 0.3
+sun_curve = 0.15
 
 [sub_resource type="Sky" id="sky"]
 sky_material = SubResource("sky_mat")
 
+; glow は Godot 4.3 以降 Compatibility レンダラでも使える（簡易実装で
+; intensity / bloom / hdr_threshold のみ有効）。閾値を 1.0 に置くことで、
+; 発光を強めたネオン材だけが滲み、床やスロープは滲まない。
+; ここを下げると画面全体が白くぼやけて「ふわふわ」ではなく「ボケ」になる。
+;
+; Web で重い場合は shadow より先に glow_enabled を切ると効果が大きい。
 [sub_resource type="Environment" id="env"]
 background_mode = 2
 sky = SubResource("sky")
 ambient_light_source = 2
-ambient_light_color = Color(0.62, 0.72, 0.9, 1)
-ambient_light_energy = 0.32
-tonemap_mode = 0
+ambient_light_color = Color(0.74, 0.77, 0.93, 1)
+ambient_light_energy = 0.4
+tonemap_mode = 2
+tonemap_white = 1.5
+glow_enabled = true
+glow_intensity = 0.8
+glow_bloom = 0.1
+glow_hdr_threshold = 1.0
 fog_enabled = true
-fog_light_color = Color(0.75, 0.9, 1, 1)
-fog_sky_affect = 0.2
-fog_density = 0.0018
+fog_light_color = Color(0.96, 0.89, 0.95, 1)
+fog_sky_affect = 0.3
+fog_density = 0.0021
+adjustment_enabled = true
+adjustment_saturation = 1.12
 
 [sub_resource type="NavigationMesh" id="nav_mesh"]
 geometry_parsed_geometry_type = 1
@@ -47,10 +64,11 @@ shadow_normal_bias = 1.5
 directional_shadow_mode = 1
 directional_shadow_max_distance = 80.0
 
+; 影側に回り込む寒色の補助光。強くすると影が消えて立体感が無くなるので控えめに
 [node name="Fill" type="DirectionalLight3D" parent="."]
 rotation = Vector3(-0.5, 2.4, 0)
-light_color = Color(0.65, 0.78, 1, 1)
-light_energy = 0.2
+light_color = Color(0.68, 0.72, 1, 1)
+light_energy = 0.28
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("env")

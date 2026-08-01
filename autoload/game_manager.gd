@@ -291,9 +291,13 @@ func _update_sight(delta: float) -> void:
 ## クライアントから「ここに置きたい」と要求する。生成はサーバだけが行う
 ## （クライアントが自前で生成しても MultiplayerSpawner を通らず他ピアへ同期されない）。
 ## Autoload なのでノードパスが全ピアで一致し、RPC の宛先として安定している
+## 条件は player.gd の frozen（アイテムを使える条件）と必ず一致させること。
+## ここだけ PLAYING 限定にしていたため、ラウンド外で？ブロックを取って使うと
+## アイテムだけ消えて何も置かれなかった（？ブロック側にも状態の判定は無い）。
+## 「動ける時は必ず使える」に揃えてある
 @rpc("any_peer", "reliable")
 func request_drop(kind: int, pos: Vector3, yaw: float) -> void:
-	if not multiplayer.is_server() or state != State.PLAYING:
+	if not multiplayer.is_server() or state == State.RESULT:
 		return
 	var world := get_tree().current_scene
 	if world and world.has_method("spawn_dropped_item"):
