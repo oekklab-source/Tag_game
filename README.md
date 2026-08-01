@@ -186,7 +186,6 @@ scenes/gimmicks/              土管・ジャンプ台・ダッシュパネル�
                               + 壁の天面ガード・バナナ・設置ブロック
 scenes/hud.tscn(.gd)          役割バッジ・円形タイマー・9ゾーンミニマップ・バフ・危険表示・目撃情報
 ui/pop_theme.tres             全体に適用される POP テーマ
-assets/kaykit/                Knight.glb（KayKit Adventurers, CC0）※現在は未使用
 ```
 
 ## マルチプレイの権威モデル（改造時の注意）
