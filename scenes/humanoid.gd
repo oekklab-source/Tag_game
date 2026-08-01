@@ -1,51 +1,63 @@
 extends Node3D
 
-## KayKit Adventurers の Knight（CC0）を使った人型キャラクター表示。
-## プレイヤーと CPU 鬼で共用。移動速度に応じて Idle / Walk / Run / 空中 を
-## 切り替え、役割色（Runner=緑 / Hunter=赤 / 待機=灰）は material_overlay で反映する。
+## かわいいシンプルなちびキャラ（プリミティブ製・全長約0.9m）。
+## プレイヤーと CPU 鬼で共用。移動速度に応じて腕と脚を滑らかに振る。
+## 役割色（Runner=緑 / Hunter=赤 / 待機=灰）は体色に反映する。
 
-const WALK_THRESHOLD := 0.5
-const RUN_THRESHOLD := 6.5
-const LOOP_ANIMS: Array[String] = ["Idle", "Walking_A", "Running_A", "Jump_Idle"]
+const SWING_FREQ := 2.6   # 速度に対する振りサイクルの係数
+const SWING_MAX := 1.0    # 最大振り幅（rad）
+const RUN_SPEED := 10.5   # この速度で振り幅が最大になる（＝ダッシュ速度）
 
-var _anim: AnimationPlayer
-var _overlay := StandardMaterial3D.new()
-var _current_anim := ""
+var _speed := 0.0
+var _on_floor := true
+var _phase := 0.0
+var _amp := 0.0
+
+var _mat_body := StandardMaterial3D.new()
+var _mat_head := StandardMaterial3D.new()
+
+@onready var arm_l: Node3D = $ArmL
+@onready var arm_r: Node3D = $ArmR
+@onready var leg_l: Node3D = $LegL
+@onready var leg_r: Node3D = $LegR
 
 
 func _ready() -> void:
-	_overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_overlay.albedo_color = Color(1, 1, 1, 0)
-	for mesh in find_children("*", "MeshInstance3D", true, false):
-		mesh.material_overlay = _overlay
-	_anim = find_child("AnimationPlayer", true, false)
-	if _anim:
-		# glTF 由来のアニメーションはループ設定されていないため実行時に付与する
-		for anim_name in LOOP_ANIMS:
-			if _anim.has_animation(anim_name):
-				_anim.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
-		_play("Idle")
+	$Head.material_override = _mat_head
+	$Body.material_override = _mat_body
+	for pivot in [arm_l, arm_r, leg_l, leg_r]:
+		pivot.get_node("Mesh").material_override = _mat_body
+	set_color(Color(0.5, 0.55, 0.6))
 
 
+## 広くてカラフルなマップで床に埋もれないよう、体色は弱く自己発光させる
 func set_color(color: Color) -> void:
-	_overlay.albedo_color = Color(color.r, color.g, color.b, 0.45)
+	_tint(_mat_body, color)
+	_tint(_mat_head, color.lightened(0.35))
+
+
+func _tint(mat: StandardMaterial3D, color: Color) -> void:
+	mat.albedo_color = color
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 0.35
 
 
 ## 親（player / cpu_hunter）が毎フレーム水平速度と接地状態を渡す
 func update_motion(speed: float, on_floor: bool) -> void:
-	if not on_floor:
-		_play("Jump_Idle")
-	elif speed >= RUN_THRESHOLD:
-		_play("Running_A")
-	elif speed >= WALK_THRESHOLD:
-		_play("Walking_A")
-	else:
-		_play("Idle")
+	_speed = speed
+	_on_floor = on_floor
 
 
-func _play(anim_name: String) -> void:
-	if _anim == null or anim_name == _current_anim:
-		return
-	if _anim.has_animation(anim_name):
-		_current_anim = anim_name
-		_anim.play(anim_name, 0.2)
+func _process(delta: float) -> void:
+	# 振り幅は速度に比例させ、補間で滑らかに変化させる
+	var target_amp := clampf(_speed / RUN_SPEED, 0.0, 1.0) * SWING_MAX
+	if not _on_floor:
+		target_amp = 0.25
+	_amp = lerpf(_amp, target_amp, minf(delta * 10.0, 1.0))
+	_phase += _speed * delta * SWING_FREQ
+	var swing := sin(_phase) * _amp
+	arm_l.rotation.x = swing
+	arm_r.rotation.x = -swing
+	leg_l.rotation.x = -swing * 0.9
+	leg_r.rotation.x = swing * 0.9

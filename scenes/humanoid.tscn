@@ -1,10 +1,74 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scenes/humanoid.gd" id="1_humanoid"]
-[ext_resource type="PackedScene" path="res://assets/kaykit/Knight.glb" id="2_knight"]
+
+[sub_resource type="CapsuleMesh" id="body_mesh"]
+radius = 0.14
+height = 0.42
+
+[sub_resource type="SphereMesh" id="head_mesh"]
+radius = 0.22
+height = 0.44
+
+[sub_resource type="StandardMaterial3D" id="eye_mat"]
+albedo_color = Color(0.08, 0.08, 0.1, 1)
+
+[sub_resource type="SphereMesh" id="eye_mesh"]
+material = SubResource("eye_mat")
+radius = 0.035
+height = 0.07
+
+[sub_resource type="CapsuleMesh" id="arm_mesh"]
+radius = 0.045
+height = 0.26
+
+[sub_resource type="CapsuleMesh" id="leg_mesh"]
+radius = 0.055
+height = 0.24
 
 [node name="Humanoid" type="Node3D"]
 script = ExtResource("1_humanoid")
 
-[node name="Model" parent="." instance=ExtResource("2_knight")]
-rotation = Vector3(0, 3.14159, 0)
+[node name="Body" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.34, 0)
+mesh = SubResource("body_mesh")
+
+[node name="Head" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.66, 0)
+mesh = SubResource("head_mesh")
+
+[node name="EyeL" type="MeshInstance3D" parent="."]
+position = Vector3(0.08, 0.7, -0.185)
+mesh = SubResource("eye_mesh")
+
+[node name="EyeR" type="MeshInstance3D" parent="."]
+position = Vector3(-0.08, 0.7, -0.185)
+mesh = SubResource("eye_mesh")
+
+[node name="ArmL" type="Node3D" parent="."]
+position = Vector3(0.185, 0.45, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="ArmL"]
+position = Vector3(0, -0.12, 0)
+mesh = SubResource("arm_mesh")
+
+[node name="ArmR" type="Node3D" parent="."]
+position = Vector3(-0.185, 0.45, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="ArmR"]
+position = Vector3(0, -0.12, 0)
+mesh = SubResource("arm_mesh")
+
+[node name="LegL" type="Node3D" parent="."]
+position = Vector3(0.075, 0.24, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="LegL"]
+position = Vector3(0, -0.11, 0)
+mesh = SubResource("leg_mesh")
+
+[node name="LegR" type="Node3D" parent="."]
+position = Vector3(-0.075, 0.24, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="LegR"]
+position = Vector3(0, -0.11, 0)
+mesh = SubResource("leg_mesh")

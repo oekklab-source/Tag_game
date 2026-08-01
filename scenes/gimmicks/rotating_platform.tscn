@@ -1,0 +1,61 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scenes/gimmicks/rotating_platform.gd" id="1_spin"]
+
+[sub_resource type="StandardMaterial3D" id="disc_mat"]
+albedo_color = Color(0.65, 0.92, 0.35, 1)
+roughness = 0.8
+metallic_specular = 0.2
+emission_enabled = true
+emission = Color(0.65, 0.92, 0.35, 1)
+emission_energy_multiplier = 0.35
+
+[sub_resource type="StandardMaterial3D" id="mark_mat"]
+albedo_color = Color(1, 1, 1, 1)
+roughness = 0.8
+metallic_specular = 0.2
+emission_enabled = true
+emission = Color(1, 1, 1, 1)
+emission_energy_multiplier = 0.5
+
+[sub_resource type="CylinderMesh" id="disc_mesh"]
+material = SubResource("disc_mat")
+top_radius = 3.6
+bottom_radius = 3.6
+height = 0.5
+
+[sub_resource type="BoxMesh" id="mark_mesh"]
+material = SubResource("mark_mat")
+size = Vector3(0.6, 0.06, 6.6)
+
+[sub_resource type="CylinderShape3D" id="disc_shape"]
+height = 0.5
+radius = 3.6
+
+[sub_resource type="CylinderShape3D" id="rider_shape"]
+height = 2.4
+radius = 3.6
+
+[node name="RotatingPlatform" type="AnimatableBody3D"]
+collision_layer = 8
+collision_mask = 0
+sync_to_physics = true
+script = ExtResource("1_spin")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("disc_mesh")
+
+[node name="Mark" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.27, 0)
+mesh = SubResource("mark_mesh")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+shape = SubResource("disc_shape")
+
+[node name="Rider" type="Area3D" parent="."]
+collision_layer = 4
+collision_mask = 2
+
+[node name="Shape" type="CollisionShape3D" parent="Rider"]
+position = Vector3(0, 1.4, 0)
+shape = SubResource("rider_shape")

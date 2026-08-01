@@ -1,115 +1,345 @@
 extends CanvasLayer
 
 ## ローカルプレイヤー向け HUD。
-## Hunter: Runner がいる「色エリア名」だけ分かる（方向・距離・マーカーは無し）。
-## Runner: 全体の2Dマップ（鬼の位置つき）と、最寄りの鬼への矢印＋距離を表示。
+##
+## 非対称情報の設計はこの実装の核なので、見た目を変えても崩さないこと:
+##   Hunter  : 誰かが Runner を「視認」した時だけ、共有された最後の目撃ゾーンの
+##             名前と色を受け取る。視認中は SPOTTED、途切れたら残り秒の
+##             カウントダウン、失効したら NO INTEL。方向・距離・マーカーは無し。
+##             **ここで GameManager.get_runner() の座標を直接読んではいけない**
+##             （読んだ瞬間に鬼が全知に戻る）。
+##   Runner  : 全体の2Dマップ（鬼の位置つき）＋最寄りの鬼への矢印・距離・危険ヴィネット、
+##             そして「今 見られている」ことを知らせる SPOTTED バナー。
+## Runner 側の情報が多いのは意図的で、非対称性を弱めず強めている。
 
-const ARROW_COLOR_TO_HUNTER := Color(1.0, 0.3, 0.25)
-const ZONE_NAMES: Array[String] = ["CENTER", "EAST (RED)", "WEST (BLUE)", "SOUTH (GREEN)", "NORTH (YELLOW)"]
-const ZONE_COLORS: Array[Color] = [
-	Color(0.85, 0.85, 0.9),
-	Color(1.0, 0.45, 0.4),
-	Color(0.5, 0.65, 1.0),
-	Color(0.45, 1.0, 0.55),
-	Color(1.0, 0.9, 0.35),
-]
-const MAP_ZONE_COLORS: Array[Color] = [
-	Color(0.32, 0.32, 0.36, 0.9),
-	Color(0.55, 0.22, 0.18, 0.9),
-	Color(0.2, 0.28, 0.55, 0.9),
-	Color(0.2, 0.42, 0.24, 0.9),
-	Color(0.55, 0.5, 0.18, 0.9),
-]
+const ARROW_COLOR := Color(1.0, 0.3, 0.25)
 const HUNTER_DOT := Color(1.0, 0.25, 0.2)
 const SELF_DOT := Color(0.3, 1.0, 0.5)
-const WORLD_MIN := -30.0
-const WORLD_SIZE := 60.0
+const INK := Color(0.05, 0.04, 0.12)
+const COLOR_RUNNER := Color(0.35, 1.0, 0.55)
+const COLOR_HUNTER := Color(1.0, 0.45, 0.4)
+const COLOR_HEAD_START := Color(0.35, 0.85, 1.0)
+const COLOR_GOLD := Color(1.0, 0.82, 0.25)
 
-var _local_player: CharacterBody3D
+# ゾーン名・色は WorldData に一本化してある（レイアウト変更時の同期漏れを防ぐため）
+const WORLD_MIN := -WorldData.WORLD_HALF
+const WORLD_SIZE := WorldData.WORLD_HALF * 2.0
 
-@onready var role_label: Label = $RoleLabel
-@onready var timer_label: Label = $TimerLabel
-@onready var zone_label: Label = $ZoneLabel
-@onready var compass: Control = $Compass
-@onready var distance_label: Label = $DistanceLabel
-@onready var stamina_bar: ProgressBar = $StaminaBar
-@onready var result_label: Label = $ResultLabel
-@onready var info_label: Label = $InfoLabel
+const STAMINA_SEGMENTS := 12
+const BUFF_BAR_WIDTH := 64.0
+const DANGER_FAR := 28.0   # この距離からヴィネットが出はじめる
+const DANGER_NEAR := 7.0   # この距離で最大になる
+
+const TOAST_TEXT := {
+	Player.Effect.BOOST: "BOOST!",
+	Player.Effect.WARP: "WARP!",
+	Player.Effect.STUN: "SLIPPED!",
+}
+const TOAST_COLOR := {
+	Player.Effect.BOOST: Color(0.4, 1.0, 1.0),
+	Player.Effect.WARP: Color(0.6, 1.0, 0.5),
+	Player.Effect.STUN: Color(1.0, 0.85, 0.25),
+}
+## 持ち物の表示名と色（Player.Item と対応）
+const ITEM_INFO := {
+	Player.Item.NONE: ["- - -", Color(1, 1, 1, 0.35)],
+	Player.Item.ROCKET: ["ROCKET", Color(1.0, 0.55, 0.3)],
+	Player.Item.BANANA: ["BANANA", Color(1.0, 0.86, 0.2)],
+	Player.Item.BLOCK: ["BLOCK", Color(0.45, 0.85, 1.0)],
+}
+## バフの表示名と、残量ゲージの基準になる持続時間
+const BUFF_INFO := {
+	&"speed": ["SPEED", 6.0, Color(1.0, 0.85, 0.25)],
+	&"jump": ["JUMP", 8.0, Color(0.55, 0.8, 1.0)],
+}
+
+var _local_player: Player
+var _buff_keys: Array = []
+var _spotted_tween: Tween
+var _banner_hiding := false
+var _sb_full: StyleBoxFlat
+var _sb_low: StyleBoxFlat
+var _sb_empty: StyleBoxFlat
+
+@onready var vignette: TextureRect = $Vignette
+@onready var role_badge: PanelContainer = $RoleBadge
+@onready var role_label: Label = $RoleBadge/RoleLabel
+@onready var timer_ring: Control = $TimerRing
+@onready var timer_label: Label = $TimerRing/TimerLabel
+@onready var zone_chip: PanelContainer = $ZoneChip
+@onready var zone_swatch: ColorRect = $ZoneChip/Row/Swatch
+@onready var zone_label: Label = $ZoneChip/Row/ZoneLabel
 @onready var map_panel: Control = $MapPanel
+@onready var compass: Control = $Compass
+@onready var distance_chip: PanelContainer = $DistanceChip
+@onready var distance_label: Label = $DistanceChip/DistanceLabel
+@onready var spotted_banner: Label = $SpottedBanner
+@onready var item_slot: PanelContainer = $ItemSlot
+@onready var item_label: Label = $ItemSlot/ItemLabel
+@onready var buff_tray: HBoxContainer = $BuffTray
+@onready var stamina_bar: Control = $StaminaBar
+@onready var toast_tray: VBoxContainer = $ToastTray
+@onready var info_label: Label = $InfoLabel
+@onready var result_panel: CenterContainer = $ResultPanel
+@onready var result_title: Label = $ResultPanel/Box/Col/ResultTitle
+@onready var result_sub: Label = $ResultPanel/Box/Col/ResultSub
+@onready var result_next: Label = $ResultPanel/Box/Col/ResultNext
 
 
 func _ready() -> void:
+	_ignore_mouse(self)
+	timer_ring.draw.connect(_on_timer_draw)
 	compass.draw.connect(_on_compass_draw)
 	map_panel.draw.connect(_on_map_draw)
+	stamina_bar.draw.connect(_on_stamina_draw)
+	GameManager.state_changed.connect(_on_state_changed)
+	GameManager.spotted_changed.connect(_on_spotted_changed)
+	_sb_full = _bar_style(Color(0.3, 0.95, 0.55))
+	_sb_low = _bar_style(Color(1.0, 0.35, 0.35))
+	_sb_empty = _bar_style(Color(1, 1, 1, 0.13))
+	vignette.texture = _radial_texture()
+	vignette.modulate = Color(1.0, 0.12, 0.12, 0.0)
+
+
+## HUD には操作可能なウィジェットが一つも無いので、全 Control をマウス無視にする。
+##
+## これが無いと、マウスキャプチャ中のカーソル位置（GUI空間の画面中央 640,360）に
+## 重なった Control が InputEventMouseMotion を食い潰し、
+## player.gd の _unhandled_input が呼ばれず**振り向けなくなる**。
+## Godot の入力順は _input -> GUI -> _unhandled_input なので、
+## Control が STOP のままだと必ずこうなる。
+## 個別ノードに書くのではなく再帰で潰すのは、UI を足した時に再発させないため。
+func _ignore_mouse(node: Node) -> void:
+	if node is Control:
+		node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for c in node.get_children():
+		_ignore_mouse(c)
+
+
+func _bar_style(c: Color) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = c
+	sb.set_corner_radius_all(6)
+	return sb
+
+
+## 危険表示用の放射グラデーション。アセットを持たずコードで作る
+func _radial_texture() -> GradientTexture2D:
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 0))
+	g.set_color(1, Color(1, 1, 1, 1))
+	var t := GradientTexture2D.new()
+	t.gradient = g
+	t.fill = GradientTexture2D.FILL_RADIAL
+	t.fill_from = Vector2(0.5, 0.5)
+	t.fill_to = Vector2(1.0, 0.5)
+	t.width = 256
+	t.height = 256
+	return t
 
 
 func _process(_delta: float) -> void:
 	var player := _get_local_player()
-	_update_stamina(player)
 	_update_labels()
+	_update_stamina(player)
+	_update_item(player)
+	_update_buffs(player)
 	_update_tracking(player)
+	timer_ring.queue_redraw()
+	stamina_bar.queue_redraw()
 
 
-func _update_stamina(player: CharacterBody3D) -> void:
-	if player == null:
-		return
-	stamina_bar.value = player.stamina
-	stamina_bar.modulate = Color(1, 0.4, 0.4) if player.exhausted else Color.WHITE
-
+## --- 状態表示 ----------------------------------------------------------
 
 func _update_labels() -> void:
 	var my_id := multiplayer.get_unique_id()
+	var is_runner := my_id == GameManager.runner_id
 	match GameManager.state:
 		GameManager.State.WAITING:
 			role_label.text = "Waiting..."
 			role_label.modulate = Color.WHITE
 			timer_label.text = ""
-			zone_label.visible = false
-			result_label.visible = false
+			zone_chip.visible = false
+			result_panel.visible = false
 		GameManager.State.PLAYING, GameManager.State.RESULT:
-			var is_runner := my_id == GameManager.runner_id
 			if is_runner:
 				role_label.text = "RUN AWAY!"
-				role_label.modulate = Color(0.4, 1.0, 0.55)
+				role_label.modulate = COLOR_RUNNER
 			else:
-				role_label.text = "You are a HUNTER - catch the runner!"
-				role_label.modulate = Color(1.0, 0.45, 0.4)
+				role_label.text = "HUNTER - CATCH THE RUNNER!"
+				role_label.modulate = COLOR_HUNTER
 			if GameManager.head_start_left > 0.0:
-				var h := ceili(GameManager.head_start_left)
-				timer_label.text = ("HEAD START - RUN!  %ds" % h) if is_runner \
-					else ("HEAD START - WAIT  %ds" % h)
+				timer_label.text = "%d" % ceili(GameManager.head_start_left)
 			else:
 				var t := maxi(ceili(GameManager.time_left), 0)
-				timer_label.text = "TIME  %d:%02d" % [t / 60, t % 60]
-			_update_zone_label(is_runner)
-			result_label.visible = GameManager.state == GameManager.State.RESULT
-			result_label.text = GameManager.result_text
+				timer_label.text = "%d:%02d" % [t / 60, t % 60]
+			_update_zone_chip(is_runner)
+			_update_result(is_runner)
+	# バナーは逃走者専用。表示はシグナルのエッジで駆動しているので、
+	# 役割が変わる経路を取りこぼさないようここでも不変条件を担保する
+	if spotted_banner.visible and (not is_runner or not GameManager.spotted):
+		_hide_spotted_banner()
 
-	var lines := PackedStringArray()
-	lines.append("Click: capture mouse / Esc: release")
+	var lines := PackedStringArray(["Click: capture mouse / Esc: release"])
 	if GameManager.state == GameManager.State.WAITING:
 		if multiplayer.is_server():
 			var count := get_tree().get_nodes_in_group("players").size()
 			lines.append("Players: %d   Press Enter to start round (alone = vs CPU)" % count)
 		else:
 			lines.append("Waiting for the host to start the round...")
+	elif GameManager.head_start_left > 0.0:
+		lines.append("HEAD START - RUN!" if my_id == GameManager.runner_id
+			else "HEAD START - hunters are frozen")
 	info_label.text = "\n".join(lines)
 
 
-## 鬼にだけ、Runner がいる色エリア名を表示する
-func _update_zone_label(is_runner: bool) -> void:
-	var runner: Node3D = GameManager.get_runner()
-	if is_runner or runner == null or GameManager.state != GameManager.State.PLAYING:
-		zone_label.visible = false
+## 鬼にだけ、共有された目撃情報を見せる。
+## 参照するのは GameManager の共有状態だけで、Runner の座標は決して読まない。
+## 3状態とも表示したままにしてレイアウトが跳ねないようにする
+func _update_zone_chip(is_runner: bool) -> void:
+	if is_runner or GameManager.state != GameManager.State.PLAYING:
+		zone_chip.visible = false
 		return
-	var zone: int = GameManager.zone_at(runner.global_position)
-	zone_label.text = "RUNNER ZONE:  %s" % ZONE_NAMES[zone]
-	zone_label.modulate = ZONE_COLORS[zone]
-	zone_label.visible = true
+	zone_chip.visible = true
+	var zone: int = GameManager.spotted_zone
+	if zone < 0:
+		zone_label.text = "NO INTEL"
+		zone_swatch.color = Color(0.32, 0.32, 0.38)
+		zone_chip.modulate.a = 1.0
+	elif GameManager.spotted:
+		zone_label.text = "SPOTTED  %s" % WorldData.zone_name(zone)
+		zone_swatch.color = WorldData.zone_color(zone)
+		zone_chip.modulate.a = 0.75 + 0.25 * sin(Time.get_ticks_msec() * 0.012)
+	else:
+		zone_label.text = "LAST SEEN  %s  %ds" % [
+			WorldData.zone_name(zone), maxi(ceili(GameManager.intel_left), 0)]
+		zone_swatch.color = WorldData.zone_color(zone).darkened(0.35)
+		zone_chip.modulate.a = 1.0
 
 
-## Runner にだけ、2Dマップと最寄りの鬼への矢印を表示する
-func _update_tracking(player: CharacterBody3D) -> void:
+func _update_result(is_runner: bool) -> void:
+	result_panel.visible = GameManager.state == GameManager.State.RESULT
+	if not result_panel.visible:
+		return
+	var runner_won := GameManager.result_text.begins_with("RUNNER")
+	result_title.text = "RUNNER WINS" if runner_won else "HUNTERS WIN"
+	result_title.modulate = COLOR_RUNNER if runner_won else COLOR_HUNTER
+	if runner_won:
+		result_sub.text = "Survived the full round" if is_runner else "The runner got away"
+	else:
+		result_sub.text = "You were tagged" if is_runner else "Runner tagged!"
+	result_next.text = "Next round in %d..." % maxi(ceili(GameManager.result_left), 0)
+	result_next.modulate = COLOR_GOLD
+
+
+## --- 円形タイマー ------------------------------------------------------
+
+func _on_timer_draw() -> void:
+	if GameManager.state == GameManager.State.WAITING:
+		return
+	var c := timer_ring.size * 0.5
+	timer_ring.draw_arc(c, 54.0, 0.0, TAU, 64, Color(0, 0, 0, 0.45), 14.0, true)
+	var frac := 0.0
+	var col := COLOR_RUNNER
+	if GameManager.head_start_left > 0.0:
+		frac = GameManager.head_start_left / GameManager.HEAD_START
+		col = COLOR_HEAD_START
+	else:
+		frac = clampf(GameManager.time_left / GameManager.ROUND_TIME, 0.0, 1.0)
+		if frac < 0.34:
+			col = Color(1.0, 0.72, 0.2)
+		if frac < 0.15:
+			col = Color(1.0, 0.3, 0.3)
+	timer_ring.draw_arc(c, 54.0, -PI * 0.5, -PI * 0.5 + TAU * frac, 64, col, 12.0, true)
+
+
+## --- スタミナ（分割ゲージ） ---------------------------------------------
+
+func _update_stamina(player: Player) -> void:
+	stamina_bar.visible = player != null
+
+
+func _on_stamina_draw() -> void:
+	var player := _get_local_player()
+	if player == null:
+		return
+	var gap := 4.0
+	var w := (stamina_bar.size.x - (STAMINA_SEGMENTS - 1) * gap) / STAMINA_SEGMENTS
+	var filled := int(player.stamina / Player.STAMINA_MAX * STAMINA_SEGMENTS)
+	for i in STAMINA_SEGMENTS:
+		var sb := _sb_empty
+		if i < filled:
+			sb = _sb_low if player.exhausted else _sb_full
+		stamina_bar.draw_style_box(sb, Rect2(i * (w + gap), 0.0, w, stamina_bar.size.y))
+
+
+## --- 持ち物スロット（1個持ち） -------------------------------------------
+
+func _update_item(player: Player) -> void:
+	item_slot.visible = player != null and GameManager.state == GameManager.State.PLAYING
+	if not item_slot.visible:
+		return
+	var info: Array = ITEM_INFO.get(player.item, ITEM_INFO[Player.Item.NONE])
+	item_label.text = info[0]
+	item_label.modulate = info[1]
+
+
+func _on_item_changed(held: int) -> void:
+	if held == Player.Item.NONE:
+		return  # 使い切った時はトーストを出さない
+	var info: Array = ITEM_INFO.get(held, ITEM_INFO[Player.Item.NONE])
+	_toast("%s  (E)" % info[0], info[1])
+
+
+## --- バフ表示（ローカルプレイヤーのバフを直接読む） ------------------------
+
+func _update_buffs(player: Player) -> void:
+	var active: Array = player.buffs.keys() if player else []
+	# 表示中のチップと実際のバフが食い違ったときだけ作り直す。
+	# 個数ではなく中身で比べないと、入れ替わり（speed 終了 + jump 取得）を取りこぼす
+	if _buff_keys != active:
+		_buff_keys = active.duplicate()
+		for c in buff_tray.get_children():
+			# queue_free だけでは同フレーム中に子として残るため、先に外す
+			buff_tray.remove_child(c)
+			c.queue_free()
+		for key in active:
+			buff_tray.add_child(_make_buff_chip(key))
+	var i := 0
+	for key in active:
+		if i >= buff_tray.get_child_count():
+			break
+		var info: Array = BUFF_INFO.get(key, ["BUFF", 6.0, Color.WHITE])
+		var fill: ColorRect = buff_tray.get_child(i).get_node("Col/Fill")
+		var frac := clampf(player.buffs.time_left(key) / info[1], 0.0, 1.0)
+		fill.custom_minimum_size.x = BUFF_BAR_WIDTH * frac
+		i += 1
+
+
+func _make_buff_chip(key: StringName) -> Control:
+	var info: Array = BUFF_INFO.get(key, ["BUFF", 6.0, Color.WHITE])
+	var panel := PanelContainer.new()
+	var col := VBoxContainer.new()
+	col.name = "Col"
+	col.add_theme_constant_override("separation", 4)
+	var label := Label.new()
+	label.text = info[0]
+	label.add_theme_font_size_override("font_size", 16)
+	label.modulate = info[2]
+	var fill := ColorRect.new()
+	fill.name = "Fill"
+	fill.color = info[2]
+	fill.custom_minimum_size = Vector2(BUFF_BAR_WIDTH, 4)
+	fill.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	col.add_child(label)
+	col.add_child(fill)
+	panel.add_child(col)
+	return panel
+
+
+## --- Runner 専用: ミニマップ・方位・距離・危険表示 --------------------------
+
+func _update_tracking(player: Player) -> void:
 	var is_runner := (
 		GameManager.state == GameManager.State.PLAYING
 		and player != null
@@ -121,19 +351,30 @@ func _update_tracking(player: CharacterBody3D) -> void:
 
 	var target: Node3D = _nearest_hunter(player) if is_runner else null
 	compass.visible = target != null
-	distance_label.visible = target != null
+	distance_chip.visible = target != null
 	if target == null:
+		vignette.modulate.a = 0.0
 		return
+
 	var forward: Vector3 = -player.camera.global_transform.basis.z
 	var to_target: Vector3 = target.global_position - player.global_position
 	var f2 := Vector2(forward.x, forward.z)
 	var t2 := Vector2(to_target.x, to_target.z)
 	if f2.length_squared() > 0.0001 and t2.length_squared() > 0.0001:
 		compass.rotation = f2.angle_to(t2)
-	distance_label.text = "%.1f m" % to_target.length()
+	var dist := to_target.length()
+	distance_label.text = "%.1f m" % dist
+	# 鬼が近いほど赤く脈打つ（Runner 側だけの情報）
+	var a := clampf(inverse_lerp(DANGER_FAR, DANGER_NEAR, dist), 0.0, 1.0) * 0.6
+	# 見られている間は距離に関わらず必ず出す。
+	# 「近いが見失われている」と「遠いが見られている」は別の危険なので、
+	# バナー（離散）とヴィネット（連続）で二重に伝える
+	if GameManager.spotted:
+		a = maxf(a, 0.45)
+	vignette.modulate.a = a * (0.85 + 0.15 * sin(Time.get_ticks_msec() * 0.012))
 
 
-func _nearest_hunter(player: CharacterBody3D) -> Node3D:
+func _nearest_hunter(player: Node3D) -> Node3D:
 	var best: Node3D = null
 	var best_dist := INF
 	var runner_name := str(GameManager.runner_id)
@@ -155,42 +396,63 @@ func _nearest_hunter(player: CharacterBody3D) -> Node3D:
 func _on_compass_draw() -> void:
 	var c := compass.size * 0.5
 	var points := PackedVector2Array([
-		c + Vector2(0, -28),
-		c + Vector2(17, 15),
-		c + Vector2(0, 6),
-		c + Vector2(-17, 15),
+		c + Vector2(0, -40), c + Vector2(25, 22), c + Vector2(0, 9), c + Vector2(-25, 22),
 	])
-	compass.draw_colored_polygon(points, ARROW_COLOR_TO_HUNTER)
+	compass.draw_colored_polygon(points, ARROW_COLOR)
+	compass.draw_polyline(points + PackedVector2Array([points[0]]), INK, 3.0, true)
 
 
 func _on_map_draw() -> void:
 	var s := map_panel.size
-	var third_x := s.x / 3.0
-	var third_y := s.y / 3.0
-	# ゾーン色分け（北=上）
-	map_panel.draw_rect(Rect2(Vector2.ZERO, s), Color(0.08, 0.08, 0.1, 0.95))
-	map_panel.draw_rect(Rect2(0, 0, s.x, third_y), MAP_ZONE_COLORS[GameManager.Zone.NORTH])
-	map_panel.draw_rect(Rect2(0, s.y - third_y, s.x, third_y), MAP_ZONE_COLORS[GameManager.Zone.SOUTH])
-	map_panel.draw_rect(Rect2(0, third_y, third_x, third_y), MAP_ZONE_COLORS[GameManager.Zone.WEST])
-	map_panel.draw_rect(Rect2(s.x - third_x, third_y, third_x, third_y), MAP_ZONE_COLORS[GameManager.Zone.EAST])
-	map_panel.draw_rect(Rect2(third_x, third_y, third_x, third_y), MAP_ZONE_COLORS[GameManager.Zone.CENTER])
-	map_panel.draw_rect(Rect2(Vector2.ZERO, s), Color(1, 1, 1, 0.5), false, 2.0)
-	# 鬼（人間 + CPU）
+	map_panel.draw_rect(Rect2(Vector2.ZERO, s), Color(0.06, 0.05, 0.12, 0.92))
+	for idx in WorldData.ZONE_COUNT:
+		var c := WorldData.zone_color(idx).darkened(0.35)
+		c.a = 0.92
+		map_panel.draw_rect(_zone_rect(idx), c)
+		map_panel.draw_rect(_zone_rect(idx), Color(0, 0, 0, 0.25), false, 1.0)
+	# 角丸は draw_rect では出せないので、太い枠を上から重ねて角を隠す
+	var frame := StyleBoxFlat.new()
+	frame.draw_center = false
+	frame.bg_color = Color(0, 0, 0, 0)
+	frame.set_corner_radius_all(18)
+	frame.set_border_width_all(10)
+	frame.border_color = Color(0.06, 0.05, 0.12, 1)
+	map_panel.draw_style_box(frame, Rect2(Vector2.ZERO, s))
+
 	var runner_name := str(GameManager.runner_id)
 	for p in get_tree().get_nodes_in_group("players"):
-		if p.name == runner_name:
-			continue
-		map_panel.draw_circle(_map_point(p.global_position), 5.0, HUNTER_DOT)
+		if p.name != runner_name:
+			_draw_marker(_map_point(p.global_position), HUNTER_DOT)
 	for cpu in get_tree().get_nodes_in_group("cpu_hunters"):
-		map_panel.draw_circle(_map_point(cpu.global_position), 5.0, HUNTER_DOT)
-	# 自分（向き付き）
+		_draw_marker(_map_point(cpu.global_position), HUNTER_DOT)
+
 	var player := _get_local_player()
 	if player:
 		var center := _map_point(player.global_position)
-		map_panel.draw_circle(center, 6.0, SELF_DOT)
+		_draw_marker(center, SELF_DOT)
 		var forward: Vector3 = -player.global_transform.basis.z
 		var dir2 := Vector2(forward.x, forward.z).normalized()
-		map_panel.draw_line(center, center + dir2 * 11.0, SELF_DOT, 2.0)
+		map_panel.draw_line(center, center + dir2 * 13.0, SELF_DOT, 2.5, true)
+
+
+func _draw_marker(p: Vector2, c: Color) -> void:
+	map_panel.draw_circle(p, 11.0, Color(c.r, c.g, c.b, 0.22))
+	map_panel.draw_circle(p, 5.5, c)
+	map_panel.draw_circle(p, 2.2, Color(1, 1, 1, 0.9))
+
+
+## ゾーンの床範囲をミニマップ上の矩形に変換する
+func _zone_rect(idx: int) -> Rect2:
+	var col: int = WorldData.ZONE_COL[idx]
+	var row: int = WorldData.ZONE_ROW[idx]
+	var x0: float = WorldData.AXIS_CENTER[col] - WorldData.AXIS_SIZE[col] * 0.5
+	var z0: float = WorldData.AXIS_CENTER[row] - WorldData.AXIS_SIZE[row] * 0.5
+	var s := map_panel.size
+	return Rect2(
+		(x0 - WORLD_MIN) / WORLD_SIZE * s.x,
+		(z0 - WORLD_MIN) / WORLD_SIZE * s.y,
+		WorldData.AXIS_SIZE[col] / WORLD_SIZE * s.x,
+		WorldData.AXIS_SIZE[row] / WORLD_SIZE * s.y)
 
 
 func _map_point(world: Vector3) -> Vector2:
@@ -199,12 +461,88 @@ func _map_point(world: Vector3) -> Vector2:
 	return Vector2(u * map_panel.size.x, v * map_panel.size.y)
 
 
-func _get_local_player() -> CharacterBody3D:
+## --- 演出（状態遷移とトースト） ------------------------------------------
+
+func _on_state_changed(new_state: int) -> void:
+	if new_state != GameManager.State.PLAYING:
+		_hide_spotted_banner()  # 見られたままラウンドが終わる（＝捕まる）ので必ず消す
+	if new_state == GameManager.State.PLAYING:
+		_pop_in(role_badge)
+	elif new_state == GameManager.State.RESULT:
+		_pop_in(result_panel.get_node("Box"))
+
+
+## 「見られている」は継続状態なので、一過性のトーストではなく専用バナーで出す。
+## 点滅はポーリングではなくシグナルのエッジで駆動する（発生源で
+## SPOTTED_HOLD のデバウンスが効いているので、ここでばたつくことはない）
+func _on_spotted_changed(is_spotted: bool) -> void:
+	if not is_spotted or multiplayer.get_unique_id() != GameManager.runner_id:
+		_hide_spotted_banner()
+		return
+	_kill_spotted_tween()
+	_banner_hiding = false
+	spotted_banner.visible = true
+	spotted_banner.modulate.a = 1.0
+	_spotted_tween = create_tween().set_loops()
+	_spotted_tween.tween_property(spotted_banner, "modulate:a", 0.4, 0.35)
+	_spotted_tween.tween_property(spotted_banner, "modulate:a", 1.0, 0.35)
+
+
+## フェードアウト中は visible が true のままなので、
+## 毎フレーム呼ばれても Tween を作り直さないようにする（作り直すと永久に消えない）
+func _hide_spotted_banner() -> void:
+	if _banner_hiding or not spotted_banner.visible:
+		return
+	_kill_spotted_tween()
+	_banner_hiding = true
+	_spotted_tween = create_tween()
+	_spotted_tween.tween_property(spotted_banner, "modulate:a", 0.0, 0.5)
+	_spotted_tween.tween_callback(func() -> void:
+		spotted_banner.visible = false
+		_banner_hiding = false)
+
+
+## ループする Tween を放置すると同じプロパティを取り合うので、必ず先に殺す
+func _kill_spotted_tween() -> void:
+	if _spotted_tween and _spotted_tween.is_valid():
+		_spotted_tween.kill()
+	_spotted_tween = null
+
+
+func _pop_in(node: Control) -> void:
+	# レイアウト確定後でないと size が 0 で、中心ではなく左上から拡大してしまう
+	await get_tree().process_frame
+	node.pivot_offset = node.size * 0.5
+	node.scale = Vector2(0.5, 0.5)
+	create_tween().tween_property(node, "scale", Vector2.ONE, 0.45) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+func _on_effect_gained(effect: int) -> void:
+	_toast(TOAST_TEXT.get(effect, "!"), TOAST_COLOR.get(effect, Color.WHITE))
+
+
+func _toast(text: String, color: Color) -> void:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 26)
+	label.modulate = color
+	toast_tray.add_child(label)
+	var tw := create_tween()
+	tw.tween_property(label, "modulate:a", 1.0, 0.15).from(0.0)
+	tw.tween_interval(1.6)
+	tw.tween_property(label, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(label.queue_free)
+
+
+func _get_local_player() -> Player:
 	if is_instance_valid(_local_player):
 		return _local_player
 	var my_name := str(multiplayer.get_unique_id())
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.name == my_name:
 			_local_player = p
+			p.effect_gained.connect(_on_effect_gained)
+			p.item_changed.connect(_on_item_changed)
 			return p
 	return null

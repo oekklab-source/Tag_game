@@ -1,0 +1,30 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scenes/gimmicks/moving_platform.gd" id="1_lift"]
+
+[sub_resource type="StandardMaterial3D" id="lift_mat"]
+albedo_color = Color(0.35, 0.68, 1, 1)
+roughness = 0.8
+metallic_specular = 0.2
+emission_enabled = true
+emission = Color(0.35, 0.68, 1, 1)
+emission_energy_multiplier = 0.35
+
+[sub_resource type="BoxMesh" id="lift_mesh"]
+material = SubResource("lift_mat")
+size = Vector3(6, 0.5, 6)
+
+[sub_resource type="BoxShape3D" id="lift_shape"]
+size = Vector3(6, 0.5, 6)
+
+[node name="MovingPlatform" type="AnimatableBody3D"]
+collision_layer = 8
+collision_mask = 0
+sync_to_physics = true
+script = ExtResource("1_lift")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("lift_mesh")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+shape = SubResource("lift_shape")

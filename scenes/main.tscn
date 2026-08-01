@@ -1,46 +1,64 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://op8h1pgfr6ge"]
 
-[ext_resource type="Script" path="res://scenes/main.gd" id="1_main"]
+[ext_resource type="Script" uid="uid://6ohtyrx6jolb" path="res://scenes/main.gd" id="1_main"]
 
-[node name="Main" type="Control"]
+[node name="Main" type="Control" unique_id=1144281147]
+layout_mode = 3
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 script = ExtResource("1_main")
 
-[node name="CenterContainer" type="CenterContainer" parent="."]
+[node name="CenterContainer" type="CenterContainer" parent="." unique_id=257670397]
+layout_mode = 1
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 2.0
+offset_right = 2.0
+grow_horizontal = 2
+grow_vertical = 2
 
-[node name="VBox" type="VBoxContainer" parent="CenterContainer"]
+[node name="VBox" type="VBoxContainer" parent="CenterContainer" unique_id=960621104]
+layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="TitleLabel" type="Label" parent="CenterContainer/VBox"]
+[node name="TitleLabel" type="Label" parent="CenterContainer/VBox" unique_id=384317427]
+layout_mode = 2
 theme_override_font_sizes/font_size = 40
 text = "3D CHASE GAME"
 horizontal_alignment = 1
 
-[node name="StatusLabel" type="Label" parent="CenterContainer/VBox"]
+[node name="StatusLabel" type="Label" parent="CenterContainer/VBox" unique_id=1047686530]
+layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.5, 0.4, 1)
 theme_override_font_sizes/font_size = 16
 horizontal_alignment = 1
 
-[node name="HostButton" type="Button" parent="CenterContainer/VBox"]
+[node name="HostButton" type="Button" parent="CenterContainer/VBox" unique_id=135365812]
 custom_minimum_size = Vector2(280, 44)
+layout_mode = 2
 text = "HOST (PC only)"
 
-[node name="JoinRow" type="HBoxContainer" parent="CenterContainer/VBox"]
+[node name="JoinRow" type="HBoxContainer" parent="CenterContainer/VBox" unique_id=485600863]
+layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="AddressEdit" type="LineEdit" parent="CenterContainer/VBox/JoinRow"]
+[node name="AddressEdit" type="LineEdit" parent="CenterContainer/VBox/JoinRow" unique_id=105758249]
 custom_minimum_size = Vector2(216, 44)
+layout_mode = 2
 text = "127.0.0.1"
 placeholder_text = "host IP address"
 
-[node name="JoinButton" type="Button" parent="CenterContainer/VBox/JoinRow"]
+[node name="JoinButton" type="Button" parent="CenterContainer/VBox/JoinRow" unique_id=2133130202]
 custom_minimum_size = Vector2(56, 44)
+layout_mode = 2
 text = "JOIN"
 
-[node name="HelpLabel" type="Label" parent="CenterContainer/VBox"]
+[node name="HelpLabel" type="Label" parent="CenterContainer/VBox" unique_id=1272860684]
+layout_mode = 2
 theme_override_font_sizes/font_size = 14
 text = "Host: run on PC, listens on port 9999
 Client: enter the host IP and press JOIN

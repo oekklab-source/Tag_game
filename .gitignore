@@ -1,6 +1,8 @@
 # Godot
 .godot/
 *.translation
+# ローカルのパスや Android キーストアのパスワードが入りうる
+export_presets.cfg
 
 # エクスポート出力
 export/
