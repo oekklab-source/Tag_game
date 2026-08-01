@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scenes/gimmicks/placed_block.gd" id="1_block"]
 
@@ -18,6 +18,16 @@ size = Vector3(5, 4.5, 1)
 [sub_resource type="BoxShape3D" id="block_shape"]
 size = Vector3(5, 4.5, 1)
 
+; 位置と向きをスポーン時に一度だけ配る。壁は視線と通行を塞ぐ実体なので、
+; これが無いとクライアントだけ原点に壁があることになる
+[sub_resource type="SceneReplicationConfig" id="repl_config"]
+properties/0/path = NodePath(".:position")
+properties/0/spawn = true
+properties/0/replication_mode = 0
+properties/1/path = NodePath(".:rotation")
+properties/1/spawn = true
+properties/1/replication_mode = 0
+
 [node name="PlacedBlock" type="StaticBody3D"]
 collision_layer = 8
 collision_mask = 0
@@ -30,3 +40,7 @@ mesh = SubResource("block_mesh")
 [node name="Shape" type="CollisionShape3D" parent="."]
 position = Vector3(0, 2.25, 0)
 shape = SubResource("block_shape")
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+root_path = NodePath("..")
+replication_config = SubResource("repl_config")

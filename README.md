@@ -64,6 +64,46 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
 | 動く床 | 昇降リフト／上空シャトル。乗ると一緒に運ばれる |
 | 回転床 | 円周上を運ばれる（自分の向きは変わらない） |
 | ？ブロック | アイテムを1つくれる。12秒で復活。CPU は反応しない |
+| 滑り台 | 一方通行の下り。最大18m/s まで加速する。**登れない** |
+
+### 滑り台と、高いゾーンの出入り
+
+高所2ゾーン **CLOUD DECK(8m) / SKY STEPS(6m)** は、対角に置かれた「空の島」。
+出入りの経路は意図的に絞ってある。
+
+| 向き | 手段 |
+| --- | --- |
+| 登る | ジャンプ台（各ゾーン2基）／土管 |
+| 降りる | 滑り台（各ゾーン2本）／ジャンプ台の着地口から飛び降り |
+
+このために **滑り台を架けた境界のスロープは撤去し**（`_build_ramps`）、
+**落差3m以上の縁には高さ2.5mの柵を立てている**（`_build_parapets`）。
+柵の開口は滑り台の入口とジャンプ台の着地点だけ。
+どちらも無いと「歩いて降りる」「どこでも飛び降りる」で代替でき、滑り台の意味が消える。
+
+ジャンプ台の着地点にも口を空けているのは、塞ぐと登坂ルートが死ぬため
+（GARDEN GREEN からの打ち上げの頂点は CLOUD DECK の床のわずか 1.6m 上）。
+そこからは飛び降りもできるが、1箇所に限られ、着地しても速度は歩行のまま。
+滑り台は 18 m/s 出るので価値は残る。
+
+**登れないのは幾何ではなく速度の制御で保証している。** 走路の傾斜は 26.6° で、
+45°（`floor_max_angle`）を超えていないので普通に接地でき、歩行モーションも横操作も生きる。
+代わりに走路の上にいる間は進行方向の速度が最低 3.5 m/s へ毎フレーム引き上げられ、
+ジャンプも封じられるので、登ろうとするとズルズル押し戻される。
+走路は**直線の1枚板**。以前はカーブさせていたが、分割したセグメントの継ぎ目で足が引っかかった。
+
+**CPU の経路はナビリンクで通している。** 滑り台の幾何は Platform レイヤーにあり
+ナビメッシュに焼かれない（焼くと「登れる」と誤判断して詰む）ので、
+代わりに `NavigationLink3D` を張ってある。
+
+- 滑り台のリンクは**一方通行**（`bidirectional = false`）＝ CPU も降りることしかできない
+- 土管のリンクは双方向。これが CPU にとって唯一の登坂ルートになる
+- 土管リンクの端点は土管の中心ではなく「相手と反対側の足元」に置く。
+  土管は半径1.5mの静的ボディでナビメッシュに 2.3m の穴を空けるため中心には繋がらず、
+  またこの位置なら端点から相手へ一直線に歩くと必ず土管の口を通る
+
+`tests/map_connectivity.tscn` がこの構造を自動検証している（全ゾーン間の到達性と、
+土管リンクを切った時に「登れる経路 0 / 降りられる経路 7」になる非対称）。
 
 ## アイテム
 
@@ -79,6 +119,12 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
 クライアント側にあるが、クライアントが自前で生成しても `MultiplayerSpawner` を
 通らず他ピアへ同期されないため。
 
+**アイテムを使える条件と、置き物を生成できる条件は必ず一致させること。**
+`GameManager.request_drop` だけが `PLAYING` 限定だった頃は、ラウンド外で
+？ブロックを取って使うとアイテムだけ消えて何も置かれなかった
+（？ブロック側には状態の判定が無く、いつでも配ってしまうため）。
+`tests/item_drop.tscn` がラウンド外・ラウンド中の両方で置けることを検証している。
+
 ## 高い場所について
 
 **壁の上には立てない。** 天面が 63° の屋根型になっていて滑り落ちるうえ、
@@ -86,8 +132,9 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
 （カプセルが尖った稜線の真上に来ると接触法線が真上になり、
 面の傾斜に関係なく立ててしまうため。凸形状では原理的に避けられない）。
 
-**ジャンプ必須の場所は無い。** ゾーン間の高低差はすべてスロープで繋がっており、
-空中の動く床は昇降リフトから乗り継ぐ。テスト T2e / T2f がこれを自動検証している。
+**ジャンプは無い。** 自力で跳ぶ手段を持たないので、高さの移動はすべて
+スロープ・ジャンプ台・滑り台・土管・リフトのどれかを通る。
+どこを登れて / 降りられるかがマップの設計だけで決まり、抜け道が生まれない。
 
 ## 操作
 
@@ -96,12 +143,28 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
 | W / A / S / D | 移動 |
 | マウス | カメラ（クリックでキャプチャ、Esc で解放） |
 | Shift（押しっぱなし） | ダッシュ（速度1.5倍、スタミナ消費） |
-| Space | ジャンプ |
+| Space | **ダイブ**（前方へ低く飛び込む） |
 | E / マウス右ボタン | アイテムを使う（`A` は左移動に使っているため `E`） |
 | Enter | ラウンド開始（**ホストのみ**。1人なら CPU 戦） |
 
+### ダイブ
+
+ジャンプの代わりの、鬼が距離を詰めて捕まえるための手段。
+前方へ 12 m/s（ダッシュの1.14倍）で飛び込み、当たり判定も体ごと前へ出る。
+
+踏み切った後は**着地まで軌道を変えられず、着地後 0.55 秒は起き上がりで動けない**。
+外すと大きな隙になるのがリスクで、逃走者は横へ避ければ引き離せる。
+浮くのは 0.46m だけなので、段差を越える手段にはならない（柵は 2.5m ある）。
+
+逃走者も同じダイブを使える。鬼だけの技にすると Space に何も割り当たらず、
+また追う側だけが加速手段を持つ形になるため。
+
 空中では水平方向の慣性が残る（入力しなければ減速しない）。
 ジャンプ台やダッシュパネルで得た勢いはこの仕様に依存している。
+
+接地中も、通常速度を超えている間は目標速度で上書きせず 10 m/s² で減速する。
+これが無いと滑り台の出口・ダッシュパネルの蹴り出し・ロケットの着地で得た勢いが
+着地の1フレームで消える。
 
 ## ローカルでの動作確認（PC のみ）
 
@@ -113,12 +176,20 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
 ソロモード（CPU 戦）は 1 インスタンスで **HOST → そのまま Enter** で開始できる。
 `scenes/world.tscn` を直接実行してもホストとして起動する。
 
-## ブラウザ（Web エクスポート）での確認
+ロビーを飛ばして起動することもできる（ヘッドレスでの検証用）:
 
-1. **プロジェクト > エクスポート** で **Web** プリセットを追加
-   （テンプレート未導入なら案内に従いダウンロード。**Thread Support はオフ**のまま = デフォルト）
-2. `export/web/` などにエクスポートし、http で配信:
-   ```
+```sh
+godot --headless --path . res://scenes/world.tscn
+godot --headless --path . res://scenes/world.tscn -- client 127.0.0.1
+```
+
+## ブラウザ（Web エクスポート）での確認（同一 LAN 内）
+
+1. **Web** プリセットは [export_presets.cfg](export_presets.cfg) にコミット済み
+   （**Thread Support はオフ**。オンにすると COOP/COEP ヘッダが必要になる）。
+   export テンプレートが未導入ならエディタの案内に従ってダウンロードする
+2. `export/web/` へエクスポートし、http で配信:
+   ```sh
    python -m http.server 8000 --directory export/web
    ```
    ※ ページを **https で配信すると ws:// 接続がブロック**されるため、必ず http（localhost/LAN 内）で配信する
@@ -129,6 +200,87 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
 描画は `gl_compatibility` 固定。装飾は MultiMeshInstance3D 4本に、
 マテリアルは十数個に集約してある。フレームレートが足りない場合は
 `world.tscn` の `Sun` の `shadow_enabled` を最初に切ると効果が大きい。
+
+## インターネット越しに遊ぶ（外部の友達と）
+
+自宅PCがホストのまま、**Cloudflare Tunnel** で公開する。費用は0円で、
+ルータのポート開放も Windows ファイアウォールの設定も要らない
+（`cloudflared` は外向き接続しか張らない）。
+
+```text
+[友達のブラウザ] --https--> Cloudflare Pages   (ゲーム本体。固定URL)
+        |
+        `--- wss://xxxx.trycloudflare.com --> [Cloudflare] --> cloudflared --> Godot ws://localhost:9999
+                                                                               (自宅PC・ホスト)
+```
+
+### なぜトンネルなのか
+
+- **TLS**: Web ビルドを置ける無料ホスティングはすべて https 固定で、https ページから
+  `ws://` への接続は mixed content としてブロックされる。**外部公開には `wss://` が必須**。
+  トンネルが TLS を終端するので、Godot 側に証明書を持たせずに済む
+- **NAT 越え**: 日本の主要 ISP（v6プラス / OCN バーチャルコネクト等）は
+  ポート開放できない・制限される回線が多い。ポート開放を前提にすると
+  「動く人と動かない人がいる」構成になる
+
+### Web ビルドの配信（初回だけ）
+
+`main` に push すると [.github/workflows/web-build.yml](.github/workflows/web-build.yml) が
+Web ビルドを作り、成果物だけを **`web-build` ブランチへ force push** する。
+Cloudflare Pages はそのブランチを見てデプロイする。以降は**push するだけで公開が更新される**。
+
+1. `winget install --id Cloudflare.cloudflared`
+2. main を push して Actions を1回通す（`web-build` ブランチができる）
+3. [Cloudflare Pages](https://pages.cloudflare.com/) で **Connect to Git** からこのリポジトリを選び、
+   - **Production branch: `web-build`**
+   - **Build command: なし（空欄）**
+   - **Build output directory: `/`**
+   - フレームワークプリセットは None
+4. 発行された `https://<name>.pages.dev` を [tools/serve.ps1](tools/serve.ps1) の
+   `$DefaultPagesUrl` に書く
+
+Pages 側でビルドしないのは、Godot 本体と 1.2GB の export テンプレートが要るため。
+`web-build` を毎回 force push で作り直すのは、`index.wasm` が約38MB あり、
+履歴に積むとリポジトリが膨らむから（常に1コミットしか持たない）。
+
+itch.io ではなく Pages を使うのは、**URL クエリを自分で使えるから**。
+下の参加リンクが成立するのは Pages 側だけで、itch.io は iframe 埋め込みのため
+クエリが届かず、友達に「このアドレスを入力して」と伝える手間が残る。
+
+手元でビルドを確認したいときは（`export_presets.cfg` の Web プリセットを使う）:
+
+```sh
+godot --headless --export-release "Web" export/web/index.html
+python -m http.server 8123 --directory export/web
+# http://localhost:8123/index.html?s=127.0.0.1 で自動参加を確認できる
+```
+
+### 遊ぶたびの手順
+
+1. Godot でゲームを起動して **HOST**
+2. `pwsh tools/serve.ps1` を実行する
+3. 表示された参加リンク（クリップボードにコピー済み）を友達に送る
+
+   ```text
+   https://<name>.pages.dev/?s=xxxx.trycloudflare.com
+   ```
+
+4. 友達はリンクを開くだけで自動的に参加する（`?s=` を [scenes/main.gd](scenes/main.gd) が読む）
+5. 全員揃ったらホスト画面で Enter
+
+`?s=` が無ければ従来どおりロビーが出る。入力欄は IP でもホスト名でも受け付け、
+[network_manager.gd](autoload/network_manager.gd) の `resolve_url()` が
+**IP なら `ws://IP:9999`、ホスト名なら `wss://host`** に振り分ける。
+
+### 既知の制約
+
+- **トンネルの URL は起動ごとに変わる**（無料の quick tunnel のため）。毎回リンクを
+  送り直すことになる。固定したいなら独自ドメイン + named tunnel（年1,500円程度）
+- quick tunnel は Cloudflare が「本番用ではない」としているもので、稼働保証は無い
+- **チート対策は無い**。位置の権威はクライアント側にあるので、改造クライアントは
+  瞬間移動できる。`GameManager.request_drop` も `any_peer` で回数制限が無い。
+  身内で遊ぶ前提の設計
+- ホストPCを落とすとゲームも終わる（専用サーバではない）
 
 ## 衝突レイヤー
 
@@ -144,10 +296,11 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
 | 場所 | 定数 |
 | --- | --- |
 | [scenes/world_data.gd](scenes/world_data.gd) | マップ寸法・ゾーン定義（名前/高さ/色）・全ギミックの配置 |
-| [scenes/player.gd](scenes/player.gd) | 移動速度・ダッシュ倍率・空中制御・スタミナ・マウス感度・アイテムの威力 |
+| [scenes/player.gd](scenes/player.gd) | 移動速度・ダッシュ倍率・空中制御・スタミナ・マウス感度・アイテムの威力・**リモート補間**（`NET_SMOOTH` / `NET_SNAP_DIST`） |
 | [scenes/cpu_hunter.gd](scenes/cpu_hunter.gd) | CPU の速度・巡回順路・捜索範囲・回り込み・ジャンプ頻度 |
 | [autoload/game_manager.gd](autoload/game_manager.gd) | 制限時間・ヘッドスタート・CPU数・スポーンゾーン・速度補正・**視界（距離/視野角/情報の寿命）** |
-| [autoload/network_manager.gd](autoload/network_manager.gd) | ポート番号 |
+| [autoload/network_manager.gd](autoload/network_manager.gd) | ポート番号・アドレス解決の規則 |
+| `player.tscn` / `cpu_hunter.tscn` の `MultiplayerSynchronizer` | `replication_interval`（0.05 = 20Hz）。`NET_SMOOTH` と釣り合わせること |
 | [ui/pop_theme.tres](ui/pop_theme.tres) | UI の配色・角丸・文字の縁取り |
 
 バランスの要は2つ。
@@ -171,8 +324,8 @@ Godot 4 標準フォントに日本語グリフがなく、**Web エクスポー
 
 ## 構成
 
-```
-autoload/network_manager.gd   WebSocket 接続・切断・シーン遷移
+```text
+autoload/network_manager.gd   WebSocket 接続・切断・シーン遷移・アドレス解決（ws / wss）
 autoload/game_manager.gd      役割抽選・速度補正・タイマー・タッチ判定・視界判定と情報共有・共有時計
 scenes/main.tscn(.gd)         ロビー（HOST / JOIN）
 scenes/world.tscn(.gd)        シーンの骨組み（空・光・ナビ領域・スポーン管理）
@@ -186,12 +339,31 @@ scenes/gimmicks/              土管・ジャンプ台・ダッシュパネル�
                               + 壁の天面ガード・バナナ・設置ブロック
 scenes/hud.tscn(.gd)          役割バッジ・円形タイマー・9ゾーンミニマップ・バフ・危険表示・目撃情報
 ui/pop_theme.tres             全体に適用される POP テーマ
+tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
+tests/map_connectivity.tscn   ナビメッシュの連結性と滑り台の一方通行の自動検証
+.github/workflows/            push で Web ビルド -> web-build ブランチへ force push
+export_presets.cfg            Web エクスポート設定（CI が使うのでコミットしてある）
 ```
 
 ## マルチプレイの権威モデル（改造時の注意）
 
-- プレイヤーの位置は**各クライアントが権威**を持ち、`position` と `rotation` だけが同期される。
+- プレイヤーの位置は**各クライアントが権威**を持つ。
   速度・スタミナ・バフは同期していない
+- 同期されるのは `position` / `rotation` **そのものではなく `sync_position` / `sync_yaw`**。
+  権威ピアが毎物理フレームここへ書き、他ピアは `_follow_sync()` で
+  **ボディごと**補間する（20Hz 同期 + exp 減衰）。インターネット越しでは到着間隔が
+  ばらつくので、同期値を直接 `position` に入れるとその揺らぎがそのまま見える。
+  遠い時（5m 超）は補間せずスナップする＝テレポートや土管ワープで画面を横切って滑らない
+  - **メッシュだけでなくボディを動かす**のは、視界判定とタッチ判定がどちらもボディ基準だから。
+    見た目と判定がずれない代わりに、判定は最大 50ms ほど過去の位置に基づく（全員一律）
+  - `_physics_process` 末尾の `sync_position = position` を消すと、
+    **他ピアからそのキャラが完全に静止して見える**
+  - 向きはヨーだけ同期する。ボディの x/z 回転は誰も触らないし、Euler をそのまま
+    lerp すると ±PI をまたぐ瞬間に一回転する
+- **スポーン時の位置は `add_child` より前に `sync_position` へ入れる**（`world.gd`）。
+  レプリケートされるのは `position` ではないので、入れ忘れると他ピアでは原点に出る。
+  置き物（バナナ・設置ブロック）も同じ理由で、動かないが
+  `spawn = true` だけの `SceneReplicationConfig` を持たせてある
 - そのため、ギミックの効果は必ず「そのボディの権威ピア」で適用する
   （`if body.is_multiplayer_authority()`）。移動結果は位置同期で他ピアへ伝わる
 - 例外は **？ブロック**。抽選結果を全ピアで一致させる必要があるのでホストが決めて RPC で配信する

@@ -1,0 +1,88 @@
+name: Web build
+
+# main を push すると Web ビルドを作り、成果物だけを web-build ブランチへ force push する。
+# Cloudflare Pages は web-build ブランチを見てデプロイする。
+#
+# force push で毎回まっさらな履歴に置き換えるのは、index.wasm が約38MB あり、
+# 積み上げるとリポジトリが膨らむため。web-build は常に1コミットしか持たない。
+#
+# Cloudflare Pages 側でビルドしないのは、Godot 本体と 1.2GB の
+# export テンプレートが必要で、Pages のビルド環境では現実的でないから。
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: 4.7.1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1.2GB あるのでキャッシュする。ヒットすればダウンロードを丸ごと省ける
+      - name: Cache export templates
+        id: cache-templates
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/godot/export_templates
+          key: godot-templates-${{ env.GODOT_VERSION }}
+
+      - name: Install Godot
+        run: |
+          set -euo pipefail
+          BASE="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -fL -o godot.zip "$BASE/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
+          chmod +x /usr/local/bin/godot
+          godot --version
+
+      - name: Install export templates
+        if: steps.cache-templates.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          BASE="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -fL -o templates.tpz "$BASE/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q templates.tpz
+          DEST="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$DEST"
+          mv templates/* "$DEST/"
+
+      # 初回は .godot/ が無く、リソース未インポートのままだと export が失敗する。
+      # --import は取り込み後に非ゼロで終わることがあるので、ここでは失敗を許す
+      # （本当に取り込めていなければ次の export で落ちる）
+      - name: Import resources
+        run: godot --headless --import || true
+
+      - name: Export Web
+        run: |
+          set -euo pipefail
+          mkdir -p export/web
+          godot --headless --export-release "Web" export/web/index.html
+          test -s export/web/index.wasm
+          ls -lh export/web
+
+      # 成果物だけの孤立リポジトリを作って force push する。
+      # 親の .gitignore（export/ や *.wasm を無視）は別リポジトリなので効かない
+      - name: Publish to web-build branch
+        run: |
+          set -euo pipefail
+          cd export/web
+          git init -q -b web-build
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "web build from ${GITHUB_SHA}"
+          git push -q --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" web-build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

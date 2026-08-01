@@ -64,6 +64,9 @@ func _spawn_player(id: int) -> void:
 	var angle := randf() * TAU
 	# 地面の高さがゾーンごとに違うため、高めから落として着地させる
 	player.position = Vector3(cos(angle), 0, sin(angle)) * INITIAL_SPAWN_RADIUS + Vector3(0, 4, 0)
+	# レプリケートされるのは position ではなく sync_position。add_child より前に
+	# 入れないとスポーン状態に乗らず、他ピアでは原点に出てしまう
+	player.sync_position = player.position
 	players.add_child(player)
 
 
@@ -84,4 +87,5 @@ func spawn_cpu_hunter(pos: Vector3) -> void:
 	var cpu: CharacterBody3D = CPU_SCENE.instantiate()
 	cpu.name = "CPU%d" % _cpu_counter
 	cpu.position = pos
+	cpu.sync_position = pos
 	players.add_child(cpu)

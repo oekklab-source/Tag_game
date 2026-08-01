@@ -153,15 +153,41 @@ static func build(map_root: Node3D, gimmick_root: Node3D, decor_root: Node3D) ->
 	_build_decor(decor_root)
 
 
-## 2x2 の市松模様。ワールド空間トライプラナーで貼るので UV 作成が不要になり、
-## 全てのスラブとスロープで模様が途切れずに繋がる
-static func _checker_texture() -> ImageTexture:
-	var img := Image.create(2, 2, false, Image.FORMAT_RGB8)
-	img.set_pixel(0, 0, Color.WHITE)
-	img.set_pixel(1, 1, Color.WHITE)
-	img.set_pixel(1, 0, Color(0.84, 0.84, 0.84))
-	img.set_pixel(0, 1, Color(0.84, 0.84, 0.84))
+## 床の模様。ワールド空間トライプラナーで貼るので UV 作成が不要になり、
+## 全てのスラブとスロープで模様が途切れずに繋がる。
+##
+## ゾーンごとに柄を変えて場所の見分けをつける。テクスチャは 4x4 ピクセルなので
+## 9枚あってもメモリは無視できるし、マテリアル数も増えない
+## （もともとゾーンごとに1個作っている）。
+## コントラストを弱くしてあるのは、市松が強いと「ふわふわ」を壊すため
+static func _zone_pattern(idx: int) -> ImageTexture:
+	var img := Image.create(PATTERN_RES, PATTERN_RES, false, Image.FORMAT_RGB8)
+	img.fill(Color.WHITE)
+	var dark := Color(PATTERN_CONTRAST, PATTERN_CONTRAST, PATTERN_CONTRAST)
+	for y in PATTERN_RES:
+		for x in PATTERN_RES:
+			var on := false
+			match idx:
+				0:  # CLOUD DECK    無地（雲の上なので柄なし）
+					on = false
+				1, 7:  # PIPE YARD / LIFT HARBOR  縦ストライプ
+					on = x % 2 == 0
+				3, 6:  # GARDEN GREEN / SPRING VALLEY  水玉
+					on = (x % 2 == 1) and (y % 2 == 1)
+				5:  # BOOST CIRCUIT  斜めストライプ（速度感）
+					on = (x + y) % 2 == 0
+				8:  # SKY STEPS      同心円の近似
+					on = maxi(absi(x - 1), absi(y - 1)) % 2 == 0
+				_:  # BLOCK PLAZA / CASTLE COURT  市松（基準）
+					on = ((x / 2) + (y / 2)) % 2 == 0
+			if on:
+				img.set_pixel(x, y, dark)
 	return ImageTexture.create_from_image(img)
+
+
+## 市松のみの汎用版。スロープと滑り台に使う
+static func _checker_texture() -> ImageTexture:
+	return _zone_pattern(4)
 
 
 static func _apply_checker(m: StandardMaterial3D, tex: Texture2D) -> void:
@@ -169,7 +195,8 @@ static func _apply_checker(m: StandardMaterial3D, tex: Texture2D) -> void:
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	m.uv1_triplanar = true
 	m.uv1_world_triplanar = true
-	m.uv1_scale = Vector3(0.125, 0.125, 0.125)  # 1マス4m
+	# 4x4 のテクスチャが 16m ごとに繰り返す = 1マス4m（従来と同じ大きさ）
+	m.uv1_scale = Vector3(0.0625, 0.0625, 0.0625)
 
 
 ## ノード名は明示的に振る。？ブロックの RPC はノードパスで解決されるため、

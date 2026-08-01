@@ -16,8 +16,33 @@ signal item_changed(held: int)
 
 const BASE_SPEED := 7.0       # 160m四方のマップで「歩きゲー」にしないための下限
 const DASH_MULT := 1.5        # ダッシュ時 10.5 m/s
-const JUMP_VELOCITY := 5.2    # 約1.38m。1.2m級の段差を越えられる高さ
 const AIR_ACCEL := 14.0       # 空中での方向転換の効き（慣性を残すため小さめ）
+
+## --- ダイブ -------------------------------------------------------------
+## この世界に「跳ぶ」手段は無い。段差はスロープ・ジャンプ台・滑り台でしか越えられず、
+## 柵を跳び越える抜け道も存在しない。代わりに Space は前方へのダイブになる。
+## 鬼が逃走者との距離を一気に詰めて捕まえるための手段（当たり判定は体ごと前へ出る）。
+const DIVE_SPEED := 12.0      # ダッシュ(10.5)より速く、滑走(18)より遅い
+## わずかに浮くだけ。到達高度は 0.46m で、これで越えられる段差は作っていない
+const DIVE_UP := 3.0
+const DIVE_RECOVER := 0.55    # 着地後の起き上がり。空振りしたときのリスクがこれ
+const DIVE_COOLDOWN := 0.9    # 連打してただの移動手段にさせない
+## 見た目の前傾（rad）。前方は -Z なので、X軸まわりは負回転が前倒しになる
+const DIVE_PITCH := -1.2
+
+## 通常速度を超えた分の減速 /秒。接地した瞬間に velocity を上書きせず、
+## この率で通常速度まで落とす。滑り台の出口・ダッシュパネルの蹴り出し・
+## ロケットの着地で得た勢いが「着地の1フレームで消える」のを防ぐ
+const GROUND_DRAG := 10.0
+const STEER_WHILE_FAST := 3.0 # 通常速度超過中の向き変更の効き
+
+## --- 滑り台 -------------------------------------------------------------
+const SLIDE_STEER := 9.0      # 滑走中の左右の寄せ
+## 走路上で維持される最低前進速度。毎フレーム強制するので、
+## 前フレームの入力で上りに転じても必ず下りへ押し戻される（＝登れない保証）
+const SLIDE_MIN_SPEED := 3.5
+const SLIDE_SNAP := 0.6       # 滑走中の床スナップ距離。高速降下で床から浮いて跳ねるのを防ぐ
+const SLIDE_GRACE := 0.12     # Area を出た直後の1〜2フレームの取りこぼしを吸収する猶予
 const MOUSE_SENSITIVITY := 0.003
 const PITCH_MIN := -60.0
 const PITCH_MAX := 30.0
@@ -37,14 +62,40 @@ const COLOR_WAITING := Color(0.62, 0.66, 0.72)
 const COLOR_RUNNER := Color(0.2, 1.0, 0.45)
 const COLOR_HUNTER := Color(1.0, 0.18, 0.22)
 
+## --- リモートピアの補間 -------------------------------------------------
+## インターネット越しでは到着間隔がばらつくので、同期値を直接 position に入れると
+## その揺らぎがそのまま見える。exp 減衰なのでフレームレートには依存しない。
+## 25 は MultiplayerSynchronizer の replication_interval(0.05) と釣り合う値
+## （定常的な遅れ ≒ 速度/25 ≒ 同期1回分の移動量）。上げるほど追従が速く、荒くなる
+const NET_SMOOTH := 25.0
+## これ以上離れていたら補間せず飛ばす。teleport・土管ワープ・落下復帰で
+## 画面を横切って滑っていくのを防ぐ
+const NET_SNAP_DIST := 5.0
+
 var stamina := STAMINA_MAX
 var exhausted := false
 var is_dashing := false
 var buffs := BuffSet.new()
 var carry_velocity := Vector3.ZERO  # 動く床から毎フレーム渡される搬送速度
+var slide_dir := Vector3.ZERO       # 滑り台から毎フレーム渡される最急降下方向
+var slide_accel := 0.0
+var slide_cap := 0.0
+var slide_left := 0.0               # >0 の間だけ滑走状態
+## 滞空から起き上がりまでの全体。見た目の前傾に使うのでレプリケートする
+var diving := false
+var dive_recover := 0.0
+var dive_cooldown := 0.0
 var warp_lock := 0.0                # 土管の往復ワープ防止
 var item: int = Item.NONE
 var stun_left := 0.0                # バナナを踏んだ時の操作不能時間
+
+## MultiplayerSynchronizer が配る位置と向き。権威が毎物理フレーム書き、
+## 他ピアは position / rotation.y をここへ補間する。
+## ボディごと補間するので、視界判定とタッチ判定（どちらもボディ基準）と
+## 見た目がずれない。向きはヨーだけ: ボディの x/z 回転は誰も触らないし、
+## Euler をそのまま lerp すると ±PI をまたぐ瞬間に一回転する
+@export var sync_position := Vector3.ZERO
+@export var sync_yaw := 0.0
 
 var _current_color := Color.TRANSPARENT
 var _last_pos := Vector3.ZERO
@@ -61,11 +112,17 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	add_to_group("players")
-	_last_pos = global_position
 	$TagArea.body_entered.connect(_on_tag_area_body_entered)
 	if is_multiplayer_authority():
+		sync_position = position
+		sync_yaw = rotation.y
 		camera.current = true
 		spring_arm.add_excluded_object(get_rid())
+	else:
+		# スポーン時の同期値へ即座に合わせる。補間に任せると原点から滑って来る
+		position = sync_position
+		rotation.y = sync_yaw
+	_last_pos = global_position
 
 
 ## 接触判定はホストが一元的に行う（全ピアで発火するので必ずサーバ判定を挟む）
@@ -78,10 +135,28 @@ func _process(delta: float) -> void:
 	# 歩行モーション: リモートでは velocity が同期されないため位置差分から推定する
 	if delta <= 0.0:
 		return
+	if not is_multiplayer_authority():
+		_follow_sync(delta)
 	var vel_est := (global_position - _last_pos) / delta
 	_last_pos = global_position
 	var hspeed := Vector2(vel_est.x, vel_est.z).length()
 	humanoid.update_motion(hspeed, absf(vel_est.y) < 1.5)
+	# ダイブ中は前へ倒れ込む。diving はレプリケートされるので他ピアからも見える
+	humanoid.rotation.x = lerpf(humanoid.rotation.x,
+		DIVE_PITCH if diving else 0.0, minf(delta * 12.0, 1.0))
+
+
+## 非権威ピアのみ。同期された位置・向きへ滑らかに寄せる。
+## 遠ければ補間せず飛ばす（ワープやラウンド開始のテレポート）
+func _follow_sync(delta: float) -> void:
+	if position.distance_squared_to(sync_position) > NET_SNAP_DIST * NET_SNAP_DIST:
+		position = sync_position
+		rotation.y = sync_yaw
+		_last_pos = global_position  # 差分での歩行モーション推定が跳ねないように
+		return
+	var w := 1.0 - exp(-delta * NET_SMOOTH)
+	position = position.lerp(sync_position, w)
+	rotation.y = lerp_angle(rotation.y, sync_yaw, w)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -107,10 +182,14 @@ func _physics_process(delta: float) -> void:
 	buffs.tick(delta)
 	warp_lock = maxf(warp_lock - delta, 0.0)
 	stun_left = maxf(stun_left - delta, 0.0)
+	dive_cooldown = maxf(dive_cooldown - delta, 0.0)
+	_tick_dive(delta)
 
 	var my_id := String(name).to_int()
-	# 結果表示中・ヘッドスタート中の鬼・バナナで転倒中は移動不可（カメラ操作は可能）
-	var frozen := GameManager.state == GameManager.State.RESULT or stun_left > 0.0
+	# 結果表示中・ヘッドスタート中の鬼・バナナで転倒中・ダイブ中は移動不可
+	# （カメラ操作は可能）。ダイブは踏み切った後に軌道を変えられない＝空振りしうる
+	var frozen := (GameManager.state == GameManager.State.RESULT
+		or stun_left > 0.0 or diving)
 	if (GameManager.state == GameManager.State.PLAYING
 			and my_id != GameManager.runner_id
 			and GameManager.head_start_left > 0.0):
@@ -120,8 +199,8 @@ func _physics_process(delta: float) -> void:
 
 	if not is_on_floor():
 		velocity += get_gravity() * delta
-	elif Input.is_action_just_pressed("jump") and not frozen:
-		velocity.y = JUMP_VELOCITY * buffs.get_mult(&"jump")
+	elif not frozen and dive_cooldown <= 0.0 and Input.is_action_just_pressed("dive"):
+		_start_dive()
 
 	var input_dir := Vector2.ZERO
 	if not frozen:
@@ -138,9 +217,26 @@ func _physics_process(delta: float) -> void:
 	# ジャンプ台やブーストで得た初速が次フレームで消えないようにするため、
 	# 空中で入力が無い場合は水平速度に一切手を加えない。
 	var target := Vector2(direction.x, direction.z) * speed
-	if is_on_floor():
-		velocity.x = target.x
-		velocity.z = target.y
+	if slide_left > 0.0:
+		velocity = SlideMotion.step(velocity, delta, slide_dir, slide_accel, slide_cap,
+			SLIDE_STEER, direction, SLIDE_MIN_SPEED)
+		floor_snap_length = SLIDE_SNAP
+		slide_left = maxf(slide_left - delta, 0.0)
+	elif is_on_floor():
+		floor_snap_length = 0.1
+		var hv := Vector2(velocity.x, velocity.z)
+		if hv.length() > speed + 0.5:
+			# 通常速度を超えている間は目標速度で上書きせず、摩擦で落とす。
+			# ここが無いと滑り台の出口やブーストの勢いが着地の1フレームで消える
+			var keep := hv.normalized() * maxf(hv.length() - GROUND_DRAG * delta, speed)
+			if target != Vector2.ZERO:
+				keep = keep.lerp(target.normalized() * keep.length(),
+					minf(STEER_WHILE_FAST * delta, 1.0))
+			velocity.x = keep.x
+			velocity.z = keep.y
+		else:
+			velocity.x = target.x
+			velocity.z = target.y
 	elif direction != Vector3.ZERO:
 		velocity.x = move_toward(velocity.x, target.x, AIR_ACCEL * delta)
 		velocity.z = move_toward(velocity.z, target.y, AIR_ACCEL * delta)
@@ -152,6 +248,35 @@ func _physics_process(delta: float) -> void:
 
 	if global_position.y < WorldData.FALL_LIMIT:
 		teleport(WorldData.zone_center(WorldData.zone_index(global_position)) + Vector3(0, 3, 0))
+
+	# 移動が確定した後に配る。position を直接同期していないので、ここを消すと
+	# 他ピアからこのプレイヤーが完全に静止して見える
+	sync_position = position
+	sync_yaw = rotation.y
+
+
+## ダイブは「滞空 -> 着地 -> 起き上がり」の3段階。
+## diving は最後まで true のままにして、見た目の前傾を起き上がりまで続ける
+func _tick_dive(delta: float) -> void:
+	if not diving:
+		return
+	if dive_recover > 0.0:
+		dive_recover = maxf(dive_recover - delta, 0.0)
+		if dive_recover <= 0.0:
+			diving = false
+	elif is_on_floor():
+		dive_recover = DIVE_RECOVER
+
+
+## 前方へ低く飛び込む。踏み切った後は操作できない（frozen 扱い）ので、
+## 着地までの軌道が読まれると空振りする
+func _start_dive() -> void:
+	var fwd := -global_transform.basis.z
+	velocity = Vector3(fwd.x, 0.0, fwd.z).normalized() * DIVE_SPEED
+	velocity.y = DIVE_UP
+	diving = true
+	dive_recover = 0.0
+	dive_cooldown = DIVE_COOLDOWN
 
 
 func _update_stamina(delta: float, moving: bool, frozen: bool) -> void:
@@ -174,11 +299,16 @@ func teleport(pos: Vector3) -> void:
 		return
 	global_position = pos
 	_last_pos = pos
+	sync_position = position  # 他ピアが次の物理フレームを待たずスナップできるように
 	velocity = Vector3.ZERO
 	stamina = STAMINA_MAX
 	exhausted = false
 	buffs.clear()
 	warp_lock = 0.0
+	slide_left = 0.0
+	diving = false
+	dive_recover = 0.0
+	dive_cooldown = 0.0
 	stun_left = 0.0
 	item = Item.NONE
 	item_changed.emit(item)
@@ -246,6 +376,7 @@ func warp_to(pos: Vector3, up_vel: float) -> void:
 	_last_pos = pos
 	velocity = Vector3(0, up_vel, 0)
 	warp_lock = 0.9
+	slide_left = 0.0  # 滑走状態のまま飛ぶと出口で明後日の方向へ加速する
 	effect_gained.emit(Effect.WARP)
 
 
@@ -261,6 +392,16 @@ func apply_boost(mult: float, dur: float, kick: Vector3) -> void:
 ## 動く床・回転床が毎フレーム乗客に渡す搬送速度
 func add_carry(v: Vector3) -> void:
 	carry_velocity += v
+
+
+## 滑り台が毎フレーム呼ぶ。呼ばれている間だけ滑走状態になり、
+## 接地していても通常の移動制御（目標速度への上書き）を止める。
+## 権威チェックは add_carry() と同じく呼び出し側（Area）が行う
+func apply_slide(dir: Vector3, accel: float, cap: float) -> void:
+	slide_dir = dir
+	slide_accel = accel
+	slide_cap = cap
+	slide_left = SLIDE_GRACE
 
 
 ## バナナを踏んだ時の転倒

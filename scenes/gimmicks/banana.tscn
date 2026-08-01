@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scenes/gimmicks/banana.gd" id="1_banana"]
 
@@ -21,6 +21,16 @@ rings = 6
 height = 1.4
 radius = 1.1
 
+; 置かれた場所をスポーン時に一度だけ配る（replication_mode = 0 = 以後は同期しない）。
+; これが無いと MultiplayerSpawner はシーンと名前しか送らず、他ピアでは原点に出る
+[sub_resource type="SceneReplicationConfig" id="repl_config"]
+properties/0/path = NodePath(".:position")
+properties/0/spawn = true
+properties/0/replication_mode = 0
+properties/1/path = NodePath(".:rotation")
+properties/1/spawn = true
+properties/1/replication_mode = 0
+
 [node name="Banana" type="Area3D"]
 collision_layer = 4
 collision_mask = 2
@@ -33,3 +43,7 @@ mesh = SubResource("banana_mesh")
 [node name="Shape" type="CollisionShape3D" parent="."]
 position = Vector3(0, 0.7, 0)
 shape = SubResource("banana_shape")
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+root_path = NodePath("..")
+replication_config = SubResource("repl_config")

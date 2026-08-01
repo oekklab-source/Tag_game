@@ -1,8 +1,12 @@
 # Godot
 .godot/
 *.translation
-# ローカルのパスや Android キーストアのパスワードが入りうる
-export_presets.cfg
+
+# export_presets.cfg はコミットする（CI が Web ビルドに使うため）。
+# 一般にはローカルパスや Android キーストアのパスワードが入りうるので注意が必要だが、
+# 現状は Web プリセット1つだけで、export_path も相対パスしか持たない。
+# 秘密が入る種類のプリセット（Android 署名など）を足すときは
+# ここで除外し直すか、パスワードを環境変数へ逃がすこと。
 
 # エクスポート出力
 export/

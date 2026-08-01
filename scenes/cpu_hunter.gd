@@ -14,7 +14,6 @@ extends CharacterBody3D
 ## 補足: get_speed_mult() は peer_id 基準で CPU はピアではないため、
 ## 人数による速度補正の対象外。CPU はこの定数だけで調整する
 const SPEED := 8.2
-const JUMP_VELOCITY := 5.2
 const FLANK_RADIUS := 4.0
 
 enum Mind { PATROL, INVESTIGATE, CHASE }
@@ -43,16 +42,42 @@ const SIDESTEP_DIST := 6.0
 const AIR_STEER := 6.0        # 空中での方向転換（プレイヤーより弱く、慣性を残す）
 const REPATH_INTERVAL := 0.3
 const TURN_SPEED := 8.0
-const JUMP_COOLDOWN := 0.7
 const DIRECT_CHASE_DIST := 10.0
+## ダイブで飛びかかる距離。近すぎると走って触った方が速く、
+## 遠すぎると空振りして起き上がりの隙を晒すだけになる
+const DIVE_MIN := 3.0
+const DIVE_MAX := 6.5
 const HUNTER_COLOR := Player.COLOR_HUNTER
+## 滑走・ブースト・ロケットの勢いは player.gd と同じ値で扱う
+## （鬼だけ勢いが残る/残らないの差が出ると追跡バランスが崩れる）
+const GROUND_DRAG := Player.GROUND_DRAG
+const STEER_WHILE_FAST := Player.STEER_WHILE_FAST
+const SLIDE_STEER := Player.SLIDE_STEER
+const SLIDE_MIN_SPEED := Player.SLIDE_MIN_SPEED
+const SLIDE_SNAP := Player.SLIDE_SNAP
+const SLIDE_GRACE := Player.SLIDE_GRACE
+## ダイブもプレイヤーと同じ性能にする。鬼だけ速い/遅いと追跡バランスが崩れる
+const DIVE_SPEED := Player.DIVE_SPEED
+const DIVE_UP := Player.DIVE_UP
+const DIVE_RECOVER := Player.DIVE_RECOVER
+const DIVE_COOLDOWN := Player.DIVE_COOLDOWN
+const DIVE_PITCH := Player.DIVE_PITCH
+const NET_SMOOTH := Player.NET_SMOOTH
+const NET_SNAP_DIST := Player.NET_SNAP_DIST
 
 var buffs := BuffSet.new()
 var carry_velocity := Vector3.ZERO
+var slide_dir := Vector3.ZERO
+var slide_accel := 0.0
+var slide_cap := 0.0
+var slide_left := 0.0
 var warp_lock := 0.0
 
+var diving := false
+var dive_recover := 0.0
+var dive_cooldown := 0.0
+
 var _repath_timer := 0.0
-var _jump_cooldown := 0.0
 var _last_pos := Vector3.ZERO
 var _flank_angle := 0.0
 var _mind: int = Mind.PATROL
@@ -67,6 +92,12 @@ var _stuck_from := Vector3.ZERO
 var _sidestep_left := 0.0
 var _sidestep_goal := Vector3.ZERO
 
+## ホストが書き、他ピアはここへ補間する。詳細は player.gd の同名変数を参照。
+## CPU が他ピアから見えるのはソロ戦の途中に誰かが入って来た場合だけだが、
+## 位置の扱いはプレイヤーと揃えておく
+@export var sync_position := Vector3.ZERO
+@export var sync_yaw := 0.0
+
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
 @onready var humanoid: Node3D = $Humanoid
 
@@ -74,6 +105,12 @@ var _sidestep_goal := Vector3.ZERO
 func _ready() -> void:
 	add_to_group("cpu_hunters")
 	humanoid.set_color(HUNTER_COLOR)
+	if multiplayer.is_server():
+		sync_position = position
+		sync_yaw = rotation.y
+	else:
+		position = sync_position
+		rotation.y = sync_yaw
 	_last_pos = global_position
 	$TagArea.body_entered.connect(_on_tag_area_body_entered)
 	# 個体ごとに狙う位置をずらし、再経路探索のタイミングも散らす
@@ -95,10 +132,14 @@ func _process(delta: float) -> void:
 	# 歩行モーションは全ピアで位置差分から駆動する
 	if delta <= 0.0:
 		return
+	if not multiplayer.is_server():
+		_follow_sync(delta)
 	var vel_est := (global_position - _last_pos) / delta
 	_last_pos = global_position
 	var hspeed := Vector2(vel_est.x, vel_est.z).length()
 	humanoid.update_motion(hspeed, absf(vel_est.y) < 1.5)
+	humanoid.rotation.x = lerpf(humanoid.rotation.x,
+		DIVE_PITCH if diving else 0.0, minf(delta * 12.0, 1.0))
 
 
 func _physics_process(delta: float) -> void:
@@ -111,11 +152,12 @@ func _physics_process(delta: float) -> void:
 
 	if not is_on_floor():
 		velocity += get_gravity() * delta
-	_jump_cooldown = maxf(_jump_cooldown - delta, 0.0)
+	dive_cooldown = maxf(dive_cooldown - delta, 0.0)
+	_tick_dive(delta)
 
 	var chasing := (GameManager.state == GameManager.State.PLAYING
 		and GameManager.head_start_left <= 0.0
-		and stun_left <= 0.0)
+		and stun_left <= 0.0 and not diving)
 	var dir := Vector3.ZERO
 	var rise := 0.0
 	if chasing:
@@ -150,17 +192,37 @@ func _physics_process(delta: float) -> void:
 			rise = dir.y
 			dir.y = 0.0
 			dir = dir.normalized() if dir.length() > 0.05 else Vector3.ZERO
-			# 壁に当たった/目標が高い場合はジャンプ（スロープや1m段差を跳んで登る）
-			if is_on_floor() and _jump_cooldown <= 0.0 and (is_on_wall() or rise > 0.4):
-				velocity.y = JUMP_VELOCITY * buffs.get_mult(&"jump")
-				_jump_cooldown = JUMP_COOLDOWN
+			# 見えている逃走者が手頃な距離にいたら飛びかかる。
+			# プレイヤーと同じくダイブ中は操作できず、外せば起き上がりの隙を晒す
+			if (_mind == Mind.CHASE and is_on_floor() and dive_cooldown <= 0.0
+					and h_dist > DIVE_MIN and h_dist < DIVE_MAX and absf(to_runner.y) < 2.0):
+				_start_dive(Vector3(to_runner.x, 0.0, to_runner.z))
 
 	# プレイヤーと同じく、空中では慣性を保つ（打ち上げ・ブーストが消えないように）
 	var speed := SPEED * buffs.get_mult(&"speed")
 	var target := Vector2(dir.x, dir.z) * speed
-	if is_on_floor():
-		velocity.x = target.x
-		velocity.z = target.y
+	if slide_left > 0.0:
+		velocity = SlideMotion.step(velocity, delta, slide_dir, slide_accel, slide_cap,
+			SLIDE_STEER, dir, SLIDE_MIN_SPEED)
+		floor_snap_length = SLIDE_SNAP
+		slide_left = maxf(slide_left - delta, 0.0)
+		if slide_left <= 0.0:
+			# 降り切った先は経路上の想定外の場所。すぐ引き直す（warp_to と同じ理由）
+			_repath_timer = 0.0
+			_goal_timer = 0.0
+	elif is_on_floor():
+		floor_snap_length = 0.1
+		var hv := Vector2(velocity.x, velocity.z)
+		if hv.length() > speed + 0.5:
+			var keep := hv.normalized() * maxf(hv.length() - GROUND_DRAG * delta, speed)
+			if target != Vector2.ZERO:
+				keep = keep.lerp(target.normalized() * keep.length(),
+					minf(STEER_WHILE_FAST * delta, 1.0))
+			velocity.x = keep.x
+			velocity.z = keep.y
+		else:
+			velocity.x = target.x
+			velocity.z = target.y
 	elif dir != Vector3.ZERO:
 		velocity.x = move_toward(velocity.x, target.x, AIR_STEER * delta)
 		velocity.z = move_toward(velocity.z, target.y, AIR_STEER * delta)
@@ -174,6 +236,21 @@ func _physics_process(delta: float) -> void:
 
 	if global_position.y < WorldData.FALL_LIMIT:
 		teleport(WorldData.zone_center(WorldData.zone_index(global_position)) + Vector3(0, 3, 0))
+
+	sync_position = position
+	sync_yaw = rotation.y
+
+
+## 非権威ピアのみ。詳細は player.gd の同名関数を参照
+func _follow_sync(delta: float) -> void:
+	if position.distance_squared_to(sync_position) > NET_SNAP_DIST * NET_SNAP_DIST:
+		position = sync_position
+		rotation.y = sync_yaw
+		_last_pos = global_position
+		return
+	var w := 1.0 - exp(-delta * NET_SMOOTH)
+	position = position.lerp(sync_position, w)
+	rotation.y = lerp_angle(rotation.y, sync_yaw, w)
 
 
 ## 状態に応じて目的地を更新する。
@@ -201,6 +278,28 @@ func _update_goal(runner: Node3D, _delta: float) -> void:
 			_goal = WorldData.zone_center(PATROL_ORDER[_patrol_i])
 			if _xz_dist(global_position, _goal) < PATROL_ARRIVE or _goal_timer <= 0.0:
 				_advance_patrol()
+
+
+## player.gd の _tick_dive / _start_dive と同じ契約。
+## diving の間は chasing を落として経路追従を止めるので、踏み切った軌道が最後まで残る
+func _tick_dive(delta: float) -> void:
+	if not diving:
+		return
+	if dive_recover > 0.0:
+		dive_recover = maxf(dive_recover - delta, 0.0)
+		if dive_recover <= 0.0:
+			diving = false
+	elif is_on_floor():
+		dive_recover = DIVE_RECOVER
+
+
+func _start_dive(toward: Vector3) -> void:
+	velocity = toward.normalized() * DIVE_SPEED
+	velocity.y = DIVE_UP
+	rotation.y = atan2(-toward.x, -toward.z)
+	diving = true
+	dive_recover = 0.0
+	dive_cooldown = DIVE_COOLDOWN
 
 
 ## 目的地があるのに進めていないとき、横へずれる目標に一時的に差し替える。
@@ -260,9 +359,14 @@ func get_ai_goal() -> Vector3:
 func teleport(pos: Vector3) -> void:
 	global_position = pos
 	_last_pos = pos
+	sync_position = position
 	velocity = Vector3.ZERO
 	buffs.clear()
 	warp_lock = 0.0
+	slide_left = 0.0
+	diving = false
+	dive_recover = 0.0
+	dive_cooldown = 0.0
 	_repath_timer = 0.0
 	_goal_timer = 0.0
 
@@ -279,6 +383,7 @@ func warp_to(pos: Vector3, up_vel: float) -> void:
 	_last_pos = pos
 	velocity = Vector3(0, up_vel, 0)
 	warp_lock = 0.9
+	slide_left = 0.0
 	_repath_timer = 0.0  # ワープ直後は経路と目的地を引き直す
 	_goal_timer = 0.0
 
@@ -291,6 +396,13 @@ func apply_boost(mult: float, dur: float, kick: Vector3) -> void:
 
 func add_carry(v: Vector3) -> void:
 	carry_velocity += v
+
+
+func apply_slide(dir: Vector3, accel: float, cap: float) -> void:
+	slide_dir = dir
+	slide_accel = accel
+	slide_cap = cap
+	slide_left = SLIDE_GRACE
 
 
 ## バナナを踏んだ時の転倒。？ブロックは CPU に反応しないので、

@@ -50,7 +50,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(216, 44)
 layout_mode = 2
 text = "127.0.0.1"
-placeholder_text = "host IP address"
+placeholder_text = "host IP, or tunnel host name"
 
 [node name="JoinButton" type="Button" parent="CenterContainer/VBox/JoinRow" unique_id=2133130202]
 custom_minimum_size = Vector2(56, 44)
@@ -61,6 +61,7 @@ text = "JOIN"
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
 text = "Host: run on PC, listens on port 9999
-Client: enter the host IP and press JOIN
+Same network: enter the host IP  ->  ws://IP:9999
+Over the internet: enter the tunnel host  ->  wss://host
 (Browser build can only join, not host)"
 horizontal_alignment = 1
