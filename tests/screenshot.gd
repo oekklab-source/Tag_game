@@ -54,5 +54,9 @@ func _ready() -> void:
 		var img := get_viewport().get_texture().get_image()
 		var path: String = "%s/%s.png" % [out, shot[0]]
 		img.save_png(path)
-		print("saved %s (%dx%d)" % [path, img.get_width(), img.get_height()])
+		print("saved %s  draw calls %d" % [path,
+			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)])
+	print("materials %d  objects %d" % [
+		Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),
+		Performance.get_monitor(Performance.OBJECT_NODE_COUNT)])
 	get_tree().quit()

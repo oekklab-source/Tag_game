@@ -14,3 +14,6 @@ export/
 *.pck
 *.exe
 *.wasm
+
+# Blender の自動バックアップ
+*.blend1

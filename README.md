@@ -52,6 +52,26 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
 （ゾーン判定・HUD のミニマップ・スポーン位置もすべてここを参照している）。
 乱数は装飾配置のみで固定シードなので、全ピアが同一の形状を構築する。
 
+### ゾーンのテーマ
+
+各ゾーンには専用の構造物と色がある。**「何を置くか」だけがデータ**（`ZONE_THEMES` の
+重み表と `ZONE_LANDMARKS` の目印1個）で、**「どこに置くか」は配置側**（`_build_props`）が
+決める。十字通路・スポーン地・隙間といった不変条件は配置側が持ち続けるので、
+テーマ表を編集してもレイアウトの安全性は壊れない。
+
+構造物は4種類（`Prop`）: 城壁 `WALL` / 塔 `TOWER` / 配管 `PIPE` / コンテナ `CRATE`。
+どれも**地面から6m以上まで途切れずに塞ぐ凸の塊**であること。視線レイは y=0.85 と
+y=1.55 にあるので、宙に浮いた傘や細すぎる柱を混ぜると
+「画面では壁越しに見えているのに `can_see` は false」になって破綻する。
+
+天面は 60°超のキャップ（円錐 or 屋根型の笠木）で終える。歩行面にならないので
+Recast が構造物の上に孤立したナビ島を作らない。加えて `TopGuard` を必ず載せる
+（丸い形は傾斜だけでは防げない。球面の頂点付近は接線角が連続的に 0 になり、
+半径3mのドームなら直径4.2mの「立てる平地」が天辺にできる）。
+
+床の柄はゾーンごとに変える（`_zone_pattern`）。4x4 ピクセルのテクスチャを
+ワールド空間トライプラナーで貼るので、UV 無しで全ての床とスロープに模様が繋がる。
+
 ## ギミック
 
 いずれも**触れるだけで発動**する（専用の操作キーは無い）。逃走者・鬼の双方が使える。
@@ -334,12 +354,16 @@ scenes/world_builder.gd       テーブルからの地形・ギミック・装�
 scenes/player.tscn(.gd)       移動・ダッシュ・空中制御・TPSカメラ・タッチ判定・位置同期
 scenes/cpu_hunter.tscn(.gd)   CPU 鬼（巡回 / 捜索 / 追跡の3状態 + 回り込み + ジャンプ）
 scenes/buff_set.gd            時限バフ（プレイヤーと CPU で共用）
-scenes/humanoid.tscn(.gd)     プリミティブ製のちびキャラとモーション制御
+scenes/humanoid.tscn(.gd)     豆型キャラの読み込みとアニメ切り替え（Idle/Run/Jump/Dive）
+assets/character/fallguy.glb  Blender 製の Fall Guys 風キャラ（16ボーン・4アニメ）
 scenes/gimmicks/              土管・ジャンプ台・ダッシュパネル・動く床・回転床・？ブロック
                               + 壁の天面ガード・バナナ・設置ブロック
 scenes/hud.tscn(.gd)          役割バッジ・円形タイマー・9ゾーンミニマップ・バフ・危険表示・目撃情報
 ui/pop_theme.tres             全体に適用される POP テーマ
 tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
+tools/blender/fallguy.blend   キャラの編集元。.gdignore で Godot のインポート対象から外してある
+tools/verify_humanoid.gd      glb の構造・アニメ・向き・状態遷移をヘッドレスで検証
+tools/shot_humanoid.gd        各アニメの見た目を PNG に書き出す（目視確認用）
 tests/map_connectivity.tscn   ナビメッシュの連結性と滑り台の一方通行の自動検証
 .github/workflows/            push で Web ビルド -> web-build ブランチへ force push
 export_presets.cfg            Web エクスポート設定（CI が使うのでコミットしてある）

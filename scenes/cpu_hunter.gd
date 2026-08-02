@@ -137,6 +137,7 @@ func _process(delta: float) -> void:
 	var vel_est := (global_position - _last_pos) / delta
 	_last_pos = global_position
 	var hspeed := Vector2(vel_est.x, vel_est.z).length()
+	humanoid.set_diving(diving)
 	humanoid.update_motion(hspeed, absf(vel_est.y) < 1.5)
 	humanoid.rotation.x = lerpf(humanoid.rotation.x,
 		DIVE_PITCH if diving else 0.0, minf(delta * 12.0, 1.0))

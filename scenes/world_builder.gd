@@ -108,6 +108,9 @@ const GUARD_THICK := 3.0  # 天面ガードの厚み。飛び乗った瞬間に�
 ## 丸いプロップの直径は「壁の長さ」をそのまま使うと太すぎるので縮める
 const ROUND_PROP_SCALE := 0.55
 const CRATE_DEPTH := 3.4  # コンテナの奥行き。壁(1.2)より厚く、通路を潰さない程度
+const PATTERN_RES := 4        # 床の模様のピクセル数（4x4）
+const PATTERN_CONTRAST := 0.93  # 濃い側の明度。低くすると市松が強く出すぎる
+const NEON_ZONE := 5  # BOOST CIRCUIT。ネオンを使うのはここだけに絞る
 
 
 const SPRING_SCENE := preload("res://scenes/gimmicks/spring_pad.tscn")
@@ -125,7 +128,7 @@ static func build(map_root: Node3D, gimmick_root: Node3D, decor_root: Node3D) ->
 	var zone_mats: Array[StandardMaterial3D] = []
 	for idx in WorldData.ZONE_COUNT:
 		var m := pop_material(WorldData.ZONE_COLORS[idx])
-		_apply_checker(m, checker)
+		_apply_checker(m, _zone_pattern(idx))
 		zone_mats.append(m)
 	_build_slabs(map_root, zone_mats)
 	# スロープは「道」として床から浮き立つ暖色に（白系だと光を受けて飛んでしまう）
@@ -148,7 +151,10 @@ static func build(map_root: Node3D, gimmick_root: Node3D, decor_root: Node3D) ->
 	# 床（ZONE_COLORS）と分離した色にしないと、地形と一体化して形が読めない
 	var accent_mats: Array[StandardMaterial3D] = []
 	for idx in WorldData.ZONE_COUNT:
-		accent_mats.append(soft_material(WorldData.ZONE_ACCENTS[idx]))
+		# BOOST CIRCUIT だけネオンにして「サーキット」の性格を出す。
+		# ネオンは glow の閾値を超えて滲むので、広げると画面全体がボケる
+		accent_mats.append(neon_material(WorldData.ZONE_ACCENTS[idx]) if idx == NEON_ZONE
+			else soft_material(WorldData.ZONE_ACCENTS[idx]))
 	_build_props(map_root, accent_mats, occupied)
 	_build_decor(decor_root)
 

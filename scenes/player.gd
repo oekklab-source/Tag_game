@@ -140,6 +140,7 @@ func _process(delta: float) -> void:
 	var vel_est := (global_position - _last_pos) / delta
 	_last_pos = global_position
 	var hspeed := Vector2(vel_est.x, vel_est.z).length()
+	humanoid.set_diving(diving)
 	humanoid.update_motion(hspeed, absf(vel_est.y) < 1.5)
 	# ダイブ中は前へ倒れ込む。diving はレプリケートされるので他ピアからも見える
 	humanoid.rotation.x = lerpf(humanoid.rotation.x,

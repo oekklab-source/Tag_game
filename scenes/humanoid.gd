@@ -1,63 +1,67 @@
 extends Node3D
 
-## かわいいシンプルなちびキャラ（プリミティブ製・全長約0.9m）。
-## プレイヤーと CPU 鬼で共用。移動速度に応じて腕と脚を滑らかに振る。
+## Blender 製の Fall Guys 風ちびキャラ（元データ: tools/blender/fallguy.blend）。
+## プレイヤーと CPU 鬼で共用。移動速度・接地・ダイブ状態からアニメを切り替える。
 ## 役割色（Runner=緑 / Hunter=赤 / 待機=灰）は体色に反映する。
 
-const SWING_FREQ := 2.6   # 速度に対する振りサイクルの係数
-const SWING_MAX := 1.0    # 最大振り幅（rad）
-const RUN_SPEED := 10.5   # この速度で振り幅が最大になる（＝ダッシュ速度）
-
-var _speed := 0.0
-var _on_floor := true
-var _phase := 0.0
-var _amp := 0.0
+const RUN_SPEED := 10.5   # この速度で走りアニメが等倍になる（＝ダッシュ速度）
+const WALK_MIN := 0.6     # これ以下は止まっているとみなす
+const BLEND := 0.15       # アニメ切り替えのクロスフェード秒
+const LOOPING := ["Idle", "Run", "Jump"]
 
 var _mat_body := StandardMaterial3D.new()
-var _mat_head := StandardMaterial3D.new()
+var _diving := false
+var _state := ""
 
-@onready var arm_l: Node3D = $ArmL
-@onready var arm_r: Node3D = $ArmR
-@onready var leg_l: Node3D = $LegL
-@onready var leg_r: Node3D = $LegR
+@onready var _anim: AnimationPlayer = $Model.find_child("AnimationPlayer", true, false)
+@onready var _body: MeshInstance3D = $Model.find_child("Body", true, false)
 
 
 func _ready() -> void:
-	$Head.material_override = _mat_head
-	$Body.material_override = _mat_body
-	for pivot in [arm_l, arm_r, leg_l, leg_r]:
-		pivot.get_node("Mesh").material_override = _mat_body
+	# glTF のアニメは既定でワンショット扱いなので、ループするものだけ設定し直す
+	for anim_name in LOOPING:
+		var anim := _anim.get_animation(anim_name)
+		if anim:
+			anim.loop_mode = Animation.LOOP_LINEAR
+	_body.material_override = _mat_body
 	set_color(Color(0.5, 0.55, 0.6))
+	_play("Idle")
 
 
+## 色を変えるのは体だけ。ニット帽とビブは元の配色のまま残して衣装らしさを保つ
+## （体が最大面積なので役割色はこれだけで十分読み取れる）。
 ## 広くてカラフルなマップで床に埋もれないよう、体色は弱く自己発光させる
 func set_color(color: Color) -> void:
-	_tint(_mat_body, color)
-	_tint(_mat_head, color.lightened(0.35))
-
-
-func _tint(mat: StandardMaterial3D, color: Color) -> void:
-	mat.albedo_color = color
-	mat.emission_enabled = true
-	mat.emission = color
-	mat.emission_energy_multiplier = 0.35
+	_mat_body.albedo_color = color
+	_mat_body.emission_enabled = true
+	_mat_body.emission = color
+	_mat_body.emission_energy_multiplier = 0.35
 
 
 ## 親（player / cpu_hunter）が毎フレーム水平速度と接地状態を渡す
 func update_motion(speed: float, on_floor: bool) -> void:
-	_speed = speed
-	_on_floor = on_floor
+	if _diving:
+		_play("Dive")
+		return
+	if not on_floor:
+		_play("Jump")
+	elif speed > WALK_MIN:
+		_play("Run")
+		# 遅いときは足がすべって見えないよう再生速度も落とす
+		_anim.speed_scale = clampf(speed / RUN_SPEED, 0.6, 1.6)
+	else:
+		_play("Idle")
 
 
-func _process(delta: float) -> void:
-	# 振り幅は速度に比例させ、補間で滑らかに変化させる
-	var target_amp := clampf(_speed / RUN_SPEED, 0.0, 1.0) * SWING_MAX
-	if not _on_floor:
-		target_amp = 0.25
-	_amp = lerpf(_amp, target_amp, minf(delta * 10.0, 1.0))
-	_phase += _speed * delta * SWING_FREQ
-	var swing := sin(_phase) * _amp
-	arm_l.rotation.x = swing
-	arm_r.rotation.x = -swing
-	leg_l.rotation.x = -swing * 0.9
-	leg_r.rotation.x = swing * 0.9
+## ダイブ中は速度・接地に関係なくダイブ姿勢を優先する。
+## 体の前傾そのものは親が Humanoid ごと rotation.x を倒して作る
+func set_diving(value: bool) -> void:
+	_diving = value
+
+
+func _play(anim_name: String) -> void:
+	if _state == anim_name:
+		return
+	_state = anim_name
+	_anim.speed_scale = 1.0
+	_anim.play(anim_name, BLEND)
