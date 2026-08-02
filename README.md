@@ -228,7 +228,7 @@ godot --headless --path . res://scenes/world.tscn -- client 127.0.0.1
 （`cloudflared` は外向き接続しか張らない）。
 
 ```text
-[友達のブラウザ] --https--> Cloudflare Pages   (ゲーム本体。固定URL)
+[友達のブラウザ] --https--> GitHub Pages   (ゲーム本体。固定URL)
         |
         `--- wss://xxxx.trycloudflare.com --> [Cloudflare] --> cloudflared --> Godot ws://localhost:9999
                                                                                (自宅PC・ホスト)
@@ -247,21 +247,24 @@ godot --headless --path . res://scenes/world.tscn -- client 127.0.0.1
 
 `main` に push すると [.github/workflows/web-build.yml](.github/workflows/web-build.yml) が
 Web ビルドを作り、成果物だけを **`web-build` ブランチへ force push** する。
-Cloudflare Pages はそのブランチを見てデプロイする。以降は**push するだけで公開が更新される**。
+GitHub Pages はそのブランチを見てデプロイする。以降は**push するだけで公開が更新される**。
 
 1. `winget install --id Cloudflare.cloudflared`
 2. main を push して Actions を1回通す（`web-build` ブランチができる）
-3. [Cloudflare Pages](https://pages.cloudflare.com/) で **Connect to Git** からこのリポジトリを選び、
-   - **Production branch: `web-build`**
-   - **Build command: なし（空欄）**
-   - **Build output directory: `/`**
-   - フレームワークプリセットは None
-4. 発行された `https://<name>.pages.dev` を [tools/serve.ps1](tools/serve.ps1) の
+3. リポジトリの **Settings > Pages** で
+   - **Source: Deploy from a branch**
+   - **Branch: `web-build` / `/ (root)`**
+   を選んで Save
+4. 発行された `https://<owner>.github.io/<repo>/` を [tools/serve.ps1](tools/serve.ps1) の
    `$DefaultPagesUrl` に書く
 
-Pages 側でビルドしないのは、Godot 本体と 1.2GB の export テンプレートが要るため。
-`web-build` を毎回 force push で作り直すのは、`index.wasm` が約38MB あり、
-履歴に積むとリポジトリが膨らむから（常に1コミットしか持たない）。
+GitHub Pages を使うのは、**`index.wasm`（約38MB）をそのまま置けるから**。
+Cloudflare Pages / Workers 静的アセットは1ファイル25MiBまでという上限があり、
+このプロジェクトの wasm はそれを超えるため配置できない。
+
+GitHub Pages 側でビルドしないのは、Godot 本体と 1.2GB の export テンプレートが要るため。
+`web-build` を毎回 force push で作り直すのは、履歴に積むとリポジトリが膨らむから
+（常に1コミットしか持たない）。
 
 itch.io ではなく Pages を使うのは、**URL クエリを自分で使えるから**。
 下の参加リンクが成立するのは Pages 側だけで、itch.io は iframe 埋め込みのため
@@ -282,7 +285,7 @@ python -m http.server 8123 --directory export/web
 3. 表示された参加リンク（クリップボードにコピー済み）を友達に送る
 
    ```text
-   https://<name>.pages.dev/?s=xxxx.trycloudflare.com
+   https://<owner>.github.io/<repo>/?s=xxxx.trycloudflare.com
    ```
 
 4. 友達はリンクを開くだけで自動的に参加する（`?s=` を [scenes/main.gd](scenes/main.gd) が読む）

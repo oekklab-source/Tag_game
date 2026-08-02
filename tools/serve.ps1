@@ -19,7 +19,7 @@
       - 自宅回線のポート開放が不要（cloudflared は外向き接続しか張らない）
 
 .PARAMETER PagesUrl
-    Web ビルドを置いた Cloudflare Pages の URL。既定値は $DefaultPagesUrl。
+    Web ビルドを置いた GitHub Pages の URL。既定値は $DefaultPagesUrl。
     自分の URL に書き換えておくと引数なしで使える。
 
 .PARAMETER Port
@@ -28,7 +28,7 @@
 .EXAMPLE
     pwsh tools/serve.ps1
 .EXAMPLE
-    pwsh tools/serve.ps1 -PagesUrl https://chase.pages.dev
+    pwsh tools/serve.ps1 -PagesUrl https://oekklab-source.github.io/Tag_game
 #>
 [CmdletBinding()]
 param(
@@ -36,8 +36,8 @@ param(
     [int]$Port = 9999
 )
 
-# Cloudflare Pages の URL（末尾のスラッシュ無し）
-$DefaultPagesUrl = 'https://tag-game.pages.dev'
+# GitHub Pages の URL（末尾のスラッシュ無し）
+$DefaultPagesUrl = 'https://oekklab-source.github.io/Tag_game'
 
 $ErrorActionPreference = 'Stop'
 

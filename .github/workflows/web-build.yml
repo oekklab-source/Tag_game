@@ -1,12 +1,16 @@
 name: Web build
 
 # main を push すると Web ビルドを作り、成果物だけを web-build ブランチへ force push する。
-# Cloudflare Pages は web-build ブランチを見てデプロイする。
+# GitHub Pages は web-build ブランチ（ルート）を見てデプロイする。
 #
 # force push で毎回まっさらな履歴に置き換えるのは、index.wasm が約38MB あり、
 # 積み上げるとリポジトリが膨らむため。web-build は常に1コミットしか持たない。
 #
-# Cloudflare Pages 側でビルドしないのは、Godot 本体と 1.2GB の
+# Cloudflare Pages / Workers 静的アセットは持たない：
+# index.wasm(約38MB) が Cloudflare の1ファイル25MiB上限を超えるため配信できない。
+# GitHub Pages にはこの制限が無いので web-build ブランチをそのまま公開できる。
+#
+# ここでビルドしない（GitHub Pages 側でビルドしない）のは、Godot 本体と 1.2GB の
 # export テンプレートが必要で、Pages のビルド環境では現実的でないから。
 
 on:
@@ -70,6 +74,10 @@ jobs:
           godot --headless --export-release "Web" export/web/index.html
           test -s export/web/index.wasm
           ls -lh export/web
+
+      # GitHub Pages に Jekyll 処理をさせない（_ で始まるファイルの除外などを防ぐ）
+      - name: Add .nojekyll
+        run: touch export/web/.nojekyll
 
       # 成果物だけの孤立リポジトリを作って force push する。
       # 親の .gitignore（export/ や *.wasm を無視）は別リポジトリなので効かない
