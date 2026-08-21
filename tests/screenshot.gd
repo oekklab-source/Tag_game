@@ -59,4 +59,75 @@ func _ready() -> void:
 	print("materials %d  objects %d" % [
 		Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),
 		Performance.get_monitor(Performance.OBJECT_NODE_COUNT)])
+	await _check_wobble(cam, out)
 	get_tree().quit()
+
+
+## 装飾の揺れ（decor_float.gdshader）が実際に動いているか。
+##
+## 頂点シェーダが効いているかは静止画1枚では判断できないので、
+## 同じアングルで時間を空けて2枚撮り、変化した画素の割合で判定する。
+## INSTANCE_CUSTOM が Compatibility レンダラで載るかは実測でしか分からない
+## （glow と同じく、仕様表を読んでも答えが出なかった箇所）
+func _check_wobble(cam: Camera3D, out: String) -> void:
+	cam.global_position = Vector3(0.0, 52.0, 40.0)
+	cam.look_at(Vector3(0.0, 50.0, -40.0), Vector3.UP)
+	var shots: Array[Image] = []
+	for pass_i in 2:
+		for i in 4:
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		var img := get_viewport().get_texture().get_image()
+		img.save_png("%s/wobble_%d.png" % [out, pass_i])
+		shots.append(img)
+		if pass_i == 0:
+			# 揺れの周期（speed 0.28 -> 約22秒）に対して十分な間隔を空ける
+			var until := Time.get_ticks_msec() + 1600
+			while Time.get_ticks_msec() < until:
+				await get_tree().process_frame
+	var a := shots[0].get_data()
+	var b := shots[1].get_data()
+	var diff := 0
+	for i in range(0, a.size(), 3):
+		if absi(int(a[i]) - int(b[i])) > 3:
+			diff += 1
+	var ratio := float(diff) / float(a.size() / 3)
+	print("decor wobble: 変化した画素 %.2f%%  %s"
+		% [ratio * 100.0, "OK" if ratio > 0.002 else "FAIL（揺れていない）"])
+	await _check_instance_phase(shots[1])
+
+
+## インスタンスごとの位相（INSTANCE_CUSTOM）が本当に効いているか。
+##
+## 時間差の比較だけでは足りない。INSTANCE_CUSTOM が読めていなくても
+## 全部の雲が揃って動くので、画は変化してしまうため。
+## 揺れを止めた（speed=0）状態で位相を全部 0 に潰し、画が変わるかで見る。
+## 変わらなければ位相は最初から効いていなかったということになる
+func _check_instance_phase(before: Image) -> void:
+	var mmi: MultiMeshInstance3D = get_tree().current_scene.get_node_or_null("Decor/Clouds")
+	if mmi == null:
+		print("instance phase: FAIL（Decor/Clouds が無い）")
+		return
+	var mat: ShaderMaterial = mmi.multimesh.mesh.material
+	# TIME を無効化すると、残る変位はインスタンスごとの位相ぶんだけになる
+	mat.set_shader_parameter("speed", 0.0)
+	var a := await _grab()
+	for i in mmi.multimesh.instance_count:
+		mmi.multimesh.set_instance_custom_data(i, Color(0, 0, 0, 0))
+	var b := await _grab()
+	var da := a.get_data()
+	var db := b.get_data()
+	var diff := 0
+	for i in range(0, da.size(), 3):
+		if absi(int(da[i]) - int(db[i])) > 3:
+			diff += 1
+	var ratio := float(diff) / float(da.size() / 3)
+	print("instance phase: 位相を潰すと %.2f%% 変化  %s"
+		% [ratio * 100.0, "OK" if ratio > 0.002 else "FAIL（INSTANCE_CUSTOM が効いていない）"])
+
+
+func _grab() -> Image:
+	for i in 4:
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	return get_viewport().get_texture().get_image()

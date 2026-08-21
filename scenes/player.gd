@@ -43,6 +43,11 @@ const SLIDE_STEER := 9.0      # 滑走中の左右の寄せ
 const SLIDE_MIN_SPEED := 3.5
 const SLIDE_SNAP := 0.6       # 滑走中の床スナップ距離。高速降下で床から浮いて跳ねるのを防ぐ
 const SLIDE_GRACE := 0.12     # Area を出た直後の1〜2フレームの取りこぼしを吸収する猶予
+## warp_to() で位置を直接動かした直後、is_on_floor() が1フレーム古い値
+## （ワープ前の接地状態）を返す。それを信じて地上の移動制御に入ると、
+## 無入力時は目標速度＝ゼロへ即座に上書きされ、出口の水平速度が消える。
+## その間は空中と同じ扱いにして、is_on_floor() の値を無視する
+const WARP_GRACE := 0.2
 const MOUSE_SENSITIVITY := 0.003
 const PITCH_MIN := -60.0
 const PITCH_MAX := 30.0
@@ -86,6 +91,7 @@ var diving := false
 var dive_recover := 0.0
 var dive_cooldown := 0.0
 var warp_lock := 0.0                # 土管の往復ワープ防止
+var warp_grace := 0.0               # ワープ直後、is_on_floor() の古い値を無視する猶予
 var item: int = Item.NONE
 var stun_left := 0.0                # バナナを踏んだ時の操作不能時間
 
@@ -96,9 +102,17 @@ var stun_left := 0.0                # バナナを踏んだ時の操作不能時
 ## Euler をそのまま lerp すると ±PI をまたぐ瞬間に一回転する
 @export var sync_position := Vector3.ZERO
 @export var sync_yaw := 0.0
+## 歩行モーション用の水平速度と滞空。権威ピアが実測して配る。
+##
+## 受け取る側で「同期位置が前回からどれだけ動いたか」から割り出してはいけない。
+## それは移動時間ではなく**パケットの到着間隔**を測っていることになり、
+## インターネット越し（トンネル経由の Web クライアント）だと到着が
+## まとまったり途切れたりするだけで速度が乱高下し、脚が止まったり痙攣したりする。
+## 速度は権威ピアだけが正確に知っているので、素直に配るのが一番確実で安い
+@export var sync_speed := 0.0
+@export var sync_air := false
 
 var _current_color := Color.TRANSPARENT
-var _last_pos := Vector3.ZERO
 
 @onready var spring_arm: SpringArm3D = $SpringArm3D
 @onready var camera: Camera3D = $SpringArm3D/Camera3D
@@ -122,7 +136,6 @@ func _ready() -> void:
 		# スポーン時の同期値へ即座に合わせる。補間に任せると原点から滑って来る
 		position = sync_position
 		rotation.y = sync_yaw
-	_last_pos = global_position
 
 
 ## 接触判定はホストが一元的に行う（全ピアで発火するので必ずサーバ判定を挟む）
@@ -132,16 +145,12 @@ func _on_tag_area_body_entered(body: Node3D) -> void:
 
 
 func _process(delta: float) -> void:
-	# 歩行モーション: リモートでは velocity が同期されないため位置差分から推定する
 	if delta <= 0.0:
 		return
 	if not is_multiplayer_authority():
 		_follow_sync(delta)
-	var vel_est := (global_position - _last_pos) / delta
-	_last_pos = global_position
-	var hspeed := Vector2(vel_est.x, vel_est.z).length()
 	humanoid.set_diving(diving)
-	humanoid.update_motion(hspeed, absf(vel_est.y) < 1.5)
+	humanoid.update_motion(sync_speed, not sync_air, delta)
 	# ダイブ中は前へ倒れ込む。diving はレプリケートされるので他ピアからも見える
 	humanoid.rotation.x = lerpf(humanoid.rotation.x,
 		DIVE_PITCH if diving else 0.0, minf(delta * 12.0, 1.0))
@@ -153,7 +162,6 @@ func _follow_sync(delta: float) -> void:
 	if position.distance_squared_to(sync_position) > NET_SNAP_DIST * NET_SNAP_DIST:
 		position = sync_position
 		rotation.y = sync_yaw
-		_last_pos = global_position  # 差分での歩行モーション推定が跳ねないように
 		return
 	var w := 1.0 - exp(-delta * NET_SMOOTH)
 	position = position.lerp(sync_position, w)
@@ -187,6 +195,9 @@ func _physics_process(delta: float) -> void:
 	_tick_dive(delta)
 
 	var my_id := String(name).to_int()
+	# 他キャラの頭の上は床として扱わない。ここを接地扱いすると重力が止まり、
+	# 相手に乗ったまま空中で静止して落ちてこなくなる（横の押し出しで滑り落とす）
+	var grounded := is_on_floor() and not CharacterSeparation.on_character(self)
 	# 結果表示中・ヘッドスタート中の鬼・バナナで転倒中・ダイブ中は移動不可
 	# （カメラ操作は可能）。ダイブは踏み切った後に軌道を変えられない＝空振りしうる
 	var frozen := (GameManager.state == GameManager.State.RESULT
@@ -198,7 +209,7 @@ func _physics_process(delta: float) -> void:
 	if not frozen and Input.is_action_just_pressed("use_item"):
 		_use_item()
 
-	if not is_on_floor():
+	if warp_grace > 0.0 or not grounded:
 		velocity += get_gravity() * delta
 	elif not frozen and dive_cooldown <= 0.0 and Input.is_action_just_pressed("dive"):
 		_start_dive()
@@ -223,7 +234,12 @@ func _physics_process(delta: float) -> void:
 			SLIDE_STEER, direction, SLIDE_MIN_SPEED)
 		floor_snap_length = SLIDE_SNAP
 		slide_left = maxf(slide_left - delta, 0.0)
-	elif is_on_floor():
+	elif warp_grace > 0.0:
+		warp_grace = maxf(warp_grace - delta, 0.0)
+		if direction != Vector3.ZERO:
+			velocity.x = move_toward(velocity.x, target.x, AIR_ACCEL * delta)
+			velocity.z = move_toward(velocity.z, target.y, AIR_ACCEL * delta)
+	elif grounded:
 		floor_snap_length = 0.1
 		var hv := Vector2(velocity.x, velocity.z)
 		if hv.length() > speed + 0.5:
@@ -242,10 +258,18 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, target.x, AIR_ACCEL * delta)
 		velocity.z = move_toward(velocity.z, target.y, AIR_ACCEL * delta)
 
-	velocity += carry_velocity
+	# 重なりをほどく速度は carry_velocity と同じく一時的に足すだけにする。
+	# velocity に残すと毎フレーム蓄積して吹き飛ぶ
+	var separate := CharacterSeparation.push(self)
+	velocity += carry_velocity + separate
 	move_and_slide()
-	velocity -= carry_velocity
+	velocity -= carry_velocity + separate
 	carry_velocity = Vector3.ZERO
+
+	# 歩行モーションは物理の実測値で駆動する。_process 側で位置差分を取ると、
+	# 描画が物理より速いフレームで差分が 0 になり Idle と Run がばたつく
+	sync_speed = Vector2(velocity.x, velocity.z).length()
+	sync_air = not grounded
 
 	if global_position.y < WorldData.FALL_LIMIT:
 		teleport(WorldData.zone_center(WorldData.zone_index(global_position)) + Vector3(0, 3, 0))
@@ -299,13 +323,13 @@ func teleport(pos: Vector3) -> void:
 	if not is_multiplayer_authority():
 		return
 	global_position = pos
-	_last_pos = pos
 	sync_position = position  # 他ピアが次の物理フレームを待たずスナップできるように
 	velocity = Vector3.ZERO
 	stamina = STAMINA_MAX
 	exhausted = false
 	buffs.clear()
 	warp_lock = 0.0
+	warp_grace = 0.0
 	slide_left = 0.0
 	diving = false
 	dive_recover = 0.0
@@ -369,14 +393,16 @@ func launch(v: Vector3) -> void:
 	velocity.z += v.z
 
 
-## 土管ワープ。着地先の土管で即座に再ワープしないよう warp_lock を張る
-func warp_to(pos: Vector3, up_vel: float) -> void:
+## 土管ワープ。着地先の土管で即座に再ワープしないよう warp_lock を張る。
+## exit_kick は水平方向の勢い（warp_pipe.gd 側で「進行方向」から作る）。
+## これが無いと無操作時に真上へ飛んで同じ場所へ落ち、口に戻って再突入する
+func warp_to(pos: Vector3, up_vel: float, exit_kick := Vector3.ZERO) -> void:
 	if not is_multiplayer_authority():
 		return
 	global_position = pos
-	_last_pos = pos
-	velocity = Vector3(0, up_vel, 0)
+	velocity = Vector3(exit_kick.x, up_vel, exit_kick.z)
 	warp_lock = 0.9
+	warp_grace = WARP_GRACE
 	slide_left = 0.0  # 滑走状態のまま飛ぶと出口で明後日の方向へ加速する
 	effect_gained.emit(Effect.WARP)
 
@@ -419,7 +445,11 @@ func apply_stun(seconds: float) -> void:
 func _update_role_visuals() -> void:
 	var my_id := String(name).to_int()
 	var color := COLOR_WAITING
-	if GameManager.state != GameManager.State.WAITING:
+	if GameManager.state == GameManager.State.WAITING:
+		# 準備中も立候補者だけ緑にして、誰が逃げる役かゲーム内で分かるようにする
+		if my_id == GameManager.wanted_runner:
+			color = COLOR_RUNNER
+	else:
 		color = COLOR_RUNNER if my_id == GameManager.runner_id else COLOR_HUNTER
 	if color != _current_color:
 		_current_color = color

@@ -101,6 +101,99 @@ const GIMMICK_CLEARANCE := 3.5
 ## 単一の凹メッシュを作ると create_convex_shape() が見た目と食い違う
 enum Shape { BOX, CYLINDER, CONE, SPHERE, CAPSULE, PRISM }
 
+
+## --- 描画の集約 ---------------------------------------------------------
+## 同じ形・同じマテリアルの構造物を1本の MultiMesh にまとめる。
+## 描画コストに乗るのは MeshInstance3D だけなので、当たり判定の
+## StaticBody3D + CollisionShape3D は今まで通り1個ずつ残したままでよい。
+##
+## 見た目と当たり判定の一致（この設計の一番の肝）は、
+## MultiMesh のインスタンス transform と CollisionShape3D の両方を
+## _solid() の中で同じ pos / size / rot から作ることで保つ。
+## 集約の都合でどちらか片方だけを触れる場所は作らない。
+##
+## 形は単位サイズ（一辺1 / 直径1 / 高さ1）で持ち、大きさはインスタンスの
+## 拡大率で作る。そうしないと大きさ違いが全部別グループになって集約にならない。
+## 軸に沿った拡大なので法線は逆転置行列で正しく補正される
+## （円柱の側面法線は水平のままだし、円錐は傾きが変わるのが正しい）。
+##
+## 除外する形が2つある:
+##   CAPSULE - 全高に半球が含まれるので、単位形状を非等方に拡大しても元の形に戻らない
+##   CONE    - 側面の法線が斜めなので、非等方に拡大すると陰影が変わる。
+##             箱と角柱の法線は軸に沿っているので拡大しても向きが変わらず、
+##             円柱の側面法線は水平なので縦の拡大に影響されない（だから集約してよい）。
+##             円錐だけは屋根として大きく映るので、見た目を優先して個別に描く
+class Batch:
+	extends RefCounted
+
+	## key -> [単位メッシュ, Array[Transform3D]]
+	var _groups := {}
+
+	func add(kind: int, pos: Vector3, size: Vector3, rot: Vector3,
+			mat: Material, shadow: bool) -> void:
+		var key := "%d_%d_%d" % [kind, mat.get_instance_id(), 1 if shadow else 0]
+		if not _groups.has(key):
+			_groups[key] = [_unit_mesh(kind, mat), [] as Array[Transform3D], shadow]
+		# ローカルで拡大してから回す（R * S）。逆順にすると斜めに歪む
+		var basis := Basis.from_euler(rot, EULER_ORDER_YXZ) * Basis.from_scale(size)
+		_groups[key][1].append(Transform3D(basis, pos))
+
+	static func can_batch(kind: int) -> bool:
+		return kind != Shape.CAPSULE and kind != Shape.CONE
+
+	func flush(root: Node3D) -> void:
+		var n := 0
+		for key in _groups:
+			var g: Array = _groups[key]
+			var transforms: Array[Transform3D] = g[1]
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = g[0]
+			mm.instance_count = transforms.size()
+			for i in transforms.size():
+				mm.set_instance_transform(i, transforms[i])
+			var mmi := MultiMeshInstance3D.new()
+			mmi.name = "PropBatch%d" % n
+			mmi.multimesh = mm
+			if not g[2]:
+				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			root.add_child(mmi)
+			n += 1
+
+	func stats() -> String:
+		var total := 0
+		for key in _groups:
+			total += (_groups[key][1] as Array).size()
+		return "%d個 -> %d本" % [total, _groups.size()]
+
+	static func _unit_mesh(kind: int, mat: Material) -> Mesh:
+		var mesh: Mesh
+		match kind:
+			Shape.CYLINDER, Shape.CONE:
+				var c := CylinderMesh.new()
+				c.top_radius = 0.0 if kind == Shape.CONE else 0.5
+				c.bottom_radius = 0.5
+				c.height = 1.0
+				c.radial_segments = ROUND_SEGMENTS
+				mesh = c
+			Shape.SPHERE:
+				var s := SphereMesh.new()
+				s.radius = 0.5
+				s.height = 1.0
+				s.radial_segments = ROUND_SEGMENTS
+				s.rings = ROUND_RINGS
+				mesh = s
+			Shape.PRISM:
+				var p := PrismMesh.new()
+				p.size = Vector3.ONE
+				mesh = p
+			_:
+				var b := BoxMesh.new()
+				b.size = Vector3.ONE
+				mesh = b
+		mesh.surface_set_material(0, mat)
+		return mesh
+
 ## 丸物の分割数。Web 書き出しの予算があるので上げない（既存の _coin と同じ）
 const ROUND_SEGMENTS := 12
 const ROUND_RINGS := 6
@@ -112,6 +205,27 @@ const PATTERN_RES := 4        # 床の模様のピクセル数（4x4）
 const PATTERN_CONTRAST := 0.93  # 濃い側の明度。低くすると市松が強く出すぎる
 const NEON_ZONE := 5  # BOOST CIRCUIT。ネオンを使うのはここだけに絞る
 
+## --- バンパー -----------------------------------------------------------
+## 以前ここには当たり判定の無い緑のドームを飾りとして撒いていたが、
+## 走ると素通りしてしまい、置いてある意味が無かった。
+## 実体のある丸い障害物にして、触れると外向きに弾き返す。
+##
+## Platform レイヤー(8)に置く。丸い天面はどう作っても頂点付近が平らになるので、
+## World(1) に置くと「登れないのに歩ける」孤立したナビ島がドームの上に焼かれる。
+## Platform ならベイクされず、通行は塞ぎ、視線も切れる。
+## 高さを 3.5m 未満に抑えてあるので、切れるのは低い側の視線レイ(y=0.85)だけ。
+## 高い側(y=1.55)は通り、can_see は「どちらか通れば視認」なので
+## 「画面では見えているのに見つからない」の破綻は起こらない
+## ゾーンあたりの数は絞る。バンパーが増えるほど視線を切るプロップの居場所が減り、
+## 逃走者が隠れる場所が痩せる（遮蔽の役目を負うのは 6m のプロップ側）
+const BUMPER_PER_ZONE := 2
+const BUMPER_TRIES := 3  # 象限あたりの試行回数。置けるのは象限に1個まで
+const QUADRANTS: Array[Vector2] = [
+	Vector2(-1, -1), Vector2(-1, 1), Vector2(1, -1), Vector2(1, 1)]
+const BUMPER_D := 4.4  # 差し渡し
+const BUMPER_H := 2.2
+const BUMPER_PAD := 0.5  # 弾き返す Area を幾何より外へ張り出す量
+
 
 const SPRING_SCENE := preload("res://scenes/gimmicks/spring_pad.tscn")
 const BOOST_SCENE := preload("res://scenes/gimmicks/boost_panel.tscn")
@@ -121,6 +235,8 @@ const LIFT_SCENE := preload("res://scenes/gimmicks/moving_platform.tscn")
 const SPINNER_SCENE := preload("res://scenes/gimmicks/rotating_platform.tscn")
 const WALL_TOP_SCRIPT := preload("res://scenes/gimmicks/wall_top.gd")
 const SLIDE_SCRIPT := preload("res://scenes/gimmicks/slide.gd")
+const BUMPER_SCRIPT := preload("res://scenes/gimmicks/bumper.gd")
+const FLOAT_SHADER := preload("res://scenes/decor_float.gdshader")
 
 
 static func build(map_root: Node3D, gimmick_root: Node3D, decor_root: Node3D) -> void:
@@ -139,14 +255,14 @@ static func build(map_root: Node3D, gimmick_root: Node3D, decor_root: Node3D) ->
 	_build_parapets(map_root, pop_material(Color(0.94, 0.72, 0.32)))
 	# 後から置く物が先に置いた物へ重ならないよう、確定した位置を順に積み上げていく
 	var occupied := _build_gimmicks(gimmick_root)
-	# 滑り台は走路の下に遮蔽ブロックや壁が生えると通れなくなるので、
-	# フットプリントを occupied に足してから後続の配置へ渡す
+	# 滑り台の走路は「面」なので点列では守れない。矩形のキープアウトとして
+	# 後続の配置へ渡す（詳細は _slide_rects）
 	var slide_paths := _build_slides(map_root, gimmick_root)
-	for pts in slide_paths:
-		occupied.append_array(pts)
+	var keepout := _slide_rects(slide_paths)
+	keepout.append_array(_landmark_rects())
 	_build_nav_links(gimmick_root, slide_paths)
 	occupied.append_array(
-		_build_cover(map_root, pop_material(Color(0.82, 0.62, 0.3)), occupied))
+		_build_cover(map_root, pop_material(Color(0.82, 0.62, 0.3)), occupied, keepout))
 	# 構造物はゾーンごとのアクセント色で建てる。
 	# 床（ZONE_COLORS）と分離した色にしないと、地形と一体化して形が読めない
 	var accent_mats: Array[StandardMaterial3D] = []
@@ -155,7 +271,14 @@ static func build(map_root: Node3D, gimmick_root: Node3D, decor_root: Node3D) ->
 		# ネオンは glow の閾値を超えて滲むので、広げると画面全体がボケる
 		accent_mats.append(neon_material(WorldData.ZONE_ACCENTS[idx]) if idx == NEON_ZONE
 			else soft_material(WorldData.ZONE_ACCENTS[idx]))
-	_build_props(map_root, accent_mats, occupied)
+	# バンパーはプロップより先に建てて、自分の矩形を keepout へ積む。
+	# こうしないと後から建つ壁がバンパーにめり込む
+	_build_bumpers(map_root, accent_mats, occupied, keepout)
+	# 構造物の描画は MultiMesh へ集約する。当たり判定は _solid() が
+	# 1個ずつ StaticBody3D として作ったまま残るので、通行・視線・ベイクは変わらない
+	var batch := Batch.new()
+	_build_props(map_root, accent_mats, occupied, keepout, batch)
+	batch.flush(map_root)
 	_build_decor(decor_root)
 
 
@@ -491,7 +614,7 @@ static func _parapet_span(root: Node3D, tag: String, n: int, along_x: bool, boun
 	var pos := Vector3(boundary, cy, mid) if along_x else Vector3(mid, cy, boundary)
 	var size := (Vector3(PARAPET_THICK, PARAPET_HEIGHT, span) if along_x
 		else Vector3(span, PARAPET_HEIGHT, PARAPET_THICK))
-	_box(root, "Parapet%s_%d" % [tag, n], pos, size, mat)
+	_no_shadow(_box(root, "Parapet%s_%d" % [tag, n], pos, size, mat))
 	return n + 1
 
 
@@ -612,6 +735,8 @@ static func _slide_body(root: Node3D, n: int, pts: Array[Vector3],
 				+ basis.y * (SLIDE_RAIL_H * 0.5),
 			Vector3(SLIDE_RAIL_W, SLIDE_RAIL_H, span), rail_mat, rot)
 		rail.collision_layer = 8
+		# デッキが走路ぶんの影を落とすので、レールの影は増えても見えない
+		_no_shadow(rail)
 
 
 ## 滑走判定の Area。走路の1枚と出口の平地の2枚。
@@ -646,6 +771,50 @@ static func _slide_rotation(a: Vector3, b: Vector3) -> Vector3:
 	return Vector3(asin(clampf(d.y / d.length(), -1.0, 1.0)), atan2(-d.x, -d.z), 0.0)
 
 
+## --- キープアウト矩形 ---------------------------------------------------
+## 走路のように「線ではなく面」で場所を占める物は、点列を occupied へ足すだけでは
+## 守れない。点と点の間（走路の中ほど）が素通しになり、そこに壁やプロップが生えて
+## 滑り台を貫通する。平面視の矩形で持ち、面同士で判定する。
+##
+## 滑り台は必ず X か Z のどちらかに平行なので（_slide_path は直交軸の座標を
+## 動かさない）、軸平行の矩形1枚で走路全体を厳密に表せる。
+## 高さは見ない: 走路は入口の 8m から出口の 0m まで降りてくるので、
+## 「下をくぐれる高さ」が保証できる区間が存在しないため
+static func _slide_rects(paths: Array) -> Array:
+	var rects: Array = []
+	var side := SLIDE_WIDTH * 0.5 + SLIDE_RAIL_W
+	for pts in paths:
+		var a: Vector3 = pts[0]
+		var b: Vector3 = pts[pts.size() - 1]
+		rects.append([(a + b) * 0.5, Vector3(
+			absf(b.x - a.x), 0.0, absf(b.z - a.z)) * 0.5
+			+ Vector3(side, 0.0, side)])
+	return rects
+
+
+## ゾーンの目印は手置きで、条件に関係なく必ず建つ。だから場所を選ぶ側（バンパー）
+## より先にキープアウトへ積んでおかないと、目印の位置を先に取られてめり込む。
+## 円錐の笠木が胴より一回り太いぶんだけ余裕を持たせる
+static func _landmark_rects() -> Array:
+	var rects: Array = []
+	for mark in WorldData.ZONE_LANDMARKS:
+		var r: float = SIGHT_WALL_MAX_LEN * mark[4] * 0.5 * 0.5 * 1.15
+		rects.append([WorldData.zone_point(mark[0], mark[1], mark[2]),
+			Vector3(r, 0.0, r)])
+	return rects
+
+
+## 中心 pos・半径 half の矩形が、キープアウト矩形のどれかと pad 以内に近づくか
+static func _hits_keepout(pos: Vector3, half: Vector2, rects: Array, pad: float) -> bool:
+	for r in rects:
+		var c: Vector3 = r[0]
+		var rh: Vector3 = r[1]
+		if absf(pos.x - c.x) < half.x + rh.x + pad \
+				and absf(pos.z - c.z) < half.y + rh.z + pad:
+			return true
+	return false
+
+
 static func _build_walls(root: Node3D, mat: Material) -> void:
 	var h := WorldData.WALL_HEIGHT
 	var half := WorldData.WORLD_HALF
@@ -659,7 +828,8 @@ static func _build_walls(root: Node3D, mat: Material) -> void:
 
 ## 遮蔽ブロック。配置は固定シードの乱数なので全ピアで同一になる。
 ## 実際に置けた位置を返し、壁がその上に重ならないようにする
-static func _build_cover(root: Node3D, mat: Material, occupied: Array[Vector3]) -> Array[Vector3]:
+static func _build_cover(root: Node3D, mat: Material, occupied: Array[Vector3],
+		keepout: Array) -> Array[Vector3]:
 	var placed: Array[Vector3] = []
 	var rng := RandomNumberGenerator.new()
 	rng.seed = WorldData.BUILD_SEED
@@ -681,9 +851,75 @@ static func _build_cover(root: Node3D, mat: Material, occupied: Array[Vector3]) 
 			var pos := Vector3(center.x + lx, center.y + bh * 0.5, center.z + lz)
 			if _too_close(pos, occupied, maxf(w, d) * 0.5 + GIMMICK_CLEARANCE):
 				continue
-			_box(root, "Cover%d_%d" % [idx, n], pos, Vector3(w, bh, d), mat)
+			if _hits_keepout(pos, Vector2(w, d) * 0.5, keepout, WALL_CLEARANCE):
+				continue
+			_no_shadow(_box(root, "Cover%d_%d" % [idx, n], pos, Vector3(w, bh, d), mat))
 			placed.append(pos)
 	return placed
+
+
+## 弾き返すバンパー。置けた位置の矩形を keepout へ足すので、
+## 後から建つプロップは必ずこれを避ける。
+##
+## 十字通路の中には置かない。「中心 <-> 4方向のスロープ口」の連結を
+## 「通路は常に完全に空いている」だけで押し切れる状態を保つため
+static func _build_bumpers(root: Node3D, mats: Array[StandardMaterial3D],
+		occupied: Array[Vector3], keepout: Array) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = WorldData.BUILD_SEED + 3
+	var half := Vector2(BUMPER_D, BUMPER_D) * 0.5
+	for idx in WorldData.ZONE_COUNT:
+		var center := WorldData.zone_center(idx)
+		var ext := WorldData.zone_extent(idx)
+		var mx := ext.x * 0.5 - WALL_OUTER_MARGIN - half.x
+		var mz := ext.y * 0.5 - WALL_OUTER_MARGIN - half.y
+		var placed: Array[Vector3] = []
+		# 十字通路の外側だけを直接サンプルする。「一様に引いてから通路判定で捨てる」
+		# より当たりが多く、象限を1つずつ使うので散らばりも均等になる。
+		# 開始象限をずらすのは、全ゾーンで同じ隅から埋まって見えるのを避けるため
+		var start := rng.randi() % QUADRANTS.size()
+		for q in QUADRANTS.size():
+			if placed.size() >= BUMPER_PER_ZONE:
+				break
+			var s: Vector2 = QUADRANTS[(start + q) % QUADRANTS.size()]
+			for k in BUMPER_TRIES:
+				var lx := rng.randf_range(CORRIDOR_HALF + half.x, mx) * s.x
+				var lz := rng.randf_range(CORRIDOR_HALF + half.y, mz) * s.y
+				var pos := Vector3(center.x + lx, center.y, center.z + lz)
+				if _rect_too_close(pos, half, occupied, GIMMICK_CLEARANCE):
+					continue
+				# バンパー同士。相手の半径も足すので half を2倍して渡す
+				if _rect_too_close(pos, half * 2.0, placed, WALL_GAP):
+					continue
+				if _hits_keepout(pos, half, keepout, WALL_CLEARANCE):
+					continue
+				_bumper(root, "Bumper%d_%d" % [idx, placed.size()], pos, mats[idx])
+				placed.append(pos)
+				keepout.append([pos, Vector3(half.x, 0.0, half.y)])
+				break
+
+
+## 潰した球と、それを一回り覆う判定 Area。
+## 天面を塞ぐ Area（_top_guard）は付けない。上に乗ってもこの Area の中なので、
+## 弾き返しがそのまま「上に立てない」を兼ねる
+static func _bumper(root: Node3D, node_name: String, pos: Vector3, mat: Material) -> void:
+	# バンパーは MultiMesh へ集約しない。触れた時の潰し演出で
+	# メッシュを個別に縮める必要があるため（数は最大18個なので影響は小さい）
+	var body := _solid(root, node_name, pos + Vector3(0, BUMPER_H * 0.5, 0),
+		Vector3(BUMPER_D, BUMPER_H, BUMPER_D), mat, Shape.SPHERE, Vector3.ZERO, 8,
+		false, false)
+	var area := Area3D.new()
+	area.name = "Hit"
+	area.collision_layer = 0
+	area.collision_mask = 2  # Character
+	area.set_script(BUMPER_SCRIPT)
+	var col := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = BUMPER_D * 0.5 + BUMPER_PAD
+	shape.height = BUMPER_H + BUMPER_PAD * 2.0
+	col.shape = shape
+	area.add_child(col)
+	body.add_child(area)
 
 
 ## 視線を切る構造物。ゾーンごとに4象限へ配り、種類はそのゾーンのテーマから引く。
@@ -694,7 +930,7 @@ static func _build_cover(root: Node3D, mat: Material, occupied: Array[Vector3]) 
 ## 以上あることから従う。加えて CORRIDOR_HALF の十字通路と
 ## WALL_OUTER_MARGIN の外周帯は常に完全に開いている。
 static func _build_props(root: Node3D, mats: Array[StandardMaterial3D],
-		occupied: Array[Vector3]) -> void:
+		occupied: Array[Vector3], keepout: Array, batch: Batch) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = WorldData.BUILD_SEED + 2
 	for idx in WorldData.ZONE_COUNT:
@@ -710,7 +946,7 @@ static func _build_props(root: Node3D, mats: Array[StandardMaterial3D],
 		var mark: Array = WorldData.ZONE_LANDMARKS[idx]
 		var mark_span: float = SIGHT_WALL_MAX_LEN * mark[4] * 0.5
 		var mark_pos := Vector3(center.x + mark[1], center.y, center.z + mark[2])
-		_prop(root, "Landmark%d" % idx, mark[3], mark_pos, mark_span, true, mats[idx])
+		_prop(root, "Landmark%d" % idx, mark[3], mark_pos, mark_span, true, mats[idx], batch)
 		placed.append([mark_pos, _prop_footprint(mark[3], mark_span, true)])
 
 		for sx: float in [-1.0, 1.0]:
@@ -743,6 +979,9 @@ static func _build_props(root: Node3D, mats: Array[StandardMaterial3D],
 					var pos := Vector3(center.x + lx, center.y, center.z + lz)
 					if _rect_too_close(pos, half, occupied, WALL_CLEARANCE):
 						continue
+					# 滑り台の走路とバンパー。面で判定しないと走路の中ほどを貫通する
+					if _hits_keepout(pos, half, keepout, WALL_CLEARANCE):
+						continue
 					var clash := false
 					for e in placed:
 						if _rect_too_close(pos, half + e[1], [e[0]] as Array[Vector3], WALL_GAP):
@@ -750,7 +989,8 @@ static func _build_props(root: Node3D, mats: Array[StandardMaterial3D],
 							break
 					if clash:
 						continue
-					_prop(root, "Prop%d_%d" % [idx, n], kind, pos, prop_len, along_x, mats[idx])
+					_prop(root, "Prop%d_%d" % [idx, n], kind, pos, prop_len, along_x, mats[idx],
+						batch)
 					placed.append([pos, half])
 					n += 1
 
@@ -765,58 +1005,62 @@ static func _build_props(root: Node3D, mats: Array[StandardMaterial3D],
 
 ## 円柱＋円錐の塔。母線は atan(高さ/半径) が 60° を超えるようにする
 static func _prop_tower(root: Node3D, node_name: String, base: Vector3, d: float,
-		mat: Material) -> void:
+		mat: Material, batch: Batch) -> void:
 	var body_h := SIGHT_WALL_HEIGHT * 0.62
 	var cap_h := d * 0.5 * 1.85  # 半径に対して 1.85倍 = 61.6°
 	_solid(root, node_name, base + Vector3(0, body_h * 0.5, 0),
-		Vector3(d, body_h, d), mat, Shape.CYLINDER)
+		Vector3(d, body_h, d), mat, Shape.CYLINDER, Vector3.ZERO, 1, false, true, batch)
 	_solid(root, node_name + "Cap", base + Vector3(0, body_h + cap_h * 0.5, 0),
-		Vector3(d * 1.12, cap_h, d * 1.12), mat, Shape.CONE, Vector3.ZERO, 1, true)
+		Vector3(d * 1.12, cap_h, d * 1.12), mat, Shape.CONE, Vector3.ZERO, 1, true,
+		false, batch)
 
 
 ## 立ち上がり配管。塔より細く高い
 static func _prop_pipe(root: Node3D, node_name: String, base: Vector3, d: float,
-		mat: Material) -> void:
+		mat: Material, batch: Batch) -> void:
 	var body_h := SIGHT_WALL_HEIGHT * 0.85
 	var cap_h := d * 0.5 * 1.9
 	_solid(root, node_name, base + Vector3(0, body_h * 0.5, 0),
-		Vector3(d, body_h, d), mat, Shape.CYLINDER)
+		Vector3(d, body_h, d), mat, Shape.CYLINDER, Vector3.ZERO, 1, false, true, batch)
 	_solid(root, node_name + "Cap", base + Vector3(0, body_h + cap_h * 0.5, 0),
-		Vector3(d * 1.25, cap_h, d * 1.25), mat, Shape.CONE, Vector3.ZERO, 1, true)
+		Vector3(d * 1.25, cap_h, d * 1.25), mat, Shape.CONE, Vector3.ZERO, 1, true,
+		false, batch)
 
 
 ## 貨物コンテナ／積み木。壁より厚みがあり、屋根型の笠木で締める
 static func _prop_crate(root: Node3D, node_name: String, base: Vector3, span: float,
-		along_x: bool, mat: Material) -> void:
+		along_x: bool, mat: Material, batch: Batch) -> void:
 	var box_h := SIGHT_WALL_HEIGHT - WALL_CAP_HEIGHT
 	var depth := CRATE_DEPTH
 	var size := (Vector3(span, box_h, depth) if along_x else Vector3(depth, box_h, span))
-	var body := _solid(root, node_name, base + Vector3(0, box_h * 0.5, 0), size, mat)
-	_wall_cap(body, span, along_x, box_h, mat, depth)
+	var body := _solid(root, node_name, base + Vector3(0, box_h * 0.5, 0), size, mat,
+		Shape.BOX, Vector3.ZERO, 1, false, true, batch)
+	_wall_cap(body, span, along_x, box_h, mat, depth, batch)
 
 
 ## 従来の視線壁。テーマの中では「城壁 / 生垣」として使う
 static func _prop_wall(root: Node3D, node_name: String, base: Vector3, span: float,
-		along_x: bool, mat: Material) -> void:
+		along_x: bool, mat: Material, batch: Batch) -> void:
 	var box_h := SIGHT_WALL_HEIGHT - WALL_CAP_HEIGHT
 	var size := (Vector3(span, box_h, SIGHT_WALL_THICK) if along_x
 		else Vector3(SIGHT_WALL_THICK, box_h, span))
-	var body := _solid(root, node_name, base + Vector3(0, box_h * 0.5, 0), size, mat)
-	_wall_cap(body, span, along_x, box_h, mat, SIGHT_WALL_THICK)
+	var body := _solid(root, node_name, base + Vector3(0, box_h * 0.5, 0), size, mat,
+		Shape.BOX, Vector3.ZERO, 1, false, true, batch)
+	_wall_cap(body, span, along_x, box_h, mat, SIGHT_WALL_THICK, batch)
 
 
 ## プロップ1個を建てる。base は地面の高さ
 static func _prop(root: Node3D, node_name: String, kind: int, base: Vector3,
-		span: float, along_x: bool, mat: Material) -> void:
+		span: float, along_x: bool, mat: Material, batch: Batch) -> void:
 	match kind:
 		WorldData.Prop.TOWER:
-			_prop_tower(root, node_name, base, span, mat)
+			_prop_tower(root, node_name, base, span, mat, batch)
 		WorldData.Prop.PIPE:
-			_prop_pipe(root, node_name, base, span, mat)
+			_prop_pipe(root, node_name, base, span, mat, batch)
 		WorldData.Prop.CRATE:
-			_prop_crate(root, node_name, base, span, along_x, mat)
+			_prop_crate(root, node_name, base, span, along_x, mat, batch)
 		_:
-			_prop_wall(root, node_name, base, span, along_x, mat)
+			_prop_wall(root, node_name, base, span, along_x, mat, batch)
 
 
 ## 占有する矩形の半径。配置側のクリアランス判定はこれを使う。
@@ -853,21 +1097,32 @@ static func _pick_prop(theme: Array, u: float) -> int:
 ## 笠木だけでは塞ぎきれない（稜線の真上ではカプセルの接触法線が真上になり
 ## 立ててしまう）ので、天面を覆う Area3D を重ねて確実に弾き出す。
 static func _wall_cap(body: StaticBody3D, wall_len: float, along_x: bool,
-		box_h: float, mat: Material, thick := SIGHT_WALL_THICK) -> void:
+		box_h: float, mat: Material, thick := SIGHT_WALL_THICK,
+		batch: Batch = null) -> void:
+	var size := Vector3(thick, WALL_CAP_HEIGHT, wall_len)
 	var prism := PrismMesh.new()
-	prism.size = Vector3(thick, WALL_CAP_HEIGHT, wall_len)
+	prism.size = size
 	prism.material = mat
-	var mesh := MeshInstance3D.new()
-	mesh.mesh = prism
 	var col := CollisionShape3D.new()
 	# メッシュから凸形状を起こすので、見た目と当たり判定が必ず一致する
 	col.shape = prism.create_convex_shape()
 	var cap_y := box_h * 0.5 + WALL_CAP_HEIGHT * 0.5
-	for c: Node3D in [mesh, col]:
-		c.position = Vector3(0, cap_y, 0)
-		if along_x:
-			c.rotation.y = PI * 0.5
-		body.add_child(c)
+	var yaw := PI * 0.5 if along_x else 0.0
+	col.position = Vector3(0, cap_y, 0)
+	col.rotation.y = yaw
+	body.add_child(col)
+
+	# 笠木の真下には必ず本体の壁があるので、影パスから外しても影の形は変わらない
+	if batch != null:
+		batch.add(Shape.PRISM, body.position + Vector3(0, cap_y, 0), size,
+			Vector3(0.0, yaw, 0.0), mat, false)
+		return
+	var mesh := MeshInstance3D.new()
+	mesh.mesh = prism
+	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mesh.position = col.position
+	mesh.rotation.y = yaw
+	body.add_child(mesh)
 
 	var area := Area3D.new()
 	area.name = "TopGuard"
@@ -910,6 +1165,18 @@ static func _top_guard(body: StaticBody3D, size: Vector3) -> void:
 	body.add_child(area)
 
 
+## 影パスから外す。ドローコールは「本体 + 影を落とす物」で数えられるので、
+## 形の読み取りに寄与しない物を外すと影パスぶんがそのまま減る。
+##
+## 外してよいのは、真下に必ず影を落とす本体がある物（塔の笠木・壁の笠木）と、
+## 背が低くて影がほぼ足元にしか出ない物（バンパー・遮蔽ブロック・柵）。
+## 視線を切る 6m のプロップ本体は外さない（長い影が距離感の手がかりになる）
+static func _no_shadow(body: StaticBody3D) -> void:
+	for c in body.get_children():
+		if c is GeometryInstance3D:
+			c.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
 ## 壁は回転しないので、広げた AABB への点内包判定で厳密に足りる
 static func _rect_too_close(c: Vector3, half: Vector2, pts: Array[Vector3], pad: float) -> bool:
 	for p in pts:
@@ -933,31 +1200,28 @@ static func _build_decor(root: Node3D) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = WorldData.BUILD_SEED + 1
 
-	# 雲: 3個の潰した球を寄せて1つの雲にする。遠景なので距離カリングはしない
+	# 雲: 3個の潰した球を寄せて1つの雲にする。遠景なので距離カリングはしない。
+	# 3つの球には同じ位相を入れる。バラバラに揺らすと1つの雲に見えなくなる
 	var clouds: Array[Transform3D] = []
+	var cloud_phase: Array = []
 	for i in 24:
 		var c := Vector3(rng.randf_range(-78.0, 78.0), rng.randf_range(40.0, 62.0),
 			rng.randf_range(-78.0, 78.0))
+		var phase := rng.randf()
 		for k in 3:
 			var s := rng.randf_range(2.5, 5.0)
 			clouds.append(Transform3D(
 				Basis.from_scale(Vector3(s, s * 0.55, s)),
 				c + Vector3(rng.randf_range(-4.0, 4.0), rng.randf_range(-0.8, 0.8),
 					rng.randf_range(-3.0, 3.0))))
-	_multimesh(root, "Clouds", _sphere(Color(1, 1, 1), 0.3), clouds, 0.0)
+			cloud_phase.append(phase)
+	var cloud_mesh := _sphere(Color(1, 1, 1), 0.3)
+	cloud_mesh.material = float_material(Color(1, 1, 1), 0.3, 2.2, 1.1, 0.0, 0.28)
+	_multimesh(root, "Clouds", cloud_mesh, clouds, 0.0, cloud_phase, 3.5)
 
-	# 茂み: 各ゾーンの外周に沿って
-	var bushes: Array[Transform3D] = []
-	for idx in WorldData.ZONE_COUNT:
-		var c := WorldData.zone_center(idx)
-		var ext := WorldData.zone_extent(idx)
-		for k in 6:
-			var a := TAU * k / 6.0 + rng.randf_range(-0.3, 0.3)
-			var p := Vector3(c.x + cos(a) * ext.x * 0.42, c.y,
-				c.z + sin(a) * ext.y * 0.42)
-			var s := rng.randf_range(1.6, 2.8)
-			bushes.append(Transform3D(Basis.from_scale(Vector3(s, s * 0.55, s)), p))
-	_multimesh(root, "Bushes", _sphere(Color(0.18, 0.6, 0.24), 0.12), bushes)
+	# 茂みはここにあったが、当たり判定の無い緑のドームが地面に置いてあるだけで
+	# 走ると素通りしてしまい意味が無かった。実体のあるバンパー（_build_bumpers）に
+	# 置き換えてある
 
 	# コイン: ジャンプ台の上に弧を描いて「ここから跳べる」と示す
 	var coins: Array[Transform3D] = []
@@ -973,7 +1237,13 @@ static func _build_decor(root: Node3D) -> void:
 			var a := TAU * k / 8.0
 			coins.append(Transform3D(Basis.from_euler(Vector3(PI * 0.5, a, 0)),
 				base + Vector3(cos(a) * 3.2, 3.4, sin(a) * 3.2)))
-	_multimesh(root, "Coins", _coin(), coins)
+	# コインは自転させる。「取れそう」に見えるのは動いている時だけ
+	var coin_phase: Array = []
+	for i in coins.size():
+		coin_phase.append(fmod(i * 0.37, 1.0))
+	var coin_mesh := _coin()
+	coin_mesh.material = float_material(Color(1, 0.78, 0.1), 0.9, 0.0, 0.3, 2.2, 1.4)
+	_multimesh(root, "Coins", coin_mesh, coins, 90.0, coin_phase, 1.0)
 
 	# チェッカー旗: 外壁沿いの目印
 	var flags: Array[Transform3D] = []
@@ -985,6 +1255,22 @@ static func _build_decor(root: Node3D) -> void:
 		flags.append(Transform3D(Basis.IDENTITY, Vector3(-half + 1.5, 2.0, t)))
 		flags.append(Transform3D(Basis.IDENTITY, Vector3(half - 1.5, 2.0, t)))
 	_multimesh(root, "Flags", _flag(), flags, 130.0)
+
+
+## 揺れる装飾のマテリアル（decor_float.gdshader）。
+## 当たり判定が無いので全ピアで揃える必要がなく、シェーダの TIME で動かせる。
+## 当たり判定のある物（動く床・回転床）は GameManager.world_time を使うこと
+static func float_material(c: Color, emission: float, sway: float, bob: float,
+		spin := 0.0, speed := 1.0) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = FLOAT_SHADER
+	m.set_shader_parameter("albedo", c)
+	m.set_shader_parameter("emission_energy", emission)
+	m.set_shader_parameter("sway", sway)
+	m.set_shader_parameter("bob", bob)
+	m.set_shader_parameter("spin", spin)
+	m.set_shader_parameter("speed", speed)
+	return m
 
 
 static func _sphere(c: Color, emission := 0.6) -> Mesh:
@@ -1018,20 +1304,30 @@ static func _flag() -> Mesh:
 	return m
 
 
+## phases を渡すとインスタンスごとの位相が custom data に載り、
+## decor_float.gdshader が揺れをずらせる（全部が同じ動きだと不自然になる）。
+## wobble は揺れの最大幅。フラスタムカリングは元の AABB で判定するので、
+## 広げておかないと揺れて外へ出た分が画面端で急に消える
 static func _multimesh(root: Node3D, node_name: String, mesh: Mesh,
-		transforms: Array[Transform3D], range_end := 90.0) -> void:
+		transforms: Array[Transform3D], range_end := 90.0,
+		phases: Array = [], wobble := 0.0) -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = not phases.is_empty()
 	mm.mesh = mesh
 	mm.instance_count = transforms.size()
 	for i in transforms.size():
 		mm.set_instance_transform(i, transforms[i])
+		if mm.use_custom_data:
+			mm.set_instance_custom_data(i, Color(phases[i], 0.0, 0.0, 0.0))
 	var mmi := MultiMeshInstance3D.new()
 	mmi.name = node_name
 	mmi.multimesh = mm
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mmi.visibility_range_end = range_end
 	mmi.visibility_range_end_margin = 15.0 if range_end > 0.0 else 0.0
+	if wobble > 0.0:
+		mmi.custom_aabb = mm.get_aabb().grow(wobble)
 	root.add_child(mmi)
 
 
@@ -1051,9 +1347,14 @@ static func _multimesh(root: Node3D, node_name: String, mesh: Mesh,
 ## 丸い形は傾斜だけでは防げない（球面の頂点付近は接線角が連続的に0になり、
 ## 半径3mのドームなら直径4.2mの「立てる平地」が天辺にできる）ため、
 ## 形に頼らずこの Area で弾き出す。
+## batch を渡すと、描画は MeshInstance3D ではなく MultiMesh 側へ回す。
+## その場合でもコリジョンはここで同じ size / rot から作るので、
+## 見た目と当たり判定は必ず一致したままになる。
+## shadow=false は影パスから外す（笠木のように真下に本体がある物）
 static func _solid(root: Node3D, node_name: String, pos: Vector3, size: Vector3,
 		mat: Material, kind := Shape.BOX, rot := Vector3.ZERO,
-		layer := 1, no_stand := false) -> StaticBody3D:
+		layer := 1, no_stand := false, shadow := true,
+		batch: Batch = null) -> StaticBody3D:
 	var mesh: Mesh
 	var shape: Shape3D = null
 	match kind:
@@ -1116,9 +1417,15 @@ static func _solid(root: Node3D, node_name: String, pos: Vector3, size: Vector3,
 	body.position = pos
 	body.rotation = rot
 	body.collision_layer = layer
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	body.add_child(mi)
+	if batch != null and Batch.can_batch(kind):
+		batch.add(kind, pos, size, rot, mat, shadow)
+	else:
+		var mi := MeshInstance3D.new()
+		mi.name = "Mesh"  # バンパーの潰し演出がこの名前で引く
+		mi.mesh = mesh
+		if not shadow:
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		body.add_child(mi)
 	var col := CollisionShape3D.new()
 	# 専用シェイプが無い形はメッシュから凸包を起こす。
 	# メッシュのパラメータを変えれば当たり判定も自動で追従する

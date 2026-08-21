@@ -27,6 +27,7 @@ func _on_baked() -> void:
 		await get_tree().physics_frame
 	_report_build()
 	_report_slides()
+	_report_overlaps()
 	_report_paths()
 	await _report_oneway()
 	get_tree().quit()
@@ -94,6 +95,37 @@ func _report_slides() -> void:
 		print("  Slide%d  width %.1fm  top corner %+.3fm vs floor %.1f%s"
 			% [i, size.x, highest - floor_y, floor_y,
 				"" if highest - floor_y < 0.02 else "   <-- 段差あり"])
+
+
+## 滑り台の走路を壁やプロップが貫通していないか。
+##
+## AABB で近似すると 26.6° 傾いたデッキの外接箱が実物よりかなり大きくなり、
+## 貫通していない物まで拾ってしまう。物理エンジンに実際の形で問い合わせて、
+## 見た目どおりの判定にする。
+##
+## 床スラブ（Zone*）は除外する。デッキの下端は SLIDE_END_TUCK の分だけ
+## 低い側の床へ意図的に潜り込ませてあり、これは継ぎ目の段差を消すための設計
+func _report_overlaps() -> void:
+	print("\n--- Slide penetration (must be none) ---")
+	var space := get_world_3d().direct_space_state
+	var hits := 0
+	for body in $NavRegion/Map.get_children():
+		if not String(body.name).begins_with("Slide"):
+			continue
+		for c in body.get_children():
+			if not (c is CollisionShape3D):
+				continue
+			var q := PhysicsShapeQueryParameters3D.new()
+			q.shape = c.shape
+			q.transform = c.global_transform
+			q.collision_mask = 1  # World レイヤーだけ。滑り台同士(8)は当たらない
+			for r in space.intersect_shape(q, 32):
+				var other: Node = r.collider
+				if String(other.name).begins_with("Zone"):
+					continue
+				hits += 1
+				print("  %s <- %s が貫通 %s" % [body.name, other.name, other.global_position])
+	print("  penetrations: %d" % hits)
 
 
 func _report_paths() -> void:

@@ -9,9 +9,17 @@ const CPU_SCENE := preload("res://scenes/cpu_hunter.tscn")
 const BANANA_SCENE := preload("res://scenes/gimmicks/banana.tscn")
 const BLOCK_SCENE := preload("res://scenes/gimmicks/placed_block.tscn")
 const INITIAL_SPAWN_RADIUS := 6.0
+## 黄金角。連番で回すと、何人目でも既存の湧き点から最も離れた角度になる
+const SPAWN_ANGLE_STEP := 2.39996
+## 既存のキャラとこれ以上離れていれば湧いてよい（カプセル直径 0.7 の3倍弱）
+const SPAWN_MIN_GAP := 2.0
+## 混み合ったとき外側のリングへ逃がす幅。world_builder の SPAWN_CLEARANCE(10.0) と
+## CORRIDOR_HALF(9.0) の内側に収めるので、遮蔽ブロックの中に湧くことはない
+const SPAWN_RING_STEP := 1.5
 
 var _cpu_counter := 0
 var _drop_counter := 0
+var _spawn_slot := 0
 
 @onready var players: Node3D = $Players
 @onready var nav_region: NavigationRegion3D = $NavRegion
@@ -44,10 +52,19 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("start_round") and multiplayer.is_server():
 		GameManager.request_start_round()
+	elif event.is_action_pressed("toggle_role"):
+		# 役割の立候補は全ピアができる（逃走者の枠は1つなので奪い合いになる）
+		GameManager.toggle_my_role()
+	elif event.is_action_pressed("cycle_runner") and multiplayer.is_server():
+		GameManager.cycle_wanted_runner()
 
 
 func _on_peer_connected(id: int) -> void:
-	_spawn_player(id)
+	# 版数の照合が最初。食い違ったまま進むと「つながっているのに同期しない」になる
+	GameManager.begin_version_check(id)
+	var pos := _spawn_player(id)
+	# 選んだ湧き位置は本人にだけ RPC で伝える（理由は _spawn_player を参照）
+	GameManager.place_player.rpc_id(id, pos)
 	GameManager.sync_to_peer(id)
 
 
@@ -58,16 +75,47 @@ func _on_peer_disconnected(id: int) -> void:
 	GameManager.on_player_left(id)
 
 
-func _spawn_player(id: int) -> void:
+## 湧き位置を決めてプレイヤーを生成し、その座標を返す。
+##
+## sync_position を add_child より前に入れるのは、MultiplayerSpawner の
+## スポーン状態に乗せて**他ピアから見た位置**を正しくするため。
+## ただしスポーン状態は「送り手が権威を持つ同期ノード」の分しか配られず、
+## プレイヤーの権威は本人にあるので、**本人にだけはこの座標が届かない**
+## （本人の画面では原点に出る = 先に居た人と重なる）。
+## そのため呼び出し側が place_player でもう一度本人へ伝える。
+func _spawn_player(id: int) -> Vector3:
 	var player: CharacterBody3D = PLAYER_SCENE.instantiate()
 	player.name = str(id)
-	var angle := randf() * TAU
-	# 地面の高さがゾーンごとに違うため、高めから落として着地させる
-	player.position = Vector3(cos(angle), 0, sin(angle)) * INITIAL_SPAWN_RADIUS + Vector3(0, 4, 0)
-	# レプリケートされるのは position ではなく sync_position。add_child より前に
-	# 入れないとスポーン状態に乗らず、他ピアでは原点に出てしまう
+	player.position = _free_spawn_point()
 	player.sync_position = player.position
 	players.add_child(player)
+	return player.position
+
+
+## 既存のキャラと重ならない湧き位置。
+##
+## 重なったまま出すと CharacterBody3D 同士は move_and_slide() で押し合えないため、
+## 横に重なれば楔状に固まって動けず、相手の頭に乗れば接地扱いで重力が止まり
+## 空中に浮いたままになる（CharacterSeparation はその保険であって、
+## そもそも重ねないのがここの仕事）。
+func _free_spawn_point() -> Vector3:
+	var p := Vector3.ZERO
+	for attempt in 16:
+		var angle := _spawn_slot * SPAWN_ANGLE_STEP
+		var radius := INITIAL_SPAWN_RADIUS + float(attempt / 8) * SPAWN_RING_STEP
+		_spawn_slot += 1
+		# 地面の高さがゾーンごとに違うため、高めから落として着地させる
+		p = Vector3(cos(angle) * radius, 4.0, sin(angle) * radius)
+		if _is_clear(p):
+			break
+	return p
+
+
+func _is_clear(p: Vector3) -> bool:
+	for n in players.get_children():
+		if Vector2(n.position.x - p.x, n.position.z - p.z).length() < SPAWN_MIN_GAP:
+			return false
+	return true
 
 
 ## プレイヤーの置きアイテム。GameManager.request_drop（ホスト）から呼ばれる

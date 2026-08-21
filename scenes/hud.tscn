@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scenes/hud.gd" id="1_hud"]
 
@@ -34,6 +34,46 @@ corner_radius_top_right = 16
 corner_radius_bottom_right = 16
 corner_radius_bottom_left = 16
 
+[sub_resource type="StyleBoxFlat" id="lobby_panel"]
+content_margin_left = 40.0
+content_margin_top = 26.0
+content_margin_right = 40.0
+content_margin_bottom = 26.0
+bg_color = Color(0.07, 0.06, 0.15, 0.95)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.45, 0.9, 1, 0.75)
+corner_radius_top_left = 26
+corner_radius_top_right = 26
+corner_radius_bottom_right = 26
+corner_radius_bottom_left = 26
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_size = 18
+
+[sub_resource type="StyleBoxFlat" id="lobby_list"]
+content_margin_left = 10.0
+content_margin_top = 10.0
+content_margin_right = 10.0
+content_margin_bottom = 10.0
+bg_color = Color(0, 0, 0, 0.28)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="lobby_row"]
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
+bg_color = Color(1, 1, 1, 0.07)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_hud")
 
@@ -54,7 +94,7 @@ grow_horizontal = 2
 
 [node name="RoleLabel" type="Label" parent="RoleBadge"]
 theme_override_font_sizes/font_size = 30
-text = "Waiting..."
+text = "まちかまえ中"
 horizontal_alignment = 1
 
 [node name="TimerRing" type="Control" parent="."]
@@ -93,7 +133,7 @@ size_flags_vertical = 4
 
 [node name="ZoneLabel" type="Label" parent="ZoneChip/Row"]
 theme_override_font_sizes/font_size = 22
-text = "RUNNER ZONE"
+text = "げきちゃく地点"
 
 [node name="MapPanel" type="Control" parent="."]
 visible = false
@@ -147,7 +187,7 @@ grow_horizontal = 2
 theme_override_colors/font_color = Color(1, 0.25, 0.22, 1)
 theme_override_constants/outline_size = 12
 theme_override_font_sizes/font_size = 44
-text = "SPOTTED!"
+text = "見つかった！"
 horizontal_alignment = 1
 
 [node name="ItemSlot" type="PanelContainer" parent="."]
@@ -196,7 +236,7 @@ grow_horizontal = 2
 grow_vertical = 0
 theme_override_font_sizes/font_size = 14
 theme_override_constants/outline_size = 6
-text = "STAMINA"
+text = "スタミナ"
 horizontal_alignment = 1
 
 [node name="StaminaBar" type="Control" parent="."]
@@ -221,6 +261,65 @@ offset_right = 400.0
 offset_bottom = 60.0
 grow_vertical = 2
 theme_override_constants/separation = 8
+
+; 待機中だけ出るロビー。HUD で唯一クリックできる要素なので、
+; hud.gd の _ignore_mouse() はこのノード以下を対象外にしている。
+; ラウンド中は visible=false なので、マウスキャプチャ中の視点操作を邪魔しない
+[node name="Lobby" type="CenterContainer" parent="."]
+visible = false
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Box" type="PanelContainer" parent="Lobby"]
+custom_minimum_size = Vector2(520, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("lobby_panel")
+
+[node name="Col" type="VBoxContainer" parent="Lobby/Box"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="Lobby/Box/Col"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 34
+text = "なかま待ち"
+horizontal_alignment = 1
+
+[node name="Status" type="Label" parent="Lobby/Box/Col"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.75)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 1
+
+[node name="ListBox" type="PanelContainer" parent="Lobby/Box/Col"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("lobby_list")
+
+[node name="List" type="VBoxContainer" parent="Lobby/Box/Col/ListBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="RoleButton" type="Button" parent="Lobby/Box/Col"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "逃げる役になる"
+
+[node name="StartButton" type="Button" parent="Lobby/Box/Col"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "ラウンド開始"
+
+[node name="Hint" type="Label" parent="Lobby/Box/Col"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.6)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 15
+horizontal_alignment = 1
 
 [node name="InfoLabel" type="Label" parent="."]
 anchor_top = 1.0
@@ -253,7 +352,7 @@ theme_override_constants/separation = 10
 layout_mode = 2
 theme_override_font_sizes/font_size = 52
 theme_override_constants/outline_size = 12
-text = "RESULT"
+text = "けっか"
 horizontal_alignment = 1
 
 [node name="ResultSub" type="Label" parent="ResultPanel/Box/Col"]

@@ -9,11 +9,32 @@ extends Node
 signal state_changed(new_state: int)
 ## 「今 誰かに見られている」の変化。HUD のバナーはエッジで駆動する
 signal spotted_changed(is_spotted: bool)
+## 準備中の役割選択が変わった。HUD は毎フレーム読み直しているので購読不要だが、
+## 演出をエッジで駆動したくなったときのために出しておく
+signal roles_changed
 
 enum State { WAITING, PLAYING, RESULT }
 
+## 決着のしかた。HUD の文言はこの値から組み立てる。
+## 結果を表示用の文字列で持って `begins_with("RUNNER")` のように判定すると、
+## 文言を書き換えた瞬間に勝敗判定が黙って壊れるため、状態と表示を分ける
+enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
+
 ## 索敵が視界のみになり「見つかる -> 追われる」が本番になったので、
 ## 以前 150 に縮めた分を戻す。5〜6体で全域を一度掃くのに実効110秒ほどかかる
+## 通信の取り決めの版数。**RPC の引数を足す/減らす/並べ替えたら必ず上げる。**
+##
+## Godot の RPC は「メソッド名と引数の個数」が両ピアで一致していることを前提にしており、
+## 食い違うと `Method expected N argument(s), but called with M` で黙って落ちる。
+## 症状は「つながってはいるのに状態が同期しない・ラウンドが始まらない」で、
+## 原因が非常に分かりにくい。Web 版はブラウザが古いビルドをキャッシュするため
+## 特に起きやすいので、接続直後に突き合わせてはっきり知らせる
+const PROTOCOL_VERSION := 1
+## 参加者から版数の返事が来るのを待つ時間。古いビルドには ack_version 自体が
+## 無いので、無反応もまた「食い違っている」ことの手がかりになる。
+## ただし回線が遅いだけの可能性もあるので、無反応では蹴らず警告に留める
+const VERSION_ACK_TIMEOUT := 10.0
+
 const ROUND_TIME := 180.0
 const RESULT_TIME := 5.0
 ## 「見えないこと」自体がヘッドスタートになったので、初期位置を離れる分で足りる。
@@ -21,7 +42,9 @@ const RESULT_TIME := 5.0
 const HEAD_START := 8.0
 ## 探索速度に線形に効く最大のレバー。きつすぎると感じたらまずここを 5 に戻す
 const SOLO_CPU_COUNT := 6
-const RUNNER_SPAWN := Vector3(0, 2, 0)
+## 逃走者は中央ゾーン。座標を直書きすると ZONE_GROUND[4] == 0.0 に暗黙依存し、
+## 中央の地面高さを変えた瞬間に宙に浮く（あるいは床に埋まる）
+const RUNNER_SPAWN_ZONE := 4
 ## 鬼のスポーンゾーン（辺 -> 角の順）。広いマップでは逃走者の周囲に固めるより
 ## ゾーン中心に散らした方がマップ全体を覆えて機能する。中央(4)は逃走者用
 const HUNTER_SPAWN_ZONES: Array[int] = [1, 3, 5, 7, 0, 2, 6, 8]
@@ -52,10 +75,14 @@ const SPOTTED_HOLD := 1.5
 
 var state: int = State.WAITING
 var runner_id := -1
+## 準備中の「逃げる役」の立候補。枠は1つしかないので peer_id 1個で足りる。
+## -1 = 未定（ラウンド開始時にランダムで選ぶ）。ホストは Tab で誰にでも付け替えられる
+var wanted_runner := -1
 var hunter_mult := 1.0
 var time_left := ROUND_TIME
 var head_start_left := 0.0
-var result_text := ""
+var result_runner_won := false
+var result_reason: int = EndReason.TIME_UP
 var result_left := 0.0  # リザルト表示の残り秒（HUD の "Next round in N" 用）
 ## 動く床・回転床の位相に使う全ピア共通の時計。
 ## 物理 delta は全ピアで固定値なので、ラウンド開始（reliable RPC）で
@@ -67,6 +94,11 @@ var spotted := false      # 今この瞬間、誰かが視認している
 var spotted_zone := -1    # 最後に目撃されたゾーン。-1 = 情報なし
 var intel_left := 0.0
 
+## ホストのロビーに出す警告（参加者のビルドが違う等）
+var peer_notice := ""
+var _peer_notice_left := 0.0
+var _awaiting_version := {}   # ホスト専用。peer_id -> 返事待ちの経過秒
+
 var _sight_timer := 0.0
 var _seer_ids := {}       # ホスト専用。視認中の鬼の instance_id
 var _no_sight_for := 0.0
@@ -75,10 +107,15 @@ var _no_sight_for := 0.0
 func reset() -> void:
 	state = State.WAITING
 	runner_id = -1
+	wanted_runner = -1
 	hunter_mult = 1.0
 	time_left = ROUND_TIME
 	head_start_left = 0.0
-	result_text = ""
+	result_runner_won = false
+	result_reason = EndReason.TIME_UP
+	peer_notice = ""
+	_peer_notice_left = 0.0
+	_awaiting_version.clear()
 	_clear_intel()
 
 
@@ -128,16 +165,85 @@ func _find_player(peer_id: int) -> Node:
 
 ## --- ホスト側ロジック -------------------------------------------------
 
+## 全ピア共通のプレイヤーの並び順。
+## HUD の一覧・Tab の順送り・鬼のスポーン割り当てが食い違わないよう、
+## グループの取得順（不定）ではなく peer_id 順に揃える
+func player_ids() -> Array[int]:
+	var ids: Array[int] = []
+	for p in get_tree().get_nodes_in_group("players"):
+		ids.append(String(p.name).to_int())
+	ids.sort()
+	return ids
+
+
+## --- 準備中の役割選択 ---------------------------------------------------
+## 「逃げる役」は常に1人。誰が立候補しているかを wanted_runner 1個で持ち、
+## 新しく立候補した人が枠を奪う（前の立候補者は自動的に鬼に戻る）。
+## ホストは cycle_wanted_runner() で誰にでも付け替えられる。
+
+## 自分の立候補をトグルする。全ピアが押せる。
+## ホストは rpc_id(1) の自己配信に頼らず直接呼ぶ（player.gd の _request_drop と同じ）
+func toggle_my_role() -> void:
+	if state != State.WAITING:
+		return
+	var me := multiplayer.get_unique_id()
+	var want := wanted_runner != me
+	if multiplayer.is_server():
+		_apply_wanted(me, want)
+	else:
+		request_runner.rpc_id(1, want)
+
+
+## クライアントからの「逃げる役をやりたい / やめる」
+@rpc("any_peer", "reliable")
+func request_runner(want: bool) -> void:
+	if not multiplayer.is_server():
+		return
+	_apply_wanted(multiplayer.get_remote_sender_id(), want)
+
+
+func _apply_wanted(peer_id: int, want: bool) -> void:
+	if not multiplayer.is_server() or state != State.WAITING:
+		return
+	var next := wanted_runner
+	if want:
+		next = peer_id
+	elif wanted_runner == peer_id:
+		next = -1
+	if next != wanted_runner:
+		_set_wanted_runner.rpc(next)
+
+
+## ホスト専用。特定のプレイヤーを逃走者に指名する（ロビーの一覧のクリック）。
+## 既にその人なら未定へ戻す（同じ行をもう一度押したら取り消せる）
+func set_wanted_runner_to(peer_id: int) -> void:
+	if not multiplayer.is_server() or state != State.WAITING:
+		return
+	var next := -1 if wanted_runner == peer_id else peer_id
+	if next != wanted_runner:
+		_set_wanted_runner.rpc(next)
+
+
+## ホスト専用。プレイヤーを順送りして逃走者を指名する（準備中の入れ替え）。
+## 一巡に「未定(-1)」も含めるので、全員鬼＝ランダムに戻すこともできる
+func cycle_wanted_runner() -> void:
+	if not multiplayer.is_server() or state != State.WAITING:
+		return
+	var order: Array = player_ids()
+	if order.is_empty():
+		return
+	order.append(-1)
+	var i := order.find(wanted_runner)
+	_set_wanted_runner.rpc(order[(i + 1) % order.size()])
+
+
 func request_start_round() -> void:
 	if not multiplayer.is_server() or state == State.PLAYING:
 		return
-	var players := get_tree().get_nodes_in_group("players")
-	if players.is_empty():
+	var ids := player_ids()
+	if ids.is_empty():
 		return
 	_clear_cpu_hunters()
-	var ids: Array[int] = []
-	for p in players:
-		ids.append(String(p.name).to_int())
 	# 1人だけならソロモード: 自分が Runner になり CPU 鬼が追う
 	var solo := ids.size() == 1
 	var new_runner: int
@@ -145,11 +251,12 @@ func request_start_round() -> void:
 	if solo:
 		new_runner = ids[0]
 	else:
-		new_runner = ids.pick_random()
+		# 準備中に選ばれた人がいればその人。誰も立候補していなければランダム
+		new_runner = wanted_runner if ids.has(wanted_runner) else ids.pick_random()
 		mult = hunter_mult_for(ids.size() - 1)
 	# スポーン位置: Runner は中央ゾーン、Hunter は外周ゾーンの中心に散らす
 	var spawns := {}
-	spawns[new_runner] = RUNNER_SPAWN
+	spawns[new_runner] = _runner_spawn()
 	var i := 0
 	for id in ids:
 		if id == new_runner:
@@ -164,13 +271,30 @@ func request_start_round() -> void:
 				world.spawn_cpu_hunter(_hunter_spawn(n))
 
 
+func _runner_spawn() -> Vector3:
+	return WorldData.zone_center(RUNNER_SPAWN_ZONE) + Vector3(0, HUNTER_SPAWN_HEIGHT, 0)
+
+
 func _hunter_spawn(i: int) -> Vector3:
-	var zone: int = HUNTER_SPAWN_ZONES[i % HUNTER_SPAWN_ZONES.size()]
-	return WorldData.zone_center(zone) + Vector3(0, HUNTER_SPAWN_HEIGHT, 0)
+	var zones := HUNTER_SPAWN_ZONES.size()
+	var zone: int = HUNTER_SPAWN_ZONES[i % zones]
+	var lap := i / zones
+	if lap == 0:
+		return WorldData.zone_center(zone) + Vector3(0, HUNTER_SPAWN_HEIGHT, 0)
+	# 9人目以降は同じゾーンの2周目。中心に重ねると出た瞬間に固まる/頭に乗るので、
+	# 黄金角で中心からずらす
+	var a := float(lap) * 2.39996
+	var r := 4.0 * float(lap)
+	var p := WorldData.zone_point(zone, cos(a) * r, sin(a) * r)
+	return p + Vector3(0, HUNTER_SPAWN_HEIGHT, 0)
 
 
 func _clear_cpu_hunters() -> void:
 	for cpu in get_tree().get_nodes_in_group("cpu_hunters"):
+		# queue_free() だけではこのフレーム中グループに残る。残っていると
+		# 同フレームにテレポートしたプレイヤーが消滅予定の CPU に乗ってしまい、
+		# cpu_hunter.gd の巡回開始位置の割り当て（グループの人数）も狂う
+		cpu.remove_from_group("cpu_hunters")
 		cpu.queue_free()
 
 
@@ -193,7 +317,7 @@ func _physics_process(delta: float) -> void:
 	var prev_sec := ceili(time_left)
 	time_left -= delta
 	if time_left <= 0.0:
-		_end_round.rpc("RUNNER WINS!  (survived the round)")
+		_end_round.rpc(true, EndReason.TIME_UP)
 		return
 	if ceili(time_left) != prev_sec:
 		_sync_time.rpc(time_left)
@@ -315,7 +439,7 @@ func report_touch(a: Node3D, b: Node3D) -> void:
 	# 片方だけが逃走者のときにだけ成立する（鬼同士の接触は無視）
 	if (a == runner) == (b == runner):
 		return
-	_end_round.rpc("HUNTERS WIN!  (runner tagged)")
+	_end_round.rpc(false, EndReason.TAGGED)
 
 
 ## body_entered は「入った瞬間」しか鳴らないため、
@@ -336,6 +460,12 @@ func _sweep_tag_overlaps() -> void:
 func _process(delta: float) -> void:
 	if state == State.RESULT:
 		result_left = maxf(result_left - delta, 0.0)
+	if _peer_notice_left > 0.0:
+		_peer_notice_left = maxf(_peer_notice_left - delta, 0.0)
+		if _peer_notice_left == 0.0:
+			peer_notice = ""
+	if multiplayer.is_server() and not _awaiting_version.is_empty():
+		_tick_version_checks(delta)
 	# クライアント側はローカルで滑らかに減算し、毎秒の同期で補正する
 	if multiplayer.is_server() or state != State.PLAYING:
 		return
@@ -350,24 +480,106 @@ func _process(delta: float) -> void:
 			spotted_zone = -1
 
 
+## ホストのみ。接続直後に版数を送り、返事が来るまで見張る
+func begin_version_check(peer_id: int) -> void:
+	if not multiplayer.is_server():
+		return
+	_awaiting_version[peer_id] = 0.0
+	check_version.rpc_id(peer_id, PROTOCOL_VERSION)
+
+
+## ホスト -> 参加者。**この2つのシグネチャだけは絶対に変えないこと。**
+## 変えると照合そのものが食い違って、何も知らせられなくなる
+@rpc("authority", "reliable")
+func check_version(host_version: int) -> void:
+	ack_version.rpc_id(1, PROTOCOL_VERSION)
+	if host_version == PROTOCOL_VERSION:
+		return
+	NetworkManager.last_error = (
+		"ゲームのバージョンが違います（ホスト v%d / あなた v%d）。
+"
+		+ "ブラウザなら再読み込み（Ctrl+Shift+R）、PC なら最新版で起動しなおしてください。"
+	) % [host_version, PROTOCOL_VERSION]
+	NetworkManager.leave()
+
+
+## 参加者 -> ホスト
+@rpc("any_peer", "reliable")
+func ack_version(peer_version: int) -> void:
+	if not multiplayer.is_server():
+		return
+	var id := multiplayer.get_remote_sender_id()
+	_awaiting_version.erase(id)
+	if peer_version == PROTOCOL_VERSION:
+		return
+	# 食い違いが確定した場合だけ切る。放っておくと「つながっているのに
+	# 状態が同期しない」まま延々と続き、原因が分からない
+	notify_host("参加者のビルドが違います（あなた v%d / 相手 v%d）。
+Web 版を再デプロイして、ブラウザを再読み込みしてもらってください。"
+		% [PROTOCOL_VERSION, peer_version])
+	multiplayer.multiplayer_peer.disconnect_peer(id)
+
+
+## 返事が来ない参加者を見張る。回線が遅いだけのこともあるので蹴らず警告に留める
+func _tick_version_checks(delta: float) -> void:
+	for id in _awaiting_version.keys():
+		_awaiting_version[id] = _awaiting_version[id] + delta
+		if _awaiting_version[id] < VERSION_ACK_TIMEOUT:
+			continue
+		_awaiting_version.erase(id)
+		notify_host("参加者 %d から応答がありません。
+古いビルドで参加している可能性があります（Web 版の再デプロイと再読み込みを試してください）。" % id)
+
+
+func notify_host(text: String) -> void:
+	peer_notice = text
+	_peer_notice_left = 20.0
+
+
+## 参加した本人へ湧き位置を伝える（ホストのみ呼ぶ）。
+##
+## 位置の権威は各クライアントにあるので、ラウンド開始と同じく本人に動いてもらう。
+## MultiplayerSpawner のスポーン通知より先にこの RPC が着くことがあるため、
+## 自分のプレイヤーが現れるまで数フレーム待つ。
+@rpc("authority", "reliable")
+func place_player(pos: Vector3) -> void:
+	var me := _find_player(multiplayer.get_unique_id())
+	var waited := 0
+	while me == null and waited < 60:
+		await get_tree().process_frame
+		waited += 1
+		me = _find_player(multiplayer.get_unique_id())
+	if me:
+		me.teleport(pos)
+
+
 ## 途中参加者へ現在の状態を送る（ホストのみ呼ぶ）
 func sync_to_peer(peer_id: int) -> void:
 	if multiplayer.is_server():
-		_sync_state.rpc_id(peer_id, state, runner_id, hunter_mult,
-			time_left, head_start_left, result_text, spotted_zone, intel_left, spotted)
+		_sync_state.rpc_id(peer_id, state, runner_id, wanted_runner, hunter_mult,
+			time_left, head_start_left, result_runner_won, result_reason,
+			spotted_zone, intel_left, spotted)
 
 
 func on_player_left(peer_id: int) -> void:
-	if multiplayer.is_server() and state == State.PLAYING and peer_id == runner_id:
-		_end_round.rpc("Round ended (runner disconnected)")
+	if not multiplayer.is_server():
+		return
+	_awaiting_version.erase(peer_id)
+	# 抜けた人が指名されたままだと、次のラウンドで誰も逃走者にならない
+	if wanted_runner == peer_id:
+		_set_wanted_runner.rpc(-1)
+	if state == State.PLAYING and peer_id == runner_id:
+		_end_round.rpc(false, EndReason.RUNNER_LEFT)
 
 
+## リザルトを見せ終えたら WAITING に戻して**止める**。
+## ここで次のラウンドを自動で始めてしまうと役割を選び直す時間が無くなるので、
+## 次はホストが Enter を押すまで始まらない
 func _schedule_next_round() -> void:
 	await get_tree().create_timer(RESULT_TIME).timeout
 	if state != State.RESULT:
 		return
 	_back_to_waiting.rpc()
-	request_start_round()
 
 
 ## --- RPC（ホスト -> 全ピア） -------------------------------------------
@@ -378,7 +590,6 @@ func _start_round(new_runner: int, mult: float, spawns: Dictionary) -> void:
 	hunter_mult = mult
 	time_left = ROUND_TIME
 	head_start_left = HEAD_START
-	result_text = ""
 	state = State.PLAYING
 	world_time = 0.0  # 全ピアのギミック位相をここで揃える
 	_clear_intel()    # 前ラウンドの目撃情報を持ち越さない
@@ -402,15 +613,24 @@ func _sync_head(t: float) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _end_round(text: String) -> void:
+func _end_round(runner_won: bool, reason: int) -> void:
 	state = State.RESULT
 	head_start_left = 0.0
-	result_text = text
+	result_runner_won = runner_won
+	result_reason = reason
 	result_left = RESULT_TIME
 	_clear_intel()
 	state_changed.emit(state)
 	if multiplayer.is_server():
 		_schedule_next_round()
+
+
+## 準備中の立候補の配信。WAITING に戻っても値は持ち越すので、
+## 変えたい人だけが変えればよい
+@rpc("authority", "call_local", "reliable")
+func _set_wanted_runner(id: int) -> void:
+	wanted_runner = id
+	roles_changed.emit()
 
 
 @rpc("authority", "call_local", "reliable")
@@ -443,18 +663,21 @@ func _sync_intel(left: float) -> void:
 
 
 @rpc("authority", "call_remote", "reliable")
-func _sync_state(s: int, r_id: int, mult: float, t: float, head: float, res: String,
-		zone: int, intel: float, live: bool) -> void:
+func _sync_state(s: int, r_id: int, wanted: int, mult: float, t: float, head: float,
+		won: bool, reason: int, zone: int, intel: float, live: bool) -> void:
 	state = s
 	runner_id = r_id
+	wanted_runner = wanted
 	hunter_mult = mult
 	time_left = t
 	head_start_left = head
-	result_text = res
+	result_runner_won = won
+	result_reason = reason
 	spotted_zone = zone
 	intel_left = intel
 	var was := spotted
 	spotted = live
 	state_changed.emit(state)
+	roles_changed.emit()
 	if was != live:
 		spotted_changed.emit(live)

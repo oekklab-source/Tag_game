@@ -21,6 +21,12 @@ properties/1/replication_mode = 1
 properties/2/path = NodePath(".:diving")
 properties/2/spawn = true
 properties/2/replication_mode = 2
+properties/3/path = NodePath(".:sync_speed")
+properties/3/spawn = true
+properties/3/replication_mode = 1
+properties/4/path = NodePath(".:sync_air")
+properties/4/spawn = true
+properties/4/replication_mode = 2
 
 [node name="CPUHunter" type="CharacterBody3D"]
 collision_layer = 2

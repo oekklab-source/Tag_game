@@ -25,9 +25,9 @@ const AXIS_CENTER: Array[float] = [-53.5, 0.0, 53.5]
 const AXIS_SIZE: Array[float] = [53.0, 54.0, 53.0]
 
 const ZONE_NAMES: Array[String] = [
-	"CLOUD DECK", "PIPE YARD", "BLOCK PLAZA",
-	"GARDEN GREEN", "CASTLE COURT", "BOOST CIRCUIT",
-	"SPRING VALLEY", "LIFT HARBOR", "SKY STEPS",
+	"くもの展望台", "どかんヤード", "ブロック広場",
+	"みどりの庭", "おしろ広場", "ブーストサーキット",
+	"バネの谷", "リフト港", "そらの階段",
 ]
 
 ## 各ゾーンの地面の高さ。段丘状に高低差をつけ、隣接ゾーン間はスロープで繋ぐ

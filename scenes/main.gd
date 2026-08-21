@@ -3,6 +3,7 @@ extends Control
 ## ロビー画面。ホスト開始（PC のみ）またはアドレスを指定して参加する。
 
 @onready var status_label: Label = $CenterContainer/VBox/StatusLabel
+@onready var version_label: Label = $VersionLabel
 @onready var host_button: Button = $CenterContainer/VBox/HostButton
 @onready var address_edit: LineEdit = $CenterContainer/VBox/JoinRow/AddressEdit
 @onready var join_button: Button = $CenterContainer/VBox/JoinRow/JoinButton
@@ -14,6 +15,8 @@ func _ready() -> void:
 		host_button.visible = false
 	status_label.text = NetworkManager.last_error
 	NetworkManager.last_error = ""
+	# ホストと参加者でここが違うと通信が噛み合わない。ひと目で分かるように出す
+	version_label.text = "v%d" % GameManager.PROTOCOL_VERSION
 	host_button.pressed.connect(_on_host_pressed)
 	join_button.pressed.connect(_on_join_pressed)
 	# 配布リンク（.../?s=xxxx.trycloudflare.com）から開かれた場合はそのまま参加する
@@ -42,12 +45,16 @@ func _server_from_query() -> String:
 
 
 func _on_host_pressed() -> void:
-	NetworkManager.start_host()
+	if NetworkManager.start_host():
+		return
+	# 始められなかった（たいていはポートの取り合い）。理由をその場で見せる
+	status_label.text = NetworkManager.last_error
+	NetworkManager.last_error = ""
 
 
 func _on_join_pressed() -> void:
 	var address := address_edit.text.strip_edges()
 	if address.is_empty():
-		status_label.text = "Enter the host address"
+		status_label.text = "ホストのアドレスを入力してください"
 		return
 	NetworkManager.start_client(address)

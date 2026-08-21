@@ -31,9 +31,9 @@ const DANGER_FAR := 28.0   # この距離からヴィネットが出はじめる
 const DANGER_NEAR := 7.0   # この距離で最大になる
 
 const TOAST_TEXT := {
-	Player.Effect.BOOST: "BOOST!",
-	Player.Effect.WARP: "WARP!",
-	Player.Effect.STUN: "SLIPPED!",
+	Player.Effect.BOOST: "ブースト！",
+	Player.Effect.WARP: "ワープ！",
+	Player.Effect.STUN: "すべった！",
 }
 const TOAST_COLOR := {
 	Player.Effect.BOOST: Color(0.4, 1.0, 1.0),
@@ -43,14 +43,14 @@ const TOAST_COLOR := {
 ## 持ち物の表示名と色（Player.Item と対応）
 const ITEM_INFO := {
 	Player.Item.NONE: ["- - -", Color(1, 1, 1, 0.35)],
-	Player.Item.ROCKET: ["ROCKET", Color(1.0, 0.55, 0.3)],
-	Player.Item.BANANA: ["BANANA", Color(1.0, 0.86, 0.2)],
-	Player.Item.BLOCK: ["BLOCK", Color(0.45, 0.85, 1.0)],
+	Player.Item.ROCKET: ["ロケット", Color(1.0, 0.55, 0.3)],
+	Player.Item.BANANA: ["バナナ", Color(1.0, 0.86, 0.2)],
+	Player.Item.BLOCK: ["ブロック", Color(0.45, 0.85, 1.0)],
 }
 ## バフの表示名と、残量ゲージの基準になる持続時間
 const BUFF_INFO := {
-	&"speed": ["SPEED", 6.0, Color(1.0, 0.85, 0.25)],
-	&"jump": ["JUMP", 8.0, Color(0.55, 0.8, 1.0)],
+	&"speed": ["スピード", 6.0, Color(1.0, 0.85, 0.25)],
+	&"jump": ["ジャンプ", 8.0, Color(0.55, 0.8, 1.0)],
 }
 
 var _local_player: Player
@@ -60,6 +60,8 @@ var _banner_hiding := false
 var _sb_full: StyleBoxFlat
 var _sb_low: StyleBoxFlat
 var _sb_empty: StyleBoxFlat
+var _sb_row: StyleBoxFlat
+var _roster_key := ""
 
 @onready var vignette: TextureRect = $Vignette
 @onready var role_badge: PanelContainer = $RoleBadge
@@ -77,8 +79,15 @@ var _sb_empty: StyleBoxFlat
 @onready var item_slot: PanelContainer = $ItemSlot
 @onready var item_label: Label = $ItemSlot/ItemLabel
 @onready var buff_tray: HBoxContainer = $BuffTray
+@onready var stamina_label: Label = $StaminaLabel
 @onready var stamina_bar: Control = $StaminaBar
 @onready var toast_tray: VBoxContainer = $ToastTray
+@onready var lobby: CenterContainer = $Lobby
+@onready var lobby_status: Label = $Lobby/Box/Col/Status
+@onready var lobby_list: VBoxContainer = $Lobby/Box/Col/ListBox/List
+@onready var lobby_role_button: Button = $Lobby/Box/Col/RoleButton
+@onready var lobby_start_button: Button = $Lobby/Box/Col/StartButton
+@onready var lobby_hint: Label = $Lobby/Box/Col/Hint
 @onready var info_label: Label = $InfoLabel
 @onready var result_panel: CenterContainer = $ResultPanel
 @onready var result_title: Label = $ResultPanel/Box/Col/ResultTitle
@@ -97,8 +106,11 @@ func _ready() -> void:
 	_sb_full = _bar_style(Color(0.3, 0.95, 0.55))
 	_sb_low = _bar_style(Color(1.0, 0.35, 0.35))
 	_sb_empty = _bar_style(Color(1, 1, 1, 0.13))
+	_sb_row = _row_style()
 	vignette.texture = _radial_texture()
 	vignette.modulate = Color(1.0, 0.12, 0.12, 0.0)
+	lobby_role_button.pressed.connect(GameManager.toggle_my_role)
+	lobby_start_button.pressed.connect(GameManager.request_start_round)
 
 
 ## HUD には操作可能なウィジェットが一つも無いので、全 Control をマウス無視にする。
@@ -110,10 +122,26 @@ func _ready() -> void:
 ## Control が STOP のままだと必ずこうなる。
 ## 個別ノードに書くのではなく再帰で潰すのは、UI を足した時に再発させないため。
 func _ignore_mouse(node: Node) -> void:
+	# ロビーだけは唯一の操作できる UI なので触らない。
+	# 待機中しか visible にならないので、ラウンド中に視点操作を奪うことはない
+	if node == lobby:
+		return
 	if node is Control:
 		node.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for c in node.get_children():
 		_ignore_mouse(c)
+
+
+## ロビーの一覧の行。コードで作る行にも .tscn 側と同じ角丸を効かせる
+func _row_style() -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(1, 1, 1, 0.07)
+	sb.set_corner_radius_all(12)
+	sb.content_margin_left = 14.0
+	sb.content_margin_right = 14.0
+	sb.content_margin_top = 8.0
+	sb.content_margin_bottom = 8.0
+	return sb
 
 
 func _bar_style(c: Color) -> StyleBoxFlat:
@@ -156,17 +184,18 @@ func _update_labels() -> void:
 	var is_runner := my_id == GameManager.runner_id
 	match GameManager.state:
 		GameManager.State.WAITING:
-			role_label.text = "Waiting..."
-			role_label.modulate = Color.WHITE
+			# 待機中の情報はロビーに集約する。ここにも出すと二重になって散らかる
+			role_badge.visible = false
 			timer_label.text = ""
 			zone_chip.visible = false
 			result_panel.visible = false
 		GameManager.State.PLAYING, GameManager.State.RESULT:
+			role_badge.visible = true
 			if is_runner:
-				role_label.text = "RUN AWAY!"
+				role_label.text = "にげろ！"
 				role_label.modulate = COLOR_RUNNER
 			else:
-				role_label.text = "HUNTER - CATCH THE RUNNER!"
+				role_label.text = "おに ― にげる人をつかまえろ！"
 				role_label.modulate = COLOR_HUNTER
 			if GameManager.head_start_left > 0.0:
 				timer_label.text = "%d" % ceili(GameManager.head_start_left)
@@ -180,17 +209,111 @@ func _update_labels() -> void:
 	if spotted_banner.visible and (not is_runner or not GameManager.spotted):
 		_hide_spotted_banner()
 
-	var lines := PackedStringArray(["Click: capture mouse / Esc: release"])
+	_update_lobby()
+
+	var lines := PackedStringArray()
 	if GameManager.state == GameManager.State.WAITING:
-		if multiplayer.is_server():
-			var count := get_tree().get_nodes_in_group("players").size()
-			lines.append("Players: %d   Press Enter to start round (alone = vs CPU)" % count)
-		else:
-			lines.append("Waiting for the host to start the round...")
-	elif GameManager.head_start_left > 0.0:
-		lines.append("HEAD START - RUN!" if my_id == GameManager.runner_id
-			else "HEAD START - hunters are frozen")
-	info_label.text = "\n".join(lines)
+		lines.append("Esc: マウスを離してロビーを操作")
+	else:
+		lines.append("クリック: 視点を操作 / Esc: マウスを離す")
+		if GameManager.head_start_left > 0.0:
+			lines.append("にげる時間！ 今のうちに走れ" if is_runner
+				else "にげる時間 ― おには動けない")
+	info_label.text = "
+".join(lines)
+
+
+## --- 待機中のロビー -----------------------------------------------------
+## HUD で唯一クリックできる UI。誰が逃げる役かをひと目で分かるようにして、
+## 「開始のしかたが分からない」を無くすのがここの役目。
+## キー操作（R / Enter）も同じことができる
+func _update_lobby() -> void:
+	var waiting := GameManager.state == GameManager.State.WAITING
+	lobby.visible = waiting
+	if not waiting:
+		return
+
+	var me := multiplayer.get_unique_id()
+	var ids := GameManager.player_ids()
+	var is_host := multiplayer.is_server()
+	# 版数を出しておくと、古いビルドが混ざったときに見ただけで分かる
+	lobby_status.text = "%s ／ %d人が参加中 ／ v%d" % ["ホスト（あなた）" if is_host
+		else "参加中（ホストは別の人）", ids.size(), GameManager.PROTOCOL_VERSION]
+
+	_rebuild_roster(ids, me, is_host)
+
+	var i_am_runner := GameManager.wanted_runner == me
+	lobby_role_button.text = "おにに戻る" if i_am_runner else "逃げる役になる"
+	lobby_start_button.visible = is_host
+	lobby_start_button.disabled = ids.is_empty()
+	if not GameManager.peer_notice.is_empty():
+		# ビルドの食い違いなど、放っておくと原因の分からない不具合になるものを出す
+		lobby_hint.text = GameManager.peer_notice
+		lobby_hint.modulate = Color(1.0, 0.55, 0.4)
+	elif is_host:
+		lobby_hint.text = "R キー: 役割を切りかえ　Tab キー: 逃げる役を指名　Enter キー: 開始"
+		lobby_hint.modulate = Color.WHITE
+	else:
+		lobby_hint.text = "R キー: 役割を切りかえ　― ホストが始めるのを待っています"
+		lobby_hint.modulate = Color.WHITE
+
+
+## 一覧は毎フレーム作り直さず、中身が変わったときだけ組み直す
+func _rebuild_roster(ids: Array[int], me: int, is_host: bool) -> void:
+	var key := "%s|%d|%d" % [ids, GameManager.wanted_runner, int(is_host)]
+	if key == _roster_key:
+		return
+	_roster_key = key
+	for c in lobby_list.get_children():
+		lobby_list.remove_child(c)
+		c.queue_free()
+	if ids.is_empty():
+		lobby_list.add_child(_roster_note("だれもいません"))
+		return
+	for id in ids:
+		lobby_list.add_child(_roster_row(id, me, is_host))
+	if GameManager.wanted_runner < 0:
+		lobby_list.add_child(_roster_note("逃げる役が未定です（開始時にランダムで決まります）"))
+
+
+## 1行 = 名前 + 役割バッジ。ホストなら行ごとクリックして指名できる
+func _roster_row(id: int, me: int, is_host: bool) -> Control:
+	var is_runner := id == GameManager.wanted_runner
+	var row := PanelContainer.new()
+	row.add_theme_stylebox_override("panel", _sb_row)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 12)
+	var name_label := Label.new()
+	name_label.text = "あなた" if id == me else "プレイヤー %d" % id
+	name_label.add_theme_font_size_override("font_size", 19)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var badge := Label.new()
+	badge.text = "にげる" if is_runner else "おに"
+	badge.add_theme_font_size_override("font_size", 19)
+	badge.modulate = COLOR_RUNNER if is_runner else COLOR_HUNTER
+	h.add_child(name_label)
+	h.add_child(badge)
+	row.add_child(h)
+	if not is_host:
+		return row
+	# ホストだけ、行を押して逃げる役を付け替えられる
+	var btn := Button.new()
+	btn.flat = true
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.tooltip_text = "この人を逃げる役にする"
+	btn.pressed.connect(func() -> void: GameManager.set_wanted_runner_to(id))
+	btn.set_anchors_preset(Control.PRESET_FULL_RECT)
+	row.add_child(btn)
+	return row
+
+
+func _roster_note(text: String) -> Control:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 15)
+	l.modulate = Color(1, 1, 1, 0.55)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	return l
 
 
 ## 鬼にだけ、共有された目撃情報を見せる。
@@ -203,15 +326,15 @@ func _update_zone_chip(is_runner: bool) -> void:
 	zone_chip.visible = true
 	var zone: int = GameManager.spotted_zone
 	if zone < 0:
-		zone_label.text = "NO INTEL"
+		zone_label.text = "手がかりなし"
 		zone_swatch.color = Color(0.32, 0.32, 0.38)
 		zone_chip.modulate.a = 1.0
 	elif GameManager.spotted:
-		zone_label.text = "SPOTTED  %s" % WorldData.zone_name(zone)
+		zone_label.text = "発見！　%s" % WorldData.zone_name(zone)
 		zone_swatch.color = WorldData.zone_color(zone)
 		zone_chip.modulate.a = 0.75 + 0.25 * sin(Time.get_ticks_msec() * 0.012)
 	else:
-		zone_label.text = "LAST SEEN  %s  %ds" % [
+		zone_label.text = "さっき目撃　%s　あと%d秒" % [
 			WorldData.zone_name(zone), maxi(ceili(GameManager.intel_left), 0)]
 		zone_swatch.color = WorldData.zone_color(zone).darkened(0.35)
 		zone_chip.modulate.a = 1.0
@@ -221,14 +344,19 @@ func _update_result(is_runner: bool) -> void:
 	result_panel.visible = GameManager.state == GameManager.State.RESULT
 	if not result_panel.visible:
 		return
-	var runner_won := GameManager.result_text.begins_with("RUNNER")
-	result_title.text = "RUNNER WINS" if runner_won else "HUNTERS WIN"
-	result_title.modulate = COLOR_RUNNER if runner_won else COLOR_HUNTER
-	if runner_won:
-		result_sub.text = "Survived the full round" if is_runner else "The runner got away"
+	var won: bool = GameManager.result_runner_won
+	if GameManager.result_reason == GameManager.EndReason.RUNNER_LEFT:
+		result_title.text = "ちゅうだん"
+		result_title.modulate = COLOR_GOLD
+		result_sub.text = "逃げる人が抜けました"
 	else:
-		result_sub.text = "You were tagged" if is_runner else "Runner tagged!"
-	result_next.text = "Next round in %d..." % maxi(ceili(GameManager.result_left), 0)
+		result_title.text = "にげきった！" if won else "つかまえた！"
+		result_title.modulate = COLOR_RUNNER if won else COLOR_HUNTER
+		if won:
+			result_sub.text = "最後まで逃げきった" if is_runner else "逃げる人に逃げきられた"
+		else:
+			result_sub.text = "つかまってしまった" if is_runner else "逃げる人をつかまえた"
+	result_next.text = "%d秒後になかま待ちにもどります" % maxi(ceili(GameManager.result_left), 0)
 	result_next.modulate = COLOR_GOLD
 
 
@@ -256,7 +384,9 @@ func _on_timer_draw() -> void:
 ## --- スタミナ（分割ゲージ） ---------------------------------------------
 
 func _update_stamina(player: Player) -> void:
-	stamina_bar.visible = player != null
+	var show := player != null and GameManager.state != GameManager.State.WAITING
+	stamina_bar.visible = show
+	stamina_label.visible = show
 
 
 func _on_stamina_draw() -> void:
@@ -288,7 +418,7 @@ func _on_item_changed(held: int) -> void:
 	if held == Player.Item.NONE:
 		return  # 使い切った時はトーストを出さない
 	var info: Array = ITEM_INFO.get(held, ITEM_INFO[Player.Item.NONE])
-	_toast("%s  (E)" % info[0], info[1])
+	_toast("%s を手に入れた（E キー）" % info[0], info[1])
 
 
 ## --- バフ表示（ローカルプレイヤーのバフを直接読む） ------------------------
@@ -464,6 +594,10 @@ func _map_point(world: Vector3) -> Vector2:
 ## --- 演出（状態遷移とトースト） ------------------------------------------
 
 func _on_state_changed(new_state: int) -> void:
+	# ロビーは HUD で唯一クリックできる UI。待機中に戻ったらマウスを返す
+	# （毎フレームやると待機中に視点を回せなくなるので、状態が変わった瞬間だけ）
+	if new_state == GameManager.State.WAITING:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if new_state != GameManager.State.PLAYING:
 		_hide_spotted_banner()  # 見られたままラウンドが終わる（＝捕まる）ので必ず消す
 	if new_state == GameManager.State.PLAYING:

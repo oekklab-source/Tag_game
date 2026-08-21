@@ -1,5 +1,9 @@
 [gd_resource type="Theme" format=3 uid="uid://d2wmg5g7tg0uc"]
 
+; Godot の既定フォントは日本語のグリフを持たず、UI が全部豆腐（□）になる。
+; 丸ゴシックなのでポップな見た目とも合う（ライセンスは ui/fonts/OFL.txt）
+[ext_resource type="FontFile" uid="uid://blj3ujq0wybpb" path="res://ui/fonts/MPLUSRounded1c-Bold.ttf" id="1_font"]
+
 [sub_resource type="StyleBoxEmpty" id="empty"]
 
 [sub_resource type="StyleBoxFlat" id="btn_hover"]
@@ -90,6 +94,7 @@ corner_radius_bottom_right = 22
 corner_radius_bottom_left = 22
 
 [resource]
+default_font = ExtResource("1_font")
 default_font_size = 20
 Button/colors/font_color = Color(1, 1, 1, 1)
 Button/colors/font_hover_color = Color(1, 1, 1, 1)

@@ -32,14 +32,18 @@ func _process(_delta: float) -> bool:
 
 	print("--- state machine ---")
 	humanoid.set_color(Color(0.9, 0.25, 0.25))
-	humanoid.update_motion(8.0, true)
+	# update_motion は速度を時定数で平滑化する（ネットワーク越しの推定値が
+	# 跳ねても脚の回転が痙攣しないように）。1秒ぶんの delta を渡せば収束するので、
+	# 1回の呼び出しで最終状態を見られる
+	var step := 1.0
+	humanoid.update_motion(8.0, true, step)
 	print("  run     -> %s speed_scale=%.2f" % [player.current_animation, player.speed_scale])
-	humanoid.update_motion(0.0, true)
+	humanoid.update_motion(0.0, true, step)
 	print("  idle    -> %s" % player.current_animation)
-	humanoid.update_motion(4.0, false)
+	humanoid.update_motion(4.0, false, step)
 	print("  air     -> %s" % player.current_animation)
 	humanoid.set_diving(true)
-	humanoid.update_motion(9.0, true)
+	humanoid.update_motion(9.0, true, step)
 	print("  diving  -> %s" % player.current_animation)
 
 	var body: MeshInstance3D = humanoid.get_node("Model").find_child("Body", true, false)

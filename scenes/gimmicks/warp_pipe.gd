@@ -8,6 +8,11 @@ extends StaticBody3D
 
 const EXIT_HEIGHT := 3.0   # 出口の土管の上どれだけ高い位置に出すか
 const EXIT_UP := 6.0       # 飛び出す勢い
+## 出口で足す水平方向の勢い。真上にしか飛ばさないと、入った時と同じ座標へ
+## そのまま落ちてくる。空中では横移動が弱い（AIR_ACCEL）ので、無入力だと
+## warp_lock(0.9s) が切れる前後で同じ土管の口へ戻って再突入し、無限ループになる。
+## 「進行方向」に軽く逃がしておけば、無操作でも口の外へ着地する
+const EXIT_FORWARD := 4.0
 ## CPU は「今向かっている場所までの距離がこれ以上短くなる」時だけ入る。
 ## そうしないと単に近くを通っただけで意味なくワープしてしまう。
 ## 基準は逃走者ではなく CPU の目的地であること — 逃走者を基準にすると、
@@ -28,7 +33,13 @@ func _on_mouth_entered(body: Node3D) -> void:
 		return  # 出口側の土管で即座に戻ってしまうのを防ぐ
 	if body.is_in_group("cpu_hunters") and not _cpu_wants(body):
 		return
-	body.warp_to(pair.global_position + Vector3(0, EXIT_HEIGHT, 0), EXIT_UP)
+	# 「進行方向」= 入った時に実際に動いていた向き。移動していなければ
+	# 向いている方向で代える（直立で突っ込んでも真上だけには飛ばさない）
+	var vel_flat := Vector3(body.velocity.x, 0.0, body.velocity.z)
+	var dir := (vel_flat.normalized() if vel_flat.length() > 0.5
+		else -body.global_transform.basis.z)
+	body.warp_to(pair.global_position + Vector3(0, EXIT_HEIGHT, 0), EXIT_UP,
+		dir * EXIT_FORWARD)
 
 
 func _cpu_wants(cpu: Node3D) -> bool:

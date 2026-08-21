@@ -56,6 +56,7 @@ const SLIDE_STEER := Player.SLIDE_STEER
 const SLIDE_MIN_SPEED := Player.SLIDE_MIN_SPEED
 const SLIDE_SNAP := Player.SLIDE_SNAP
 const SLIDE_GRACE := Player.SLIDE_GRACE
+const WARP_GRACE := Player.WARP_GRACE
 ## ダイブもプレイヤーと同じ性能にする。鬼だけ速い/遅いと追跡バランスが崩れる
 const DIVE_SPEED := Player.DIVE_SPEED
 const DIVE_UP := Player.DIVE_UP
@@ -72,13 +73,13 @@ var slide_accel := 0.0
 var slide_cap := 0.0
 var slide_left := 0.0
 var warp_lock := 0.0
+var warp_grace := 0.0
 
 var diving := false
 var dive_recover := 0.0
 var dive_cooldown := 0.0
 
 var _repath_timer := 0.0
-var _last_pos := Vector3.ZERO
 var _flank_angle := 0.0
 var _mind: int = Mind.PATROL
 var _patrol_i := 0
@@ -97,6 +98,10 @@ var _sidestep_goal := Vector3.ZERO
 ## 位置の扱いはプレイヤーと揃えておく
 @export var sync_position := Vector3.ZERO
 @export var sync_yaw := 0.0
+## 歩行モーション用。player.gd と同じ理由で、受け取る側で位置の変化から
+## 割り出さずサーバが実測した値を配る（あちらのコメントを参照）
+@export var sync_speed := 0.0
+@export var sync_air := false
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
 @onready var humanoid: Node3D = $Humanoid
@@ -111,7 +116,6 @@ func _ready() -> void:
 	else:
 		position = sync_position
 		rotation.y = sync_yaw
-	_last_pos = global_position
 	$TagArea.body_entered.connect(_on_tag_area_body_entered)
 	# 個体ごとに狙う位置をずらし、再経路探索のタイミングも散らす
 	_flank_angle = randf() * TAU
@@ -129,16 +133,12 @@ func _on_tag_area_body_entered(body: Node3D) -> void:
 
 
 func _process(delta: float) -> void:
-	# 歩行モーションは全ピアで位置差分から駆動する
 	if delta <= 0.0:
 		return
 	if not multiplayer.is_server():
 		_follow_sync(delta)
-	var vel_est := (global_position - _last_pos) / delta
-	_last_pos = global_position
-	var hspeed := Vector2(vel_est.x, vel_est.z).length()
 	humanoid.set_diving(diving)
-	humanoid.update_motion(hspeed, absf(vel_est.y) < 1.5)
+	humanoid.update_motion(sync_speed, not sync_air, delta)
 	humanoid.rotation.x = lerpf(humanoid.rotation.x,
 		DIVE_PITCH if diving else 0.0, minf(delta * 12.0, 1.0))
 
@@ -151,7 +151,11 @@ func _physics_process(delta: float) -> void:
 	warp_lock = maxf(warp_lock - delta, 0.0)
 	stun_left = maxf(stun_left - delta, 0.0)
 
-	if not is_on_floor():
+	# player.gd と同じ。他キャラの頭の上を接地扱いすると重力が止まり、
+	# 相手に乗ったまま空中で静止する
+	var grounded := is_on_floor() and not CharacterSeparation.on_character(self)
+
+	if warp_grace > 0.0 or not grounded:
 		velocity += get_gravity() * delta
 	dive_cooldown = maxf(dive_cooldown - delta, 0.0)
 	_tick_dive(delta)
@@ -195,7 +199,7 @@ func _physics_process(delta: float) -> void:
 			dir = dir.normalized() if dir.length() > 0.05 else Vector3.ZERO
 			# 見えている逃走者が手頃な距離にいたら飛びかかる。
 			# プレイヤーと同じくダイブ中は操作できず、外せば起き上がりの隙を晒す
-			if (_mind == Mind.CHASE and is_on_floor() and dive_cooldown <= 0.0
+			if (_mind == Mind.CHASE and grounded and dive_cooldown <= 0.0
 					and h_dist > DIVE_MIN and h_dist < DIVE_MAX and absf(to_runner.y) < 2.0):
 				_start_dive(Vector3(to_runner.x, 0.0, to_runner.z))
 
@@ -211,7 +215,14 @@ func _physics_process(delta: float) -> void:
 			# 降り切った先は経路上の想定外の場所。すぐ引き直す（warp_to と同じ理由）
 			_repath_timer = 0.0
 			_goal_timer = 0.0
-	elif is_on_floor():
+	elif warp_grace > 0.0:
+		# player.gd と同じ理由。ワープ直後の is_on_floor() は1フレーム古く、
+		# それを信じると地上の速度上書きが出口の水平速度を消してしまう
+		warp_grace = maxf(warp_grace - delta, 0.0)
+		if dir != Vector3.ZERO:
+			velocity.x = move_toward(velocity.x, target.x, AIR_STEER * delta)
+			velocity.z = move_toward(velocity.z, target.y, AIR_STEER * delta)
+	elif grounded:
 		floor_snap_length = 0.1
 		var hv := Vector2(velocity.x, velocity.z)
 		if hv.length() > speed + 0.5:
@@ -230,10 +241,17 @@ func _physics_process(delta: float) -> void:
 	if dir != Vector3.ZERO:
 		rotation.y = lerp_angle(rotation.y, atan2(-dir.x, -dir.z), TURN_SPEED * delta)
 
-	velocity += carry_velocity
+	# 重なりをほどく速度は carry_velocity と同じく一時的に足すだけにする。
+	# velocity に残すと毎フレーム蓄積して吹き飛ぶ
+	var separate := CharacterSeparation.push(self)
+	velocity += carry_velocity + separate
 	move_and_slide()
-	velocity -= carry_velocity
+	velocity -= carry_velocity + separate
 	carry_velocity = Vector3.ZERO
+
+	# 歩行モーションは物理の実測値で駆動する（player.gd と同じ理由）
+	sync_speed = Vector2(velocity.x, velocity.z).length()
+	sync_air = not grounded
 
 	if global_position.y < WorldData.FALL_LIMIT:
 		teleport(WorldData.zone_center(WorldData.zone_index(global_position)) + Vector3(0, 3, 0))
@@ -247,7 +265,6 @@ func _follow_sync(delta: float) -> void:
 	if position.distance_squared_to(sync_position) > NET_SNAP_DIST * NET_SNAP_DIST:
 		position = sync_position
 		rotation.y = sync_yaw
-		_last_pos = global_position
 		return
 	var w := 1.0 - exp(-delta * NET_SMOOTH)
 	position = position.lerp(sync_position, w)
@@ -359,11 +376,11 @@ func get_ai_goal() -> Vector3:
 
 func teleport(pos: Vector3) -> void:
 	global_position = pos
-	_last_pos = pos
 	sync_position = position
 	velocity = Vector3.ZERO
 	buffs.clear()
 	warp_lock = 0.0
+	warp_grace = 0.0
 	slide_left = 0.0
 	diving = false
 	dive_recover = 0.0
@@ -379,11 +396,12 @@ func launch(v: Vector3) -> void:
 	velocity.z += v.z
 
 
-func warp_to(pos: Vector3, up_vel: float) -> void:
+## exit_kick は水平方向の勢い。player.gd の warp_to と同じ理由
+func warp_to(pos: Vector3, up_vel: float, exit_kick := Vector3.ZERO) -> void:
 	global_position = pos
-	_last_pos = pos
-	velocity = Vector3(0, up_vel, 0)
+	velocity = Vector3(exit_kick.x, up_vel, exit_kick.z)
 	warp_lock = 0.9
+	warp_grace = WARP_GRACE
 	slide_left = 0.0
 	_repath_timer = 0.0  # ワープ直後は経路と目的地を引き直す
 	_goal_timer = 0.0

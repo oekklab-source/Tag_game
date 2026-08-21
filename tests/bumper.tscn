@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/bumper.gd" id="1_bumper"]
+
+[node name="BumperTest" type="Node"]
+script = ExtResource("1_bumper")
