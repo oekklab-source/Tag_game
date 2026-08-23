@@ -8,8 +8,12 @@ extends Area3D
 
 const STUN := 1.5
 const LIFETIME := 30.0  # 拾われないまま残り続けないように自然消滅させる
+const FLOOR_MASK := 9   # World(1) + Platform(8)。床・滑り台・置き壁に着地する
+const FLOOR_PROBE := 0.08
 
 var _used := false
+var _fall_velocity := 0.0
+var _landed := false
 
 
 func _ready() -> void:
@@ -22,6 +26,27 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	rotate_y(delta * 2.0)  # 目印になるよう回しておく
+
+
+func _physics_process(delta: float) -> void:
+	if not multiplayer.is_server() or _used or _landed:
+		return
+	var gravity := float(ProjectSettings.get_setting("physics/3d/default_gravity"))
+	_fall_velocity -= gravity * delta
+	var next := global_position + Vector3(0.0, _fall_velocity * delta, 0.0)
+	var q := PhysicsRayQueryParameters3D.create(
+		global_position + Vector3(0.0, FLOOR_PROBE, 0.0),
+		next - Vector3(0.0, FLOOR_PROBE, 0.0),
+		FLOOR_MASK)
+	q.collide_with_areas = false
+	q.collide_with_bodies = true
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		global_position = next
+	else:
+		global_position = hit.position
+		_fall_velocity = 0.0
+		_landed = true
 
 
 func _on_body_entered(body: Node3D) -> void:
