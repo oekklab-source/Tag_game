@@ -20,21 +20,21 @@ emission_energy_multiplier = 0.5
 
 [sub_resource type="CylinderMesh" id="disc_mesh"]
 material = SubResource("disc_mat")
-top_radius = 3.6
-bottom_radius = 3.6
+top_radius = 5.4
+bottom_radius = 5.4
 height = 0.5
 
 [sub_resource type="BoxMesh" id="mark_mesh"]
 material = SubResource("mark_mat")
-size = Vector3(0.6, 0.06, 6.6)
+size = Vector3(0.6, 0.06, 9.9)
 
 [sub_resource type="CylinderShape3D" id="disc_shape"]
 height = 0.5
-radius = 3.6
+radius = 5.4
 
 [sub_resource type="CylinderShape3D" id="rider_shape"]
 height = 2.4
-radius = 3.6
+radius = 5.4
 
 [node name="RotatingPlatform" type="AnimatableBody3D"]
 collision_layer = 8

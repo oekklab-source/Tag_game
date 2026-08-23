@@ -83,6 +83,7 @@ const SPRING_PADS: Array = [
 	[1, -19.0, 0.0, 0],    # PIPE YARD     -> CLOUD DECK
 	[3, 0.0, -19.0, 0],    # GARDEN GREEN  -> CLOUD DECK
 	[7, 19.0, 0.0, 8],     # LIFT HARBOR   -> SKY STEPS
+	[7, -19.0, 0.0, 8],    # LIFT HARBOR   -> SKY STEPS（対側にも追加）
 	[5, 0.0, 19.0, 8],     # BOOST CIRCUIT -> SKY STEPS
 	[6, -12.0, -12.0, -1],  # SPRING VALLEY
 	[6, 12.0, -12.0, -1],
@@ -137,10 +138,10 @@ const MOVING_PLATFORMS: Array = [
 
 ## 回転床。[ゾーン, ローカルX, 高さ, ローカルZ, 角速度 rad/s]
 const ROTATING_PLATFORMS: Array = [
-	[3, -14.0, 1.2, -14.0, 0.6],
-	[3, 14.0, 1.2, -14.0, -0.6],
-	[3, -14.0, 1.2, 14.0, -0.6],
-	[3, 14.0, 1.2, 14.0, 0.6],
+	[3, -11.0, -0.24, -11.0, 0.6],
+	[3, 11.0, -0.24, -11.0, -0.6],
+	[3, -11.0, -0.24, 11.0, -0.6],
+	[3, 11.0, -0.24, 11.0, 0.6],
 ]
 
 
