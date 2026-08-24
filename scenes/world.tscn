@@ -85,7 +85,7 @@ navigation_mesh = SubResource("nav_mesh")
 [node name="Players" type="Node3D" parent="."]
 
 [node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="."]
-_spawnable_scenes = PackedStringArray("res://scenes/player.tscn", "res://scenes/cpu_hunter.tscn")
+_spawnable_scenes = PackedStringArray("res://scenes/player.tscn", "res://scenes/cpu_hunter.tscn", "res://scenes/cpu_runner.tscn")
 spawn_path = NodePath("../Players")
 
 ; プレイヤーが置くアイテム。NavRegion の外なのでベイク対象にならない

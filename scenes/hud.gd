@@ -86,6 +86,7 @@ var _roster_key := ""
 @onready var lobby_status: Label = $Lobby/Box/Col/Status
 @onready var lobby_list: VBoxContainer = $Lobby/Box/Col/ListBox/List
 @onready var lobby_role_button: Button = $Lobby/Box/Col/RoleButton
+@onready var lobby_debug_cpu_runner_button: CheckButton = $Lobby/Box/Col/DebugCpuRunnerButton
 @onready var lobby_start_button: Button = $Lobby/Box/Col/StartButton
 @onready var lobby_hint: Label = $Lobby/Box/Col/Hint
 @onready var info_label: Label = $InfoLabel
@@ -110,6 +111,7 @@ func _ready() -> void:
 	vignette.texture = _radial_texture()
 	vignette.modulate = Color(1.0, 0.12, 0.12, 0.0)
 	lobby_role_button.pressed.connect(GameManager.toggle_my_role)
+	lobby_debug_cpu_runner_button.toggled.connect(GameManager.set_debug_cpu_runner)
 	lobby_start_button.pressed.connect(GameManager.request_start_round)
 
 
@@ -242,14 +244,24 @@ func _update_lobby() -> void:
 
 	_rebuild_roster(ids, me, is_host)
 
+	var debug_available := is_host and ids.size() == 1
+	if is_host and GameManager.debug_cpu_runner and not debug_available:
+		GameManager.set_debug_cpu_runner(false)
+	lobby_debug_cpu_runner_button.visible = debug_available
+	lobby_debug_cpu_runner_button.set_pressed_no_signal(GameManager.debug_cpu_runner)
+	lobby_debug_cpu_runner_button.text = "デバッグ: CPU逃走者 ON" if GameManager.debug_cpu_runner else "デバッグ: CPU逃走者 OFF"
 	var i_am_runner := GameManager.wanted_runner == me
-	lobby_role_button.text = "おにに戻る" if i_am_runner else "逃げる役になる"
+	lobby_role_button.text = "デバッグ中: あなたは鬼" if GameManager.debug_cpu_runner else ("おにに戻る" if i_am_runner else "逃げる役になる")
+	lobby_role_button.disabled = GameManager.debug_cpu_runner
 	lobby_start_button.visible = is_host
 	lobby_start_button.disabled = ids.is_empty()
 	if not GameManager.peer_notice.is_empty():
 		# ビルドの食い違いなど、放っておくと原因の分からない不具合になるものを出す
 		lobby_hint.text = GameManager.peer_notice
 		lobby_hint.modulate = Color(1.0, 0.55, 0.4)
+	elif is_host and GameManager.debug_cpu_runner:
+		lobby_hint.text = "デバッグ中: あなたが鬼、CPUが逃げる役です。Enter キー: 開始"
+		lobby_hint.modulate = Color.WHITE
 	elif is_host:
 		lobby_hint.text = "R キー: 役割を切りかえ　Tab キー: 逃げる役を指名　Enter キー: 開始"
 		lobby_hint.modulate = Color.WHITE

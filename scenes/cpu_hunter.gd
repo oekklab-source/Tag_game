@@ -1,5 +1,7 @@
 extends CharacterBody3D
 
+const CPU_NAV_ASSIST := preload("res://scenes/cpu_nav_assist.gd")
+
 ## ソロモード用の CPU 鬼。ロジックはホスト（サーバ）でのみ動作し、
 ## 位置・回転は MultiplayerSynchronizer で途中参加者にも配信される。
 ##
@@ -180,13 +182,23 @@ func _physics_process(delta: float) -> void:
 				_goal_timer = 0.0
 			_goal_timer -= delta
 			_update_goal(runner, delta)
-			_avoid_stuck(delta)
+			var assist := CPU_NAV_ASSIST.slide_assist(global_position, _goal)
+			if assist["active"]:
+				_stuck_timer = 0.0
+				_stuck_from = global_position
+				_sidestep_left = 0.0
+			else:
+				_avoid_stuck(delta)
 
+			var nav_goal: Vector3 = _sidestep_goal if _sidestep_left > 0.0 else assist["target"]
 			_repath_timer -= delta
 			if _repath_timer <= 0.0:
 				_repath_timer = REPATH_INTERVAL
-				agent.target_position = _goal
-			var next := agent.get_next_path_position()
+				agent.target_position = nav_goal
+			var next: Vector3 = nav_goal if assist["direct"] else agent.get_next_path_position()
+			if not assist["direct"] and _xz_dist(global_position, next) < 0.2 \
+					and _xz_dist(global_position, nav_goal) > 1.0:
+				next = nav_goal
 			var to_runner := runner.global_position - global_position
 			var h_dist := Vector2(to_runner.x, to_runner.z).length()
 			# 見えている近距離で高低差が小さい、またはナビで到達不能なら直接追跡へ
@@ -197,6 +209,7 @@ func _physics_process(delta: float) -> void:
 			rise = dir.y
 			dir.y = 0.0
 			dir = dir.normalized() if dir.length() > 0.05 else Vector3.ZERO
+			dir = CPU_NAV_ASSIST.avoid_bumpers(global_position, dir, get_tree())
 			# 見えている逃走者が手頃な距離にいたら飛びかかる。
 			# プレイヤーと同じくダイブ中は操作できず、外せば起き上がりの隙を晒す
 			if (_mind == Mind.CHASE and grounded and dive_cooldown <= 0.0
@@ -325,9 +338,7 @@ func _start_dive(toward: Vector3) -> void:
 ## 壁の角や CPU 同士の押し合いにも同じ手で抜けられる
 func _avoid_stuck(delta: float) -> void:
 	if _sidestep_left > 0.0:
-		# _update_goal が毎フレーム本来の目標を書き戻すので、迂回中は上書きし続ける
 		_sidestep_left -= delta
-		_goal = _sidestep_goal
 		return
 	_stuck_timer += delta
 	if _stuck_timer < STUCK_TIME:
@@ -343,7 +354,6 @@ func _avoid_stuck(delta: float) -> void:
 	if _rng.randf() < 0.5:
 		side = -side
 	_sidestep_goal = global_position + side * SIDESTEP_DIST
-	_goal = _sidestep_goal
 	_sidestep_left = SIDESTEP_TIME
 	_repath_timer = 0.0
 
@@ -394,6 +404,8 @@ func launch(v: Vector3) -> void:
 		velocity.y = v.y
 	velocity.x += v.x
 	velocity.z += v.z
+	_repath_timer = 0.0
+	_stuck_from = global_position
 
 
 ## exit_kick は水平方向の勢い。player.gd の warp_to と同じ理由

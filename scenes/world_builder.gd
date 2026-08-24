@@ -33,6 +33,7 @@ const SLIDE_RAIL_W := 0.5
 ## カメラが寄ってしまうのを避けるため
 const SLIDE_RAIL_H := 1.0
 const SLIDE_AREA_HEIGHT := 4.0  # 滑走 Area の厚み。走路の上に立つ抜け道を塞ぐ
+const SLIDE_AREA_SIDE_INSET := 0.05  # 手すり外側を巻き込まないよう左右を少し狭める
 const SLIDE_EXIT_RUN := 1.5     # 出口から先、平地に伸ばす Area の長さ（下側から近づきやすくする）
 const SLIDE_CAP := 18.0         # 滑走の上限速度
 
@@ -757,7 +758,7 @@ static func _slide_area(root: Node3D, n: int, pts: Array[Vector3]) -> void:
 		var basis := Basis.from_euler(rot, EULER_ORDER_YXZ)
 		var col := CollisionShape3D.new()
 		var box := BoxShape3D.new()
-		box.size = Vector3(SLIDE_WIDTH, SLIDE_AREA_HEIGHT, a.distance_to(b))
+		box.size = Vector3(SLIDE_WIDTH - SLIDE_AREA_SIDE_INSET * 2.0, SLIDE_AREA_HEIGHT, a.distance_to(b))
 		col.shape = box
 		col.position = (a + b) * 0.5 + basis.y * (SLIDE_AREA_HEIGHT * 0.5)
 		col.rotation = rot
@@ -908,6 +909,7 @@ static func _bumper(root: Node3D, node_name: String, pos: Vector3, mat: Material
 	var body := _solid(root, node_name, pos + Vector3(0, BUMPER_H * 0.5, 0),
 		Vector3(BUMPER_D, BUMPER_H, BUMPER_D), mat, Shape.SPHERE, Vector3.ZERO, 8,
 		false, false)
+	body.add_to_group("cpu_bumpers")
 	var area := Area3D.new()
 	area.name = "Hit"
 	area.collision_layer = 0
