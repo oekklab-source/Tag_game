@@ -90,6 +90,7 @@ var _rating_shown := false  # ①CPU戦や離脱中断ではレート行を表�
 @onready var lobby_list: VBoxContainer = $Lobby/Box/Col/ListBox/List
 @onready var lobby_role_button: Button = $Lobby/Box/Col/RoleButton
 @onready var lobby_start_button: Button = $Lobby/Box/Col/StartButton
+@onready var lobby_leave_button: Button = $Lobby/Box/Col/LeaveButton
 @onready var lobby_hint: Label = $Lobby/Box/Col/Hint
 @onready var info_label: Label = $InfoLabel
 @onready var result_panel: CenterContainer = $ResultPanel
@@ -117,6 +118,10 @@ func _ready() -> void:
 	vignette.modulate = Color(1.0, 0.12, 0.12, 0.0)
 	lobby_role_button.pressed.connect(GameManager.toggle_my_role)
 	lobby_start_button.pressed.connect(GameManager.request_start_round)
+	# なかま待ち中は接続を切ってタイトルへ戻れる唯一の手段。
+	# ホストが押すと全員切断されるが、それは server_disconnected 経由で
+	# 各参加者が自動的に NetworkManager.leave() されるので既存動作のまま
+	lobby_leave_button.pressed.connect(NetworkManager.leave)
 
 
 ## HUD には操作可能なウィジェットが一つも無いので、全 Control をマウス無視にする。

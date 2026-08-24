@@ -314,6 +314,11 @@ custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 text = "ラウンド開始"
 
+[node name="LeaveButton" type="Button" parent="Lobby/Box/Col"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "たいきしてタイトルへ戻る"
+
 [node name="Hint" type="Label" parent="Lobby/Box/Col"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 0.6)
