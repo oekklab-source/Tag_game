@@ -12,6 +12,8 @@ signal spotted_changed(is_spotted: bool)
 ## 準備中の役割選択が変わった。HUD は毎フレーム読み直しているので購読不要だが、
 ## 演出をエッジで駆動したくなったときのために出しておく
 signal roles_changed
+## ②④ peer_profiles（他ピアのレート/ティア/コスチューム）が更新された
+signal profiles_changed
 
 enum State { WAITING, PLAYING, RESULT }
 
@@ -28,8 +30,9 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## 食い違うと `Method expected N argument(s), but called with M` で黙って落ちる。
 ## 症状は「つながってはいるのに状態が同期しない・ラウンドが始まらない」で、
 ## 原因が非常に分かりにくい。Web 版はブラウザが古いビルドをキャッシュするため
-## 特に起きやすいので、接続直後に突き合わせてはっきり知らせる
-const PROTOCOL_VERSION := 1
+## 特に起きやすいので、接続直後に突き合わせてはっきり知らせる。
+## 2->3: ②④ report_profile/_sync_profiles RPC を追加したため
+const PROTOCOL_VERSION := 3
 ## 参加者から版数の返事が来るのを待つ時間。古いビルドには ack_version 自体が
 ## 無いので、無反応もまた「食い違っている」ことの手がかりになる。
 ## ただし回線が遅いだけの可能性もあるので、無反応では蹴らず警告に留める
@@ -83,7 +86,14 @@ var time_left := ROUND_TIME
 var head_start_left := 0.0
 var result_runner_won := false
 var result_reason: int = EndReason.TIME_UP
+var tagger_peer_id := -1
 var result_left := 0.0  # リザルト表示の残り秒（HUD の "Next round in N" 用）
+## このラウンドがレート対象か。_start_round() で全ピアが各自ローカルに計算する
+## （RPC引数を増やすと PROTOCOL_VERSION を上げる必要が出るため、意図的に同期しない）。
+## 人間が2人以上（自分以外に少なくとも1人）いれば true。CPU戦（自分1人）は常に false
+var round_is_ranked := false
+## このラウンドの鬼の人数（CPU含む）。hud.gd 側での再計算をやめて一本化するために持つ
+var round_hunter_count := 0
 ## 動く床・回転床の位相に使う全ピア共通の時計。
 ## 物理 delta は全ピアで固定値なので、ラウンド開始（reliable RPC）で
 ## 揃えれば以後もずれない。
@@ -99,9 +109,25 @@ var peer_notice := ""
 var _peer_notice_left := 0.0
 var _awaiting_version := {}   # ホスト専用。peer_id -> 返事待ちの経過秒
 
+## ②④ 他ピアのレート/ティア/コスチューム。peer_id -> {"name","rating","tier","costume","colors"}
+var peer_profiles := {}
+## ②ホストが「同じレート帯のみ参加可」を選んでいるか。room_match_dialog がホスト開始前に設定する
+var tier_lock_enabled := false
+
 var _sight_timer := 0.0
 var _seer_ids := {}       # ホスト専用。視認中の鬼の instance_id
 var _no_sight_for := 0.0
+
+
+func _ready() -> void:
+	# ロビー中にプロフィール設定（④コスチューム変更等）が変わったら、繋がっている
+	# 相手にも即座に反映する
+	ProfileManager.profile_updated.connect(_on_profile_updated)
+
+
+func _on_profile_updated() -> void:
+	if NetworkManager.mode != NetworkManager.Mode.NONE and multiplayer.has_multiplayer_peer():
+		broadcast_my_profile()
 
 
 func reset() -> void:
@@ -113,9 +139,14 @@ func reset() -> void:
 	head_start_left = 0.0
 	result_runner_won = false
 	result_reason = EndReason.TIME_UP
+	tagger_peer_id = -1
 	peer_notice = ""
 	_peer_notice_left = 0.0
 	_awaiting_version.clear()
+	round_is_ranked = false
+	round_hunter_count = 0
+	peer_profiles.clear()
+	tier_lock_enabled = false
 	_clear_intel()
 
 
@@ -439,7 +470,11 @@ func report_touch(a: Node3D, b: Node3D) -> void:
 	# 片方だけが逃走者のときにだけ成立する（鬼同士の接触は無視）
 	if (a == runner) == (b == runner):
 		return
-	_end_round.rpc(false, EndReason.TAGGED)
+	var hunter_node: Node3D = b if a == runner else a
+	var tagger_id := -1
+	if hunter_node.is_in_group("players"):
+		tagger_id = String(hunter_node.name).to_int()
+	_end_round.rpc(false, EndReason.TAGGED, tagger_id)
 
 
 ## body_entered は「入った瞬間」しか鳴らないため、
@@ -561,10 +596,61 @@ func sync_to_peer(peer_id: int) -> void:
 			spotted_zone, intel_left, spotted)
 
 
+## ②④ 自分のレート/ティア/コスチュームを相手に知らせる。
+## ホストは全ピアへ即座に配信、参加者はホストへ報告する（ホストが集約して配り直す）
+func broadcast_my_profile() -> void:
+	var payload := _my_profile_payload()
+	if multiplayer.is_server():
+		peer_profiles[1] = payload
+		_sync_profiles.rpc(peer_profiles)
+	else:
+		report_profile.rpc_id(1, payload)
+
+
+func _my_profile_payload() -> Dictionary:
+	return {
+		"name": ProfileManager.player_name,
+		"rating": ProfileManager.rating,
+		"tier": String(RankingManager.tier_id(ProfileManager.rating)),
+		"costume": String(ProfileManager.costume_id),
+		"colors": ProfileManager.colors_to_html(ProfileManager.costume_colors),
+	}
+
+
+## 参加者 -> ホスト
+@rpc("any_peer", "reliable")
+func report_profile(payload: Dictionary) -> void:
+	if not multiplayer.is_server():
+		return
+	var id := multiplayer.get_remote_sender_id()
+	# ②「同じレート帯のみ参加可」ロビーでは、ティアが一致しない参加者を切る。
+	# payload の "tier" 文字列はクライアントの自己申告なので信用せず、同じ payload に
+	# 含まれる "rating" からホスト側で改めてティアを算出する（is_rating_compatible と
+	# 判定基準を共有し、レートは自己申告のままでもティア詐称だけは防ぐ）
+	if tier_lock_enabled and id != 1:
+		var peer_rating := int(payload.get("rating", 1500))
+		if not RankingManager.is_rating_compatible(ProfileManager.rating, peer_rating, 0):
+			notify_host("レート帯が違う参加者の接続を許可しませんでした（このロビーは同じレート帯のみ）。")
+			multiplayer.multiplayer_peer.disconnect_peer(id)
+			return
+	peer_profiles[id] = payload
+	_sync_profiles.rpc(peer_profiles)
+
+
+## ホスト -> 全ピア
+@rpc("authority", "call_local", "reliable")
+func _sync_profiles(all: Dictionary) -> void:
+	peer_profiles = all
+	profiles_changed.emit()
+
+
 func on_player_left(peer_id: int) -> void:
 	if not multiplayer.is_server():
 		return
 	_awaiting_version.erase(peer_id)
+	if peer_profiles.has(peer_id):
+		peer_profiles.erase(peer_id)
+		_sync_profiles.rpc(peer_profiles)
 	# 抜けた人が指名されたままだと、次のラウンドで誰も逃走者にならない
 	if wanted_runner == peer_id:
 		_set_wanted_runner.rpc(-1)
@@ -590,7 +676,13 @@ func _start_round(new_runner: int, mult: float, spawns: Dictionary) -> void:
 	hunter_mult = mult
 	time_left = ROUND_TIME
 	head_start_left = HEAD_START
+	tagger_peer_id = -1
 	state = State.PLAYING
+	# ①レートは人間の対戦相手が2人以上いるときだけ。全ピアがローカルに同じ
+	# player_ids() を見て計算するので、RPC引数を増やさずに済む（PROTOCOL_VERSION据え置き）
+	var humans := player_ids().size()
+	round_is_ranked = humans >= 2
+	round_hunter_count = (humans - 1) if humans >= 2 else SOLO_CPU_COUNT
 	world_time = 0.0  # 全ピアのギミック位相をここで揃える
 	_clear_intel()    # 前ラウンドの目撃情報を持ち越さない
 	state_changed.emit(state)
@@ -613,11 +705,12 @@ func _sync_head(t: float) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _end_round(runner_won: bool, reason: int) -> void:
+func _end_round(runner_won: bool, reason: int, tagger_id: int = -1) -> void:
 	state = State.RESULT
 	head_start_left = 0.0
 	result_runner_won = runner_won
 	result_reason = reason
+	tagger_peer_id = tagger_id
 	result_left = RESULT_TIME
 	_clear_intel()
 	state_changed.emit(state)
@@ -637,8 +730,11 @@ func _set_wanted_runner(id: int) -> void:
 func _back_to_waiting() -> void:
 	state = State.WAITING
 	runner_id = -1
+	tagger_peer_id = -1
 	head_start_left = 0.0
 	result_left = 0.0
+	round_is_ranked = false
+	round_hunter_count = 0
 	_clear_intel()
 	state_changed.emit(state)
 	if multiplayer.is_server():

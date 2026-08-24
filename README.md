@@ -599,20 +599,22 @@ python -m http.server 8123 --directory export/web
 ±10m で探索効率が約±20%動く最も感度の高いパラメータ。きついと感じたら
 まず `SOLO_CPU_COUNT` を 5 に戻すのが安全（CPU の速度は追跡側の値なので触らない）。
 
-## UI が英語表記な理由（日本語化する場合）
+## レーティング (Elo) 計算モデル
 
-Godot 4 標準フォントに日本語グリフがなく、**Web エクスポートでは OS フォントへの
-フォールバックも使えない**ため、ブラウザで日本語が「□（豆腐）」になる。日本語化するには:
+1人の逃走者 (Runner) vs 複数人の鬼 (Hunter) による非対称対戦に最適化した、完全ゼロサム型の Elo 変動アルゴリズムを導入しています。詳細は [docs/RATING_SYSTEM.md](docs/RATING_SYSTEM.md) を参照。
 
-1. [Noto Sans JP](https://fonts.google.com/noto/specimen/Noto+Sans+JP) の .ttf を `ui/` に置く
-2. [ui/pop_theme.tres](ui/pop_theme.tres) の `default_font` に指定
-3. 各 `.gd` / `.tscn` 内の UI 文字列を日本語に置換
+- **時間依存スコア**: 逃げ切れば `1.0`、捕まった場合でも生存時間に応じて `0.0〜0.5` の部分点を獲得（粘るほどレート減少が緩和）。鬼は早期捕獲ほど高得点。
+- **非対称 Kファクター**: 鬼の人数 $N$ に応じて $K_R = 16 \times \sqrt{N}$、$K_H = 16 / \sqrt{N}$ とスケーリングし、レートのインフレ・デフレを防止。
+- **トドメ貢献度ボーナス**: 鬼陣営が勝利してレートを獲得した際、協力者から 30% の獲得分をトドメ役（実際にタッチした人）に再分配。
+- **人数補正**: 4人を基準とし、鬼が多いほど鬼陣営の期待勝率を自動引き上げ。
 
 ## 構成
 
 ```text
 autoload/network_manager.gd   WebSocket 接続・切断・シーン遷移・アドレス解決（ws / wss）
 autoload/game_manager.gd      役割抽選・速度補正・タイマー・タッチ判定・視界判定と情報共有・共有時計
+autoload/ranking_manager.gd   非対称 Elo レーティング計算・ランキング管理
+autoload/profile_manager.gd   プレイヤー名・カスタムカラー・戦績・レートのローカル/Steam管理
 scenes/main.tscn(.gd)         ロビー（HOST / JOIN）
 scenes/world.tscn(.gd)        シーンの骨組み（空・光・ナビ領域・スポーン管理）
 scenes/world_data.gd          マップとギミック配置の唯一の定義（定数テーブル）

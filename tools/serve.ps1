@@ -25,6 +25,11 @@
 .PARAMETER Port
     Godot ホストが待ち受けているポート（network_manager.gd の PORT と合わせる）。
 
+.PARAMETER HostAddrFile
+    ②Steamロビー経由の参加者へホスト名を伝えるため、確立したトンネルの
+    ホスト名をこのファイルへ書き出す。Godot 側（network_manager.gd の
+    _launch_tunnel）が渡す。手動実行時は省略してよい。
+
 .EXAMPLE
     pwsh tools/serve.ps1
 .EXAMPLE
@@ -33,7 +38,8 @@
 [CmdletBinding()]
 param(
     [string]$PagesUrl,
-    [int]$Port = 9999
+    [int]$Port = 9999,
+    [string]$HostAddrFile
 )
 
 # GitHub Pages の URL（末尾のスラッシュ無し）
@@ -79,5 +85,12 @@ $tunnelHost = $null
         catch { Write-Host "  （クリップボードへのコピーに失敗: $_）" -ForegroundColor Yellow }
         Write-Host '  このウィンドウを閉じる / Ctrl+C でトンネルが切れる。' -ForegroundColor Yellow
         Write-Host ''
+
+        # ②Steamロビー経由の参加者が実際のホストへ繋げるよう、Godot 側に
+        # ホスト名を渡す（network_manager.gd がこのファイルをポーリングしている）
+        if ($HostAddrFile) {
+            try { Set-Content -Path $HostAddrFile -Value $tunnelHost -NoNewline -Encoding utf8 }
+            catch { Write-Host "  （ホスト名の書き出しに失敗: $_）" -ForegroundColor Yellow }
+        }
     }
 }

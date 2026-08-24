@@ -62,6 +62,9 @@ var _sb_low: StyleBoxFlat
 var _sb_empty: StyleBoxFlat
 var _sb_row: StyleBoxFlat
 var _roster_key := ""
+var _last_rating_delta := 0
+var _rating_applied := false
+var _rating_shown := false  # ①CPU戦や離脱中断ではレート行を表示しない
 
 @onready var vignette: TextureRect = $Vignette
 @onready var role_badge: PanelContainer = $RoleBadge
@@ -103,6 +106,9 @@ func _ready() -> void:
 	stamina_bar.draw.connect(_on_stamina_draw)
 	GameManager.state_changed.connect(_on_state_changed)
 	GameManager.spotted_changed.connect(_on_spotted_changed)
+	# ②相手のレート帯が届いたらロビー一覧を組み直す（_roster_key はメンバー構成しか
+	# 見ていないので、profiles の更新だけではキャッシュが古いままになる）
+	GameManager.profiles_changed.connect(func(): _roster_key = "")
 	_sb_full = _bar_style(Color(0.3, 0.95, 0.55))
 	_sb_low = _bar_style(Color(1.0, 0.35, 0.35))
 	_sb_empty = _bar_style(Color(1, 1, 1, 0.13))
@@ -284,14 +290,22 @@ func _roster_row(id: int, me: int, is_host: bool) -> Control:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 12)
 	var name_label := Label.new()
-	name_label.text = "あなた" if id == me else "プレイヤー %d" % id
+	name_label.text = _display_name(id, me)
 	name_label.add_theme_font_size_override("font_size", 19)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# ②相手のレート帯バッジ（peer_profiles が届くまでは表示しない）
+	var tier_badge := Label.new()
+	if GameManager.peer_profiles.has(id):
+		var rating := int(GameManager.peer_profiles[id].get("rating", 1500))
+		tier_badge.text = "[%s]" % RankingManager.tier_name(rating)
+		tier_badge.modulate = RankingManager.tier_color(rating)
+		tier_badge.add_theme_font_size_override("font_size", 15)
 	var badge := Label.new()
 	badge.text = "にげる" if is_runner else "おに"
 	badge.add_theme_font_size_override("font_size", 19)
 	badge.modulate = COLOR_RUNNER if is_runner else COLOR_HUNTER
 	h.add_child(name_label)
+	h.add_child(tier_badge)
 	h.add_child(badge)
 	row.add_child(h)
 	if not is_host:
@@ -305,6 +319,17 @@ func _roster_row(id: int, me: int, is_host: bool) -> Control:
 	btn.set_anchors_preset(Control.PRESET_FULL_RECT)
 	row.add_child(btn)
 	return row
+
+
+## ②GameManager.peer_profiles から名前を引く。届く前は暫定表示にする
+func _display_name(id: int, me: int) -> String:
+	if id == me:
+		return "あなた"
+	if GameManager.peer_profiles.has(id):
+		var pname := String(GameManager.peer_profiles[id].get("name", ""))
+		if not pname.is_empty():
+			return pname
+	return "プレイヤー %d" % id
 
 
 func _roster_note(text: String) -> Control:
@@ -352,10 +377,20 @@ func _update_result(is_runner: bool) -> void:
 	else:
 		result_title.text = "にげきった！" if won else "つかまえた！"
 		result_title.modulate = COLOR_RUNNER if won else COLOR_HUNTER
+		var sub_text := ""
 		if won:
-			result_sub.text = "最後まで逃げきった" if is_runner else "逃げる人に逃げきられた"
+			sub_text = "最後まで逃げきった" if is_runner else "逃げる人に逃げきられた"
 		else:
-			result_sub.text = "つかまってしまった" if is_runner else "逃げる人をつかまえた"
+			sub_text = "つかまってしまった" if is_runner else "逃げる人をつかまえた"
+		
+		# レート変動表示（①CPU戦・離脱中断は非表示）
+		if _rating_shown:
+			var sign_str := "+" if _last_rating_delta >= 0 else ""
+			sub_text += "\nレート: %d Pt (%s%d)" % [ProfileManager.rating, sign_str, _last_rating_delta]
+		else:
+			sub_text += "\n練習モード（レート変動なし）"
+		result_sub.text = sub_text
+		
 	result_next.text = "%d秒後になかま待ちにもどります" % maxi(ceili(GameManager.result_left), 0)
 	result_next.modulate = COLOR_GOLD
 
@@ -598,11 +633,30 @@ func _on_state_changed(new_state: int) -> void:
 	# （毎フレームやると待機中に視点を回せなくなるので、状態が変わった瞬間だけ）
 	if new_state == GameManager.State.WAITING:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_rating_applied = false
 	if new_state != GameManager.State.PLAYING:
 		_hide_spotted_banner()  # 見られたままラウンドが終わる（＝捕まる）ので必ず消す
 	if new_state == GameManager.State.PLAYING:
 		_pop_in(role_badge)
+		_rating_applied = false
 	elif new_state == GameManager.State.RESULT:
+		if not _rating_applied:
+			_rating_applied = true
+			_last_rating_delta = 0
+			# ①VS CPU戦（round_is_ranked==false）と、逃走者離脱による中断はレート非適用
+			_rating_shown = GameManager.round_is_ranked \
+				and GameManager.result_reason != GameManager.EndReason.RUNNER_LEFT
+			if _rating_shown:
+				var my_id := multiplayer.get_unique_id()
+				var is_runner := my_id == GameManager.runner_id
+				var won := (is_runner and GameManager.result_runner_won) or (not is_runner and not GameManager.result_runner_won)
+				var survival := GameManager.ROUND_TIME - GameManager.time_left
+				var is_tagger := (my_id == GameManager.tagger_peer_id)
+				_last_rating_delta = RankingManager.apply_match_end(
+					is_runner, won, survival, GameManager.round_hunter_count, is_tagger)
+			elif not GameManager.round_is_ranked:
+				# 離脱中断（オンライン）はどちらの戦績にも数えない。CPU戦のみ練習回数に加算
+				ProfileManager.record_casual_match()
 		_pop_in(result_panel.get_node("Box"))
 
 

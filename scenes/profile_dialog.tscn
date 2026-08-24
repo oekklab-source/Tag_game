@@ -1,0 +1,206 @@
+[gd_scene load_steps=5 format=3 uid="uid://cx82m7vd3kpqb"]
+
+[ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
+[ext_resource type="Script" path="res://scenes/profile_dialog.gd" id="2_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_modal"]
+bg_color = Color(0.12, 0.12, 0.18, 0.95)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.35, 0.7, 1, 0.8)
+corner_radius_top_left = 24
+corner_radius_top_right = 24
+corner_radius_bottom_right = 24
+corner_radius_bottom_left = 24
+shadow_color = Color(0, 0, 0, 0.6)
+shadow_size = 20
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_box"]
+bg_color = Color(0.08, 0.08, 0.12, 0.7)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[node name="ProfileDialog" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("1_theme")
+script = ExtResource("2_script")
+
+[node name="Dimmer" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.65)
+
+[node name="Panel" type="Panel" parent="."]
+custom_minimum_size = Vector2(520, 640)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -260.0
+offset_top = -320.0
+offset_right = 260.0
+offset_bottom = 320.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_modal")
+
+[node name="VBox" type="VBoxContainer" parent="Panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 30.0
+offset_top = 25.0
+offset_right = -30.0
+offset_bottom = -25.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="Panel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
+theme_override_font_sizes/font_size = 26
+text = "プロフィール設定"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="Panel/VBox"]
+layout_mode = 2
+
+[node name="NameRow" type="HBoxContainer" parent="Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="NameLabel" type="Label" parent="Panel/VBox/NameRow"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+text = "プレイヤー名:"
+
+[node name="NameEdit" type="LineEdit" parent="Panel/VBox/NameRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "名前を入力"
+max_length = 16
+
+[node name="CostumeTabs" type="TabContainer" parent="Panel/VBox"]
+custom_minimum_size = Vector2(0, 260)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="CostumeTab" type="VBoxContainer" parent="Panel/VBox/CostumeTabs"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/VBox/CostumeTabs/CostumeTab"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="CostumeGrid" type="GridContainer" parent="Panel/VBox/CostumeTabs/CostumeTab/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
+columns = 4
+
+[node name="HintLabel" type="Label" parent="Panel/VBox/CostumeTabs/CostumeTab"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+autowrap_mode = 2
+text = ""
+
+[node name="ColorTab" type="VBoxContainer" parent="Panel/VBox/CostumeTabs"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Header" type="HBoxContainer" parent="Panel/VBox/CostumeTabs/ColorTab"]
+layout_mode = 2
+
+[node name="ColorLabel" type="Label" parent="Panel/VBox/CostumeTabs/ColorTab/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "選択中のコスチューム色:"
+
+[node name="ColorPreview" type="ColorRect" parent="Panel/VBox/CostumeTabs/ColorTab/Header"]
+custom_minimum_size = Vector2(36, 36)
+layout_mode = 2
+color = Color(0.25, 0.65, 0.95, 1)
+
+[node name="SlotsContainer" type="VBoxContainer" parent="Panel/VBox/CostumeTabs/ColorTab"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="StatsBox" type="PanelContainer" parent="Panel/VBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Grid" type="GridContainer" parent="Panel/VBox/StatsBox"]
+layout_mode = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 8
+columns = 2
+
+[node name="RatingLbl" type="Label" parent="Panel/VBox/StatsBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+text = "現在のレート:"
+
+[node name="RatingVal" type="Label" parent="Panel/VBox/StatsBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.8, 0.2, 1)
+theme_override_font_sizes/font_size = 20
+text = "1500"
+
+[node name="MatchesLbl" type="Label" parent="Panel/VBox/StatsBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+text = "総対戦回数:"
+
+[node name="MatchesVal" type="Label" parent="Panel/VBox/StatsBox/Grid"]
+layout_mode = 2
+text = "0"
+
+[node name="WinRateLbl" type="Label" parent="Panel/VBox/StatsBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+text = "総勝率:"
+
+[node name="WinRateVal" type="Label" parent="Panel/VBox/StatsBox/Grid"]
+layout_mode = 2
+text = "0.0%"
+
+[node name="Spacer" type="Control" parent="Panel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ButtonRow" type="HBoxContainer" parent="Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="CloseButton" type="Button" parent="Panel/VBox/ButtonRow"]
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+text = "閉じる"
+
+[node name="SaveButton" type="Button" parent="Panel/VBox/ButtonRow"]
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+text = "保存する"

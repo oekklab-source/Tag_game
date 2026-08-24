@@ -1,0 +1,154 @@
+[gd_scene load_steps=6 format=3 uid="uid://df58y6c3g012p"]
+
+[ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
+[ext_resource type="Script" path="res://scenes/ranking_dialog.gd" id="2_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_modal"]
+bg_color = Color(0.12, 0.12, 0.18, 0.95)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.35, 0.7, 1, 0.8)
+corner_radius_top_left = 24
+corner_radius_top_right = 24
+corner_radius_bottom_right = 24
+corner_radius_bottom_left = 24
+shadow_color = Color(0, 0, 0, 0.6)
+shadow_size = 20
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_box"]
+bg_color = Color(0.08, 0.08, 0.12, 0.7)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_list"]
+bg_color = Color(0.08, 0.08, 0.12, 0.7)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[node name="RankingDialog" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("1_theme")
+script = ExtResource("2_script")
+
+[node name="Dimmer" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.65)
+
+[node name="Panel" type="Panel" parent="."]
+custom_minimum_size = Vector2(650, 560)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -325.0
+offset_top = -280.0
+offset_right = 325.0
+offset_bottom = 280.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_modal")
+
+[node name="VBox" type="VBoxContainer" parent="Panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 30.0
+offset_top = 25.0
+offset_right = -30.0
+offset_bottom = -25.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 12
+
+[node name="TopRow" type="HBoxContainer" parent="Panel/VBox"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Panel/VBox/TopRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
+theme_override_font_sizes/font_size = 26
+text = "グローバルランキング"
+
+[node name="RefreshButton" type="Button" parent="Panel/VBox/TopRow"]
+layout_mode = 2
+text = "更新"
+
+[node name="MyStats" type="PanelContainer" parent="Panel/VBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Grid" type="HBoxContainer" parent="Panel/VBox/MyStats"]
+layout_mode = 2
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="RankLbl" type="Label" parent="Panel/VBox/MyStats/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+text = "あなたの順位:"
+
+[node name="MyRankVal" type="Label" parent="Panel/VBox/MyStats/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.8, 0.2, 1)
+theme_override_font_sizes/font_size = 20
+text = "#-"
+
+[node name="VSep" type="VSeparator" parent="Panel/VBox/MyStats/Grid"]
+layout_mode = 2
+
+[node name="MyNameVal" type="Label" parent="Panel/VBox/MyStats/Grid"]
+layout_mode = 2
+text = "Player"
+
+[node name="VSep2" type="VSeparator" parent="Panel/VBox/MyStats/Grid"]
+layout_mode = 2
+
+[node name="MyRatingVal" type="Label" parent="Panel/VBox/MyStats/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 20
+text = "1500 Pt"
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_list")
+
+[node name="ListContainer" type="VBoxContainer" parent="Panel/VBox/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="StatusLabel" type="Label" parent="Panel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.8, 0.2, 1)
+horizontal_alignment = 1
+
+[node name="BottomRow" type="HBoxContainer" parent="Panel/VBox"]
+layout_mode = 2
+alignment = 1
+
+[node name="CloseButton" type="Button" parent="Panel/VBox/BottomRow"]
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+text = "閉じる"

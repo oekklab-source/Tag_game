@@ -1,0 +1,160 @@
+[gd_scene load_steps=8 format=3 uid="uid://b1evf5y28l0x8"]
+
+[ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
+[ext_resource type="Script" path="res://scenes/title.gd" id="2_script"]
+[ext_resource type="PackedScene" uid="uid://cx82m7vd3kpqb" path="res://scenes/profile_dialog.tscn" id="3_profile"]
+[ext_resource type="PackedScene" uid="uid://c6r8qvnx7g84d" path="res://scenes/room_match_dialog.tscn" id="4_room"]
+[ext_resource type="PackedScene" uid="uid://df58y6c3g012p" path="res://scenes/ranking_dialog.tscn" id="5_ranking"]
+
+[sub_resource type="Gradient" id="Gradient_bg"]
+colors = PackedColorArray(0.1, 0.12, 0.22, 1, 0.05, 0.05, 0.1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_bg"]
+gradient = SubResource("Gradient_bg")
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_badge"]
+bg_color = Color(0.12, 0.14, 0.22, 0.85)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.35, 0.7, 1, 0.6)
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+
+[node name="Title" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("1_theme")
+script = ExtResource("2_script")
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("GradientTexture2D_bg")
+
+[node name="TopRightBadge" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -280.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = 74.0
+grow_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_badge")
+
+[node name="HBox" type="HBoxContainer" parent="TopRightBadge"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ColorBox" type="ColorRect" parent="TopRightBadge/HBox"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+color = Color(0.25, 0.65, 0.95, 1)
+
+[node name="NameLabel" type="Label" parent="TopRightBadge/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Player"
+
+[node name="RatingLabel" type="Label" parent="TopRightBadge/HBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.8, 0.2, 1)
+text = "1500 Pt"
+
+[node name="BadgeButton" type="Button" parent="TopRightBadge"]
+layout_mode = 2
+flat = true
+
+[node name="CenterMenu" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="CenterMenu"]
+custom_minimum_size = Vector2(340, 0)
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="GameTitle" type="Label" parent="CenterMenu/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.75, 0.25, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.8)
+theme_override_constants/shadow_offset_x = 3
+theme_override_constants/shadow_offset_y = 3
+theme_override_font_sizes/font_size = 52
+text = "3D CHASE GAME"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="CenterMenu/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 20
+text = "- オンライン鬼ごっこバトル -"
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="CenterMenu/VBox"]
+custom_minimum_size = Vector2(0, 24)
+layout_mode = 2
+
+[node name="PlayButton" type="Button" parent="CenterMenu/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "オンラインプレイ (Steam P2P)"
+
+[node name="SoloButton" type="Button" parent="CenterMenu/VBox"]
+layout_mode = 2
+text = "ソロ練習 (VS CPU・レート変動なし)"
+
+[node name="ProfileButton" type="Button" parent="CenterMenu/VBox"]
+layout_mode = 2
+text = "プロフィール設定"
+
+[node name="RankingButton" type="Button" parent="CenterMenu/VBox"]
+layout_mode = 2
+text = "ランキング"
+
+[node name="QuitButton" type="Button" parent="CenterMenu/VBox"]
+layout_mode = 2
+text = "ゲーム終了"
+
+[node name="StatusLabel" type="Label" parent="CenterMenu/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.6, 0.4, 1)
+theme_override_font_sizes/font_size = 15
+horizontal_alignment = 1
+autowrap_mode = 2
+text = ""
+
+[node name="ProfileDialog" parent="." instance=ExtResource("3_profile")]
+visible = false
+layout_mode = 1
+
+[node name="RoomMatchDialog" parent="." instance=ExtResource("4_room")]
+visible = false
+layout_mode = 1
+
+[node name="RankingDialog" parent="." instance=ExtResource("5_ranking")]
+visible = false
+layout_mode = 1

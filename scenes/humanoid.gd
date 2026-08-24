@@ -2,7 +2,7 @@ extends Node3D
 
 ## Blender 製の Fall Guys 風ちびキャラ（元データ: tools/blender/fallguy.blend）。
 ## プレイヤーと CPU 鬼で共用。移動速度・接地・ダイブ状態からアニメを切り替える。
-## 役割色（Runner=緑 / Hunter=赤 / 待機=灰）は体色に反映する。
+## 役割色（Runner=緑 / Hunter=赤 / 待機=灰）とコスチューム（④）を部位ごとに塗り分ける。
 
 ## Run アニメを等倍で再生したとき、キャラが実際に歩く速度。
 ## 1周期 0.8秒で 1周期ぶんの歩幅を進むので、この値で割った倍率で再生すれば
@@ -34,13 +34,26 @@ const SPEED_SMOOTH := 14.0
 const BLEND := 0.15  # アニメ切り替えのクロスフェード秒
 const LOOPING := ["Idle", "Run", "Jump"]
 
-var _mat_body := StandardMaterial3D.new()
+## ④役割色を弱く混ぜる比率（0=コスチューム色そのまま, 1=役割色そのまま）。
+## role_tint に指定していない面（コスチュームの個性を出す面）にも少しだけ役割色を
+## 混ぜることで、コスチュームが変わっても鬼/逃走者の識別性を保つ。この定数1つで
+## 「見分けやすさ ↔ コスチュームらしさ」を調整できる
+const ROLE_TINT_BLEND := 0.35
+
+## fallguy.glb の実構造に合わせた対象パーツ（CostumeCatalog.PART_SURFACES と対応）
+const PARTS := ["Body", "Costume", "Face"]
+
 var _diving := false
 var _state := ""
 var _speed := 0.0
 
+var _mesh_nodes := {}       # "Body" -> MeshInstance3D
+var _override_keys := []    # 直前に material_override をセットした "Body:0" 等のキー（切替時のクリア用）
+var _costume_id: StringName = CostumeCatalog.DEFAULT_ID
+var _costume_colors := PackedColorArray()
+var _role_color := Color(0.5, 0.55, 0.6)
+
 @onready var _anim: AnimationPlayer = $Model.find_child("AnimationPlayer", true, false)
-@onready var _body: MeshInstance3D = $Model.find_child("Body", true, false)
 
 
 func _ready() -> void:
@@ -49,19 +62,98 @@ func _ready() -> void:
 		var anim := _anim.get_animation(anim_name)
 		if anim:
 			anim.loop_mode = Animation.LOOP_LINEAR
-	_body.material_override = _mat_body
-	set_color(Color(0.5, 0.55, 0.6))
+	for part in PARTS:
+		var node: MeshInstance3D = $Model.find_child(part, true, false)
+		if node:
+			_mesh_nodes[part] = node
+	apply_costume(CostumeCatalog.DEFAULT_ID, CostumeCatalog.default_colors(CostumeCatalog.DEFAULT_ID))
 	_play("Idle")
 
 
-## 色を変えるのは体だけ。ニット帽とビブは元の配色のまま残して衣装らしさを保つ
-## （体が最大面積なので役割色はこれだけで十分読み取れる）。
-## 広くてカラフルなマップで床に埋もれないよう、体色は弱く自己発光させる
+## ④コスチューム（部位ごとの塗り分けレシピ）を適用する。
+## CostumeCatalog.COSTUMES[id]["surfaces"] に載っていない面は glTF インポート時の
+## 元マテリアルのまま変更しない（material_override は全 surface に効くため、
+## 個別の面だけ塗り分けるには set_surface_override_material() で面ごとに扱う必要がある）
+func apply_costume(id: StringName, colors: PackedColorArray) -> void:
+	for key in _override_keys:
+		var seg: PackedStringArray = key.split(":")
+		var node: MeshInstance3D = _mesh_nodes.get(seg[0])
+		if node:
+			node.set_surface_override_material(int(seg[1]), null)
+	_override_keys.clear()
+
+	_costume_id = id if CostumeCatalog.has(id) else CostumeCatalog.DEFAULT_ID
+	_costume_colors = colors
+
+	var def: Dictionary = CostumeCatalog.get_def(_costume_id)
+	for surf in def.get("surfaces", []):
+		var part: String = surf["part"]
+		var index: int = surf["index"]
+		var node: MeshInstance3D = _mesh_nodes.get(part)
+		if node == null or node.mesh == null or index >= node.mesh.get_surface_count():
+			continue
+		var mat := StandardMaterial3D.new()
+		var color := _surface_color(surf)
+		mat.albedo_color = color
+		if surf.get("emission", false):
+			mat.emission_enabled = true
+			mat.emission = color
+			mat.emission_energy_multiplier = 0.6
+		if surf.has("metallic"):
+			mat.metallic = float(surf["metallic"])
+			mat.roughness = 0.35
+		node.set_surface_override_material(index, mat)
+		_override_keys.append("%s:%d" % [part, index])
+
+	# 役割色の反映（role_tint 面は強制上書き、それ以外は弱くブレンド）を、生成直後の
+	# 全マテリアルに対して一貫して適用する。ここを省くと non-role_tint 面だけ
+	# ブレンド無しのコスチューム地色のまま残り、set_role_color() を経由する
+	# パス（自分のロール変更時）とコスチューム再適用パス（他ピアの更新受信時）とで
+	# 見た目が食い違ってしまう
+	set_role_color(_role_color)
+
+
+func _surface_color(surf: Dictionary) -> Color:
+	if surf.has("slot"):
+		var slot: int = surf["slot"]
+		if slot < _costume_colors.size():
+			return _costume_colors[slot]
+	return surf.get("albedo", Color(0.5, 0.55, 0.6))
+
+
+## 親（player / cpu_hunter）が役割（Runner=緑 / Hunter=赤 / 待機=灰）に応じて呼ぶ。
+## role_tint 指定の面（既定は体のみ）は常にこの色で強制上書きし、鬼/逃走者の
+## 識別性を絶対に壊さない。それ以外の面（コスチュームの個性を出す面）にも
+## ROLE_TINT_BLEND だけ弱く混ぜて、遠目でも見分けやすさを補強する
+func set_role_color(color: Color) -> void:
+	_role_color = color
+	var def: Dictionary = CostumeCatalog.get_def(_costume_id)
+	for surf in def.get("surfaces", []):
+		var part: String = surf["part"]
+		var index: int = surf["index"]
+		var node: MeshInstance3D = _mesh_nodes.get(part)
+		if node == null:
+			continue
+		var mat := node.get_surface_override_material(index) as StandardMaterial3D
+		if mat == null:
+			continue
+		if surf.get("role_tint", false):
+			_apply_role_tint(mat, color)
+		else:
+			mat.albedo_color = _surface_color(surf).lerp(color, ROLE_TINT_BLEND)
+
+
+func _apply_role_tint(mat: StandardMaterial3D, color: Color) -> void:
+	# 広くてカラフルなマップで床に埋もれないよう、弱く自己発光させる
+	mat.albedo_color = color
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 0.35
+
+
+## 旧API互換（既存の呼び出し元から段階的に set_role_color へ移行するための委譲）
 func set_color(color: Color) -> void:
-	_mat_body.albedo_color = color
-	_mat_body.emission_enabled = true
-	_mat_body.emission = color
-	_mat_body.emission_energy_multiplier = 0.35
+	set_role_color(color)
 
 
 ## 親（player / cpu_hunter）が毎フレーム水平速度と接地状態を渡す。

@@ -132,10 +132,17 @@ func _ready() -> void:
 		sync_yaw = rotation.y
 		camera.current = true
 		spring_arm.add_excluded_object(get_rid())
+		# ④自分のコスチュームを反映する。他ピア分は GameManager.peer_profiles の
+		# 同期（RPC）で受け取ってから反映するため、ここでは自分の分のみ
+		humanoid.apply_costume(ProfileManager.costume_id, ProfileManager.costume_colors)
 	else:
 		# スポーン時の同期値へ即座に合わせる。補間に任せると原点から滑って来る
 		position = sync_position
 		rotation.y = sync_yaw
+		# ②④ 相手のコスチュームは GameManager.peer_profiles の同期を待って反映する。
+		# 既に届いている場合に備えて即座にも試す（順序はどちらが先でも良い）
+		GameManager.profiles_changed.connect(_apply_peer_costume)
+		_apply_peer_costume()
 
 
 ## 接触判定はホストが一元的に行う（全ピアで発火するので必ずサーバ判定を挟む）
@@ -453,4 +460,14 @@ func _update_role_visuals() -> void:
 		color = COLOR_RUNNER if my_id == GameManager.runner_id else COLOR_HUNTER
 	if color != _current_color:
 		_current_color = color
-		humanoid.set_color(color)
+		humanoid.set_role_color(color)
+
+
+## ②④ 他ピア（自分以外）のコスチュームを GameManager.peer_profiles から反映する
+func _apply_peer_costume() -> void:
+	var peer_id := String(name).to_int()
+	if not GameManager.peer_profiles.has(peer_id):
+		return
+	var info: Dictionary = GameManager.peer_profiles[peer_id]
+	var colors := ProfileManager.colors_from_html(info.get("colors", []))
+	humanoid.apply_costume(StringName(info.get("costume", "default")), colors)
