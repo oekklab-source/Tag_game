@@ -39,10 +39,14 @@ func _init_steam() -> void:
 	# GDExtension / モジュールとしての Steam シングルトンの有無を確認
 	if Engine.has_singleton("Steam"):
 		var steam = Engine.get_singleton("Steam")
-		var init_res = steam.steamInit(false, DEFAULT_APP_ID)
-		if typeof(init_res) == TYPE_DICTIONARY and init_res.get("status", 0) == 1:
+		# ③GodotSteam のバージョンによって steamInitEx の引数順・status の成功値の意味が
+		# 変わりうる（例: status==0 が成功、等）。ここを決め打ちすると「実際は成功しているのに
+		# 失敗扱いになる」という診断困難な状態になるため、status の値そのものには依存せず、
+		# 初期化が本当に通っていれば必ず取得できるはずの SteamID64 で二重に確認する
+		var init_res = steam.steamInitEx(DEFAULT_APP_ID, false)
+		steam_id = steam.getSteamID()
+		if steam_id > 0:
 			is_steam_available = true
-			steam_id = steam.getSteamID()
 			steam_username = steam.getPersonaName()
 			print("[SteamManager] Steam initialized successfully. User: %s (ID: %d)" % [steam_username, steam_id])
 			
@@ -89,6 +93,7 @@ func request_lobby_list() -> void:
 	if is_steam_available:
 		var steam = Engine.get_singleton("Steam")
 		steam.addRequestLobbyListDistanceFilter(3) # 3 = Worldwide
+		steam.addRequestLobbyListStringFilter("game", "Tag_Game", 0) # 0 = Equal
 		steam.requestLobbyList()
 	else:
 		# モックのロビーリスト（Steam無し環境でも②のティア表示/フィルタUIを確認できるよう
@@ -159,6 +164,7 @@ func _on_lobby_created(connect_status: int, lobby_id: int) -> void:
 		is_host = true
 		var steam = Engine.get_singleton("Steam")
 		var room_name = "%s's Room" % ProfileManager.player_name
+		steam.setLobbyData(lobby_id, "game", "Tag_Game")
 		steam.setLobbyData(lobby_id, "name", room_name)
 		steam.setLobbyData(lobby_id, "version", str(GameManager.PROTOCOL_VERSION))
 		steam.setLobbyData(lobby_id, "host_rating", str(ProfileManager.rating))
@@ -187,11 +193,33 @@ func get_lobby_data(lobby_id: int, key: String) -> String:
 	return ""
 
 
+## ③参加直後は、ロビー作成者がまだ host_addr を書き込めていない
+## （LAN IP解決はほぼ即時だが、トンネル確立前に参加された場合など）ことがあるため、
+## Steam有効時のみ短時間だけリトライしてから諦める。呼び出し側はこの結果が空文字なら
+## 「まだ準備できていない」として扱い、127.0.0.1 へフォールバックしないこと
+## （それはSteam無効時の同一マシン向けモック経路専用）
+func await_host_addr(lobby_id: int, retries: int = 5, interval: float = 0.4) -> String:
+	if not is_steam_available:
+		return ""
+	var steam = Engine.get_singleton("Steam")
+	for i in range(retries):
+		var addr: String = steam.getLobbyData(lobby_id, "host_addr")
+		if not addr.is_empty():
+			return addr
+		await get_tree().create_timer(interval).timeout
+	return ""
+
+
 func _on_lobby_match_list(lobbies: Array) -> void:
 	var lobby_data_list := []
 	if is_steam_available:
 		var steam = Engine.get_singleton("Steam")
 		for l_id in lobbies:
+			# Spacewar(AppID 480)の他ゲームのロビーを除外するため、ゲーム識別子とバージョンを照合
+			var game_id = steam.getLobbyData(l_id, "game")
+			var ver_str = steam.getLobbyData(l_id, "version")
+			if game_id != "Tag_Game" or ver_str != str(GameManager.PROTOCOL_VERSION):
+				continue
 			var l_name = steam.getLobbyData(l_id, "name")
 			var members = steam.getNumLobbyMembers(l_id)
 			var max_m = steam.getLobbyMemberLimit(l_id)

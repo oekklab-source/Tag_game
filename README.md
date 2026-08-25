@@ -568,6 +568,73 @@ python -m http.server 8123 --directory export/web
   身内で遊ぶ前提の設計
 - ホストPCを落とすとゲームも終わる（専用サーバではない）
 
+## Steam ロビーによる自動マッチメイキング（見知らぬ相手と）
+
+上の「インターネット越しに遊ぶ」は**リンクを知り合いに手動で送る**方式。
+それとは別に、[scenes/room_match_dialog.gd](scenes/room_match_dialog.gd) と
+[autoload/steam_manager.gd](autoload/steam_manager.gd) には、**Steam のロビー機能を
+使って見知らぬプレイヤー同士を自動で組み合わせる「クイックマッチ」が実装済み**。
+自分のレート帯に近い空きロビーへ自動参加し、無ければ自分のレート帯で新規ロビーを
+作って待つ。実際のゲーム通信は上記と同じ WebSocket + Cloudflare Tunnel のままで、
+**Steam はロビーの一覧・検索（マッチング）にだけ使う**（無料、Steamworks の
+サーバー費用は発生しない）。
+
+```text
+[Steam ロビー]  … 見知らぬ相手を探す・レート帯でフィルタする（Steamが無料で提供）
+      |
+      `--- host_addr（LAN IP or トンネルのホスト名）をロビーのデータに書き込む
+              |
+              `--- 参加者はそこへ ws:// / wss:// で接続（従来と同じ経路）
+```
+
+### 使うために必要な準備（このリポジトリのコードだけでは動かない）
+
+GodotSteam という GDExtension プラグイン本体（バイナリ）がリポジトリに含まれて
+いないため、**現状は `SteamManager.is_steam_available` が常に `false` になり、
+「ルームマッチ」タブは常にモック（偽）データを表示するだけ**になっている。
+実際に動かすには次を用意する。
+
+1. Steam クライアントを、検証に使う全PCにインストールし、実アカウントで
+   ログインした状態で起動しておく
+2. （任意・将来必須）[partner.steamgames.com](https://partner.steamgames.com/) で
+   無料の Steamworks アカウントを作る。今すぐは不要だが、将来 Steam で実配布・
+   販売する場合は独自 AppID の登録（Steam Direct 費用、現在1本100ドルの
+   一時費用・返金あり）が必要になる
+3. GodotSteam の GDExtension 版を入手する。配布元は GitHub
+   （`GodotSteam/GodotSteam` の Releases）または Codeberg
+   （`codeberg.org/godotsteam/godotsteam` の Releases）。**「Godot 4.x」対応と
+   明記された最新版**を選ぶこと（Godot エディタの **AssetLib** タブで
+   "GodotSteam GDExtension" を検索してインストールする方法でも同じものが入る）
+4. ダウンロードした zip の中身を、このプロジェクトの**ルート直下**
+   （`project.godot` と同じ階層）に展開する。`addons/godotsteam/` 以下に
+   `.gdextension` ファイルと Windows 用 `steam_api64.dll` 等が入る。
+   `project.godot` の手動編集は不要（Godot 4 は `.gdextension` を自動検出する）
+5. Godot エディタを**再起動**する（GDExtension はエンジン起動時に読み込まれる）
+6. [steam_appid.txt](steam_appid.txt)（内容 `480`、Steamクライアント経由でなく
+   直接起動された場合に `steamInit` を通すためのファイル。既にリポジトリに
+   含まれている）がプロジェクトルートにあることを確認する
+
+### 動作確認
+
+Steam を起動・ログインした状態でエディタから実行（F5）し、**出力パネル**を見る。
+
+- 成功: `[SteamManager] Steam initialized successfully. User: <名前> (ID: <ID>)`
+- 失敗: `[SteamManager] Steam init failed ...` / `Running in Offline / Fallback mode` →
+  手順1・4・5を再確認（多い原因は Steam クライアント未起動、`.gdextension` 未読み込み）
+
+2台（または2インスタンス）で、片方が「クイックマッチ」または部屋作成、もう片方が
+「ルームマッチ」タブから参加して、ロビー参加だけでなく実際にゲームが繋がる
+（トンネル経由の接続まで通る）ことを確認する。
+
+### 既知の制約（Steamマッチメイキング）
+
+- **Web（ブラウザ）版では使えない**。Steamworks はブラウザの WASM サンドボックス上では
+  動作しないため（恒久的な制約）、Web ビルドでは「ルームマッチ」タブが自動的に無効化され、
+  代わりに「DirectConnect」タブが既定で開く
+- `steam_appid.txt` の `480` は Valve の**公開テスト用 AppID（Spacewar）**。多数の
+  開発者が共用する共有プールのため、ロビー検索結果はこのゲーム専用ではない。
+  開発・検証段階では問題ないが、実際に一般公開する前には独自 AppID への切り替えが必要
+
 ## 衝突レイヤー
 
 | # | 名前 | 用途 |

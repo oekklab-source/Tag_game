@@ -51,13 +51,24 @@ func _ready() -> void:
 	SteamManager.lobby_created.connect(_on_lobby_created)
 	SteamManager.lobby_joined.connect(_on_lobby_joined)
 
+	# ③SteamworksはブラウザのWASMサンドボックス上では動作しない（恒久的な制約）。
+	# Web版では「ルームマッチ」タブを操作できないようにし、代わりに従来通り機能する
+	# DirectConnectタブを既定にして、空のタブに取り残されないようにする
+	if OS.has_feature("web"):
+		quick_match_btn.disabled = true
+		refresh_btn.disabled = true
+		create_open_btn.disabled = true
+		status_label.text = "Web版では Steam マッチメイキングは利用できません。「DirectConnect」タブをご利用ください。"
+		tabs.current_tab = 2
+
 
 func open() -> void:
 	show()
 	room_name_edit.text = "%sの部屋" % ProfileManager.player_name
 	my_tier_label.text = "あなたのレート帯: %s" % RankingManager.tier_name(ProfileManager.rating)
 	tier_lock_check.button_pressed = false
-	_on_refresh_pressed()
+	if not OS.has_feature("web"):
+		_on_refresh_pressed()
 
 
 func _on_refresh_pressed() -> void:
@@ -185,14 +196,23 @@ func _on_lobby_created(connect_status: int, _lobby_id: int) -> void:
 
 
 func _on_lobby_joined(lobby_id: int, _permissions: int, _locked: bool, response: int) -> void:
-	if response == 1:
-		status_label.text = "ロビーに参加しました！ゲームへ接続中..."
-		# ②ホストが実際に待ち受けているアドレス（LAN IP またはトンネルのホスト名）。
-		# 見つからない場合のみ同一マシンでのテスト用に 127.0.0.1 へフォールバックする
+	# ホストがロビーを作成した際にも Steam から lobby_joined が発火するため、ホストは無視する
+	if SteamManager.is_host:
+		return
+	if response != 1:
+		status_label.text = "ロビーへの参加に失敗しました。"
+		return
+	status_label.text = "ロビーに参加しました！ゲームへ接続中..."
+	if SteamManager.is_steam_available:
+		var addr := await SteamManager.await_host_addr(lobby_id)
+		if addr.is_empty():
+			status_label.text = "ホストの準備が完了していません。少し待ってから再度お試しください。"
+			return
+		NetworkManager.start_client(addr)
+	else:
+		# オフラインモック（Steam無効時）。同一マシンでのUI動作確認用に127.0.0.1へ接続する
 		var addr := SteamManager.get_lobby_data(lobby_id, "host_addr")
 		NetworkManager.start_client(addr if not addr.is_empty() else "127.0.0.1")
-	else:
-		status_label.text = "ロビーへの参加に失敗しました。"
 
 
 func _on_direct_join_pressed() -> void:

@@ -88,9 +88,19 @@ func start_host(is_online: bool = false) -> bool:
 
 
 ## プライベートIPv4アドレスを1つ選ぶ（LAN内の参加者が直接繋げるアドレス）。
-## 複数ある場合は最初に見つかったものを使う
+## WSL/Hyper-V/Dockerの仮想アダプタ(172.x)よりも物理LAN(192.168.x, 10.x)を優先する
 func _resolve_lan_address() -> String:
-	for addr in IP.get_local_addresses():
+	var addrs := IP.get_local_addresses()
+	# 1. 192.168.x.x (家庭内LAN最優先)
+	for addr in addrs:
+		if addr.begins_with("192.168.") and addr.is_valid_ip_address():
+			return addr
+	# 2. 10.x.x.x
+	for addr in addrs:
+		if addr.begins_with("10.") and addr.is_valid_ip_address() and not ":" in addr:
+			return addr
+	# 3. 172.16.x.x - 172.31.x.x (WSL/Hyper-V等の仮想NICの可能性あり)
+	for addr in addrs:
 		if _is_private_ipv4(addr):
 			return addr
 	return ""
@@ -132,6 +142,9 @@ func resolve_url(addr: String) -> String:
 		host = addr.substr(0, colon)
 		port = addr.substr(colon + 1).to_int()
 	if host == "localhost" or host.is_valid_ip_address():
+		# 同一マシン内での接続（ローカルテスト等）の場合はファイアウォールや自己ルーティング問題を避けるため 127.0.0.1 に繋ぐ
+		if host in IP.get_local_addresses():
+			host = "127.0.0.1"
 		return "ws://%s:%d" % [host, port]
 	return "wss://%s" % host
 
