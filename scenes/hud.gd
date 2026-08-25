@@ -5,9 +5,8 @@ extends CanvasLayer
 ## 非対称情報の設計はこの実装の核なので、見た目を変えても崩さないこと:
 ##   Hunter  : 誰かが Runner を「視認」した時だけ、共有された最後の目撃ゾーンの
 ##             名前と色を受け取る。視認中は SPOTTED、途切れたら残り秒の
-##             カウントダウン、失効したら NO INTEL。方向・距離・マーカーは無し。
-##             **ここで GameManager.get_runner() の座標を直接読んではいけない**
-##             （読んだ瞬間に鬼が全知に戻る）。
+##             カウントダウン、さらに10秒の NO INTEL 後は距離だけ受け取る。
+##             方向・マーカー・座標は無し。
 ##   Runner  : 全体の2Dマップ（鬼の位置つき）＋最寄りの鬼への矢印・距離・危険ヴィネット、
 ##             そして「今 見られている」ことを知らせる SPOTTED バナー。
 ## Runner 側の情報が多いのは意図的で、非対称性を弱めず強めている。
@@ -26,6 +25,7 @@ const WORLD_MIN := -WorldData.WORLD_HALF
 const WORLD_SIZE := WorldData.WORLD_HALF * 2.0
 
 const STAMINA_SEGMENTS := 12
+const HUNTER_DISTANCE_DELAY := 10.0
 const BUFF_BAR_WIDTH := 64.0
 const DANGER_FAR := 28.0   # この距離からヴィネットが出はじめる
 const DANGER_NEAR := 7.0   # この距離で最大になる
@@ -57,6 +57,7 @@ var _local_player: Player
 var _buff_keys: Array = []
 var _spotted_tween: Tween
 var _banner_hiding := false
+var _hunter_distance_delay_left := HUNTER_DISTANCE_DELAY
 var _sb_full: StyleBoxFlat
 var _sb_low: StyleBoxFlat
 var _sb_empty: StyleBoxFlat
@@ -168,8 +169,9 @@ func _radial_texture() -> GradientTexture2D:
 	return t
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var player := _get_local_player()
+	_update_hunter_distance_delay(delta, player)
 	_update_labels()
 	_update_stamina(player)
 	_update_item(player)
@@ -329,7 +331,7 @@ func _roster_note(text: String) -> Control:
 
 
 ## 鬼にだけ、共有された目撃情報を見せる。
-## 参照するのは GameManager の共有状態だけで、Runner の座標は決して読まない。
+## 距離は情報が切れてから10秒後に限り読める。方向・マーカー・座標は出さない。
 ## 3状態とも表示したままにしてレイアウトが跳ねないようにする
 func _update_zone_chip(is_runner: bool) -> void:
 	if is_runner or GameManager.state != GameManager.State.PLAYING:
@@ -338,8 +340,13 @@ func _update_zone_chip(is_runner: bool) -> void:
 	zone_chip.visible = true
 	var zone: int = GameManager.spotted_zone
 	if zone < 0:
-		zone_label.text = "手がかりなし"
-		zone_swatch.color = Color(0.32, 0.32, 0.38)
+		var distance := _runner_distance(_get_local_player())
+		if _hunter_distance_delay_left <= 0.0 and distance >= 0.0:
+			zone_label.text = "逃走者との距離　%d m" % roundi(distance)
+			zone_swatch.color = COLOR_RUNNER.darkened(0.2)
+		else:
+			zone_label.text = "手がかりなし"
+			zone_swatch.color = Color(0.32, 0.32, 0.38)
 		zone_chip.modulate.a = 1.0
 	elif GameManager.spotted:
 		zone_label.text = "発見！　%s" % WorldData.zone_name(zone)
@@ -350,6 +357,26 @@ func _update_zone_chip(is_runner: bool) -> void:
 			WorldData.zone_name(zone), maxi(ceili(GameManager.intel_left), 0)]
 		zone_swatch.color = WorldData.zone_color(zone).darkened(0.35)
 		zone_chip.modulate.a = 1.0
+
+
+func _update_hunter_distance_delay(delta: float, player: Player) -> void:
+	var is_hunter := (
+		GameManager.state == GameManager.State.PLAYING
+		and player != null
+		and multiplayer.get_unique_id() != GameManager.runner_id
+	)
+	var has_zone_intel := GameManager.spotted or GameManager.spotted_zone >= 0
+	if not is_hunter or has_zone_intel:
+		_hunter_distance_delay_left = HUNTER_DISTANCE_DELAY
+		return
+	_hunter_distance_delay_left = maxf(_hunter_distance_delay_left - delta, 0.0)
+
+
+func _runner_distance(player: Node3D) -> float:
+	var runner := GameManager.get_runner() as Node3D
+	if player == null or runner == null:
+		return -1.0
+	return player.global_position.distance_to(runner.global_position)
 
 
 func _update_result(is_runner: bool) -> void:
@@ -407,7 +434,7 @@ func _on_stamina_draw() -> void:
 		return
 	var gap := 4.0
 	var w := (stamina_bar.size.x - (STAMINA_SEGMENTS - 1) * gap) / STAMINA_SEGMENTS
-	var filled := int(player.stamina / Player.STAMINA_MAX * STAMINA_SEGMENTS)
+	var filled := int(player.stamina / player.stamina_max() * STAMINA_SEGMENTS)
 	for i in STAMINA_SEGMENTS:
 		var sb := _sb_empty
 		if i < filled:

@@ -305,6 +305,7 @@ func _start_dive() -> void:
 
 
 func _update_stamina(delta: float, moving: bool, frozen: bool) -> void:
+	var stamina_max := GameManager.stamina_max_for(String(name).to_int())
 	var wants_dash := Input.is_action_pressed("dash") and moving and not frozen
 	is_dashing = wants_dash and not exhausted and stamina > 0.0
 	if is_dashing:
@@ -313,9 +314,13 @@ func _update_stamina(delta: float, moving: bool, frozen: bool) -> void:
 			exhausted = true
 			is_dashing = false
 	else:
-		stamina = minf(stamina + STAMINA_REGEN * delta, STAMINA_MAX)
+		stamina = minf(stamina + STAMINA_REGEN * delta, stamina_max)
 		if exhausted and stamina >= STAMINA_RECOVER:
 			exhausted = false
+
+
+func stamina_max() -> float:
+	return GameManager.stamina_max_for(String(name).to_int())
 
 
 ## ラウンド開始時に GameManager（RPC 内）から呼ばれる。権威ピア上でのみ有効。
@@ -325,7 +330,7 @@ func teleport(pos: Vector3) -> void:
 	global_position = pos
 	sync_position = position  # 他ピアが次の物理フレームを待たずスナップできるように
 	velocity = Vector3.ZERO
-	stamina = STAMINA_MAX
+	stamina = stamina_max()
 	exhausted = false
 	buffs.clear()
 	warp_lock = 0.0

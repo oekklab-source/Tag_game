@@ -27,6 +27,10 @@ func _ready() -> void:
 	_report("CPU逃走者が存在", runner != null, "CPU逃走者が見つからない")
 	var me := GameManager._find_player(multiplayer.get_unique_id())
 	_report("自分は鬼", me != null and me != runner, "自分が逃走者扱いになっている")
+	_report("1対1の鬼スタミナ", GameManager.hunter_stamina_max_for(1) == 150.0, "1対1で150になっていない")
+	_report("1対2の鬼スタミナ", GameManager.hunter_stamina_max_for(2) == 120.0, "1対2で120になっていない")
+	_report("1対3以上の鬼スタミナ", GameManager.hunter_stamina_max_for(3) == 100.0, "1対3以上で100になっていない")
+	_report("CPU逃走者時の鬼スタミナ", me != null and me.stamina_max() == 150.0, "デバッグ時の鬼が150になっていない")
 
 	await _wait(5.0)
 	runner = GameManager.get_runner() as Node3D

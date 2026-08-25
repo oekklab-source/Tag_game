@@ -70,7 +70,10 @@ const SIGHT_TARGET_Y: Array[float] = [1.55, 0.85]
 ## player.tscn の SpringArm3D.collision_mask と同じ値 = カメラアームが当たる物は視線も遮る
 const SIGHT_MASK := 9
 const SIGHT_TICK := 0.1     # 10Hz。消費側の REPATH_INTERVAL(0.3) に対して十分速い
-const INTEL_TIME := 20.0    # 見失ってからゾーン情報が消えるまで
+const INTEL_TIME := 10.0    # 見失ってからゾーン情報が消えるまで
+const HUNTER_STAMINA_DEFAULT := 100.0
+const HUNTER_STAMINA_THREE_PLAYER := 120.0
+const HUNTER_STAMINA_TWO_PLAYER := 150.0
 ## 視認が途切れてから spotted を落とすまでの猶予。これが無いと逃走者が柱の陰を
 ## 横切るだけで 10Hz でばたつき、RPC を撒き散らしバナーも点滅する
 const SPOTTED_HOLD := 1.5
@@ -147,6 +150,25 @@ func hunter_mult_for(hunter_count: int) -> float:
 	if hunter_count >= 3:
 		return 0.95
 	return 1.0
+
+
+## 鬼のブースト時間は人数が少ないほど長くする。
+## 1人の逃走者に対して鬼が 1 / 2 / 3人以上のとき、150 / 120 / 100。
+func hunter_stamina_max_for(hunter_count: int) -> float:
+	if hunter_count <= 1:
+		return HUNTER_STAMINA_TWO_PLAYER
+	if hunter_count == 2:
+		return HUNTER_STAMINA_THREE_PLAYER
+	return HUNTER_STAMINA_DEFAULT
+
+
+func stamina_max_for(peer_id: int) -> float:
+	if state != State.PLAYING or peer_id == runner_id:
+		return HUNTER_STAMINA_DEFAULT
+	# CPU逃走者デバッグは、人間の鬼が必ず1人だけ。
+	if runner_id == CPU_RUNNER_ID:
+		return HUNTER_STAMINA_TWO_PLAYER
+	return hunter_stamina_max_for(maxi(player_ids().size() - 1, 1))
 
 
 func get_speed_mult(peer_id: int) -> float:
