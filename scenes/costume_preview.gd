@@ -1,7 +1,7 @@
 extends Control
 
 ## Fall Guys/荒野行動風の「見た目を見ながら選ぶ」3Dプレビューウィジェット。
-## profile_dialog から使う。将来のショップ画面（購入前試着）でも再利用する想定なので
+## costume_screen から使う。ショップ画面（購入前試着）でも再利用する想定なので
 ## 単一責務のコンポーネントとして独立させてある。
 
 const AUTO_SPIN_SPEED := 0.35      # rad/秒

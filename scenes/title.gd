@@ -11,13 +11,18 @@ extends Control
 @onready var play_button: Button = $CenterMenu/VBox/PlayButton
 @onready var solo_button: Button = $CenterMenu/VBox/SoloButton
 @onready var profile_button: Button = $CenterMenu/VBox/ProfileButton
+@onready var shop_button: Button = $CenterMenu/VBox/ShopButton
+@onready var friend_button: Button = $CenterMenu/VBox/FriendButton
 @onready var ranking_button: Button = $CenterMenu/VBox/RankingButton
 @onready var quit_button: Button = $CenterMenu/VBox/QuitButton
 @onready var status_label: Label = $CenterMenu/VBox/StatusLabel
 
-@onready var profile_dialog: Control = $ProfileDialog
 @onready var room_match_dialog: Control = $RoomMatchDialog
 @onready var ranking_dialog: Control = $RankingDialog
+
+const COSTUME_SCENE := "res://scenes/costume_screen.tscn"
+const SHOP_SCENE := "res://scenes/shop_screen.tscn"
+const FRIEND_SCENE := "res://scenes/friend_screen.tscn"
 
 
 func _ready() -> void:
@@ -25,19 +30,21 @@ func _ready() -> void:
 	play_button.pressed.connect(_on_play_pressed)
 	solo_button.pressed.connect(_on_solo_pressed)
 	profile_button.pressed.connect(_on_profile_pressed)
+	shop_button.pressed.connect(_on_shop_pressed)
+	friend_button.pressed.connect(_on_friend_pressed)
 	ranking_button.pressed.connect(_on_ranking_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	profile_badge_btn.pressed.connect(_on_profile_pressed)
-	
+
 	ProfileManager.profile_updated.connect(_update_badge)
 	_update_badge()
-	
+
 	# Web版では Quit ボタンを非表示
 	if OS.has_feature("web"):
 		quit_button.visible = false
-		
-	# 初期状態ではダイアログを隠す
-	profile_dialog.hide()
+
+	# 初期状態ではダイアログを隠す（①きせかえは専用シーンへ遷移するため、
+	# ここで隠すダイアログには含まれない）
 	room_match_dialog.hide()
 	ranking_dialog.hide()
 
@@ -92,9 +99,19 @@ func _on_solo_pressed() -> void:
 	NetworkManager.start_host(false)
 
 
+## ①きせかえ画面は専用シーンへの画面遷移で開く（旧: 埋め込みダイアログのshow()）
 func _on_profile_pressed() -> void:
-	profile_dialog.refresh()
-	profile_dialog.show()
+	get_tree().change_scene_to_file(COSTUME_SCENE)
+
+
+## ②ショップ画面への遷移
+func _on_shop_pressed() -> void:
+	get_tree().change_scene_to_file(SHOP_SCENE)
+
+
+## ④フレンド画面への遷移
+func _on_friend_pressed() -> void:
+	get_tree().change_scene_to_file(FRIEND_SCENE)
 
 
 func _on_ranking_pressed() -> void:

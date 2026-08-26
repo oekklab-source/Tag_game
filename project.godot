@@ -22,6 +22,9 @@ SteamManager="*res://autoload/steam_manager.gd"
 RankingManager="*res://autoload/ranking_manager.gd"
 NetworkManager="*res://autoload/network_manager.gd"
 GameManager="*res://autoload/game_manager.gd"
+PurchaseManager="*res://autoload/purchase_manager.gd"
+FriendManager="*res://autoload/friend_manager.gd"
+GiftManager="*res://autoload/gift_manager.gd"
 
 [display]
 

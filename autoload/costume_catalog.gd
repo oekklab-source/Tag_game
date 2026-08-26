@@ -2,7 +2,7 @@ class_name CostumeCatalog
 extends RefCounted
 
 ## ④コスチュームの定義データ（純データ、副作用なし）。
-## Autoload にしていないのは、UI 側（profile_dialog）と対戦中の見た目適用
+## Autoload にしていないのは、UI 側（costume_screen）と対戦中の見た目適用
 ## （humanoid.gd）の両方から Autoload の初期化順序に依存せず参照できるようにするため。
 ##
 ## 塗り分けの単位は fallguy.glb の実構造に合わせてある:

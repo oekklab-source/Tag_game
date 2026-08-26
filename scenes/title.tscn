@@ -1,8 +1,7 @@
-[gd_scene load_steps=8 format=3 uid="uid://b1evf5y28l0x8"]
+[gd_scene load_steps=7 format=3 uid="uid://b1evf5y28l0x8"]
 
 [ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://scenes/title.gd" id="2_script"]
-[ext_resource type="PackedScene" uid="uid://cx82m7vd3kpqb" path="res://scenes/profile_dialog.tscn" id="3_profile"]
 [ext_resource type="PackedScene" uid="uid://c6r8qvnx7g84d" path="res://scenes/room_match_dialog.tscn" id="4_room"]
 [ext_resource type="PackedScene" uid="uid://df58y6c3g012p" path="res://scenes/ranking_dialog.tscn" id="5_ranking"]
 
@@ -129,7 +128,15 @@ text = "ソロ練習 (VS CPU・レート変動なし)"
 
 [node name="ProfileButton" type="Button" parent="CenterMenu/VBox"]
 layout_mode = 2
-text = "プロフィール設定"
+text = "きせかえ"
+
+[node name="ShopButton" type="Button" parent="CenterMenu/VBox"]
+layout_mode = 2
+text = "ショップ"
+
+[node name="FriendButton" type="Button" parent="CenterMenu/VBox"]
+layout_mode = 2
+text = "フレンド"
 
 [node name="RankingButton" type="Button" parent="CenterMenu/VBox"]
 layout_mode = 2
@@ -146,10 +153,6 @@ theme_override_font_sizes/font_size = 15
 horizontal_alignment = 1
 autowrap_mode = 2
 text = ""
-
-[node name="ProfileDialog" parent="." instance=ExtResource("3_profile")]
-visible = false
-layout_mode = 1
 
 [node name="RoomMatchDialog" parent="." instance=ExtResource("4_room")]
 visible = false

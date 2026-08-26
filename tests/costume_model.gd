@@ -27,6 +27,12 @@ func _ready() -> void:
 	test_unowned_hat_not_auto_granted()
 	test_humanoid_apply_hat_unowned_ok()
 
+	print("\n==================================================")
+	print("【TEST】②ジェム（課金モック通貨） データモデル 検証")
+	print("==================================================")
+	test_premium_currency_schema_v4_migration()
+	test_premium_currency_roundtrip()
+
 	print("==================================================")
 	print("【TEST COMPLETED】全テストケースの検証完了")
 	print("==================================================")
@@ -205,3 +211,37 @@ func test_humanoid_apply_hat_unowned_ok() -> void:
 	assert(cap_instance.is_queued_for_deletion())
 	humanoid.queue_free()
 	print("   => 未所持IDでも描画が成功し、none で装着解除できることを確認 [OK]")
+
+
+## schema_version=3（premium_currencyフィールドが存在しない既存セーブ）を読ませたとき、
+## クラッシュせずジェムが0で初期化されることを確認する
+func test_premium_currency_schema_v4_migration() -> void:
+	print("\n--- [9] schema_version=3 からのジェムフィールド移行検証 ---")
+	var data := {
+		"schema_version": 3,
+		"costume_id": "default",
+		"owned_costumes": ["default"],
+		"hat_id": "none",
+		"owned_hats": ["none"],
+	}
+	ProfileManager._apply_data(data)
+	print("   premium_currency: %d" % ProfileManager.premium_currency)
+	assert(ProfileManager.premium_currency == 0)
+	print("   => schema=3 の既存セーブはジェム 0 で初期化されることを確認 [OK]")
+
+
+## schema_version=4（現行）を読ませたとき、保存されていたジェム残高がそのまま反映されることを確認する
+func test_premium_currency_roundtrip() -> void:
+	print("\n--- [10] 現行スキーマ（schema_version=4）のジェム読み込み検証 ---")
+	var data := {
+		"schema_version": 4,
+		"costume_id": "default",
+		"owned_costumes": ["default"],
+		"hat_id": "none",
+		"owned_hats": ["none"],
+		"premium_currency": 1234,
+	}
+	ProfileManager._apply_data(data)
+	print("   premium_currency: %d" % ProfileManager.premium_currency)
+	assert(ProfileManager.premium_currency == 1234)
+	print("   => 現行スキーマのジェム残高がそのまま反映されることを確認 [OK]")

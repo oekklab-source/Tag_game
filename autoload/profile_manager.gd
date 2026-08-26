@@ -6,7 +6,7 @@ extends Node
 signal profile_updated
 
 const SAVE_PATH := "user://profile.json"
-const SCHEMA_VERSION := 3
+const SCHEMA_VERSION := 4
 
 var player_name: String = "Player"
 ## ④現在選択中のコスチュームの色見本1つ目のミラー。costume_colors[0] と常に一致させ、
@@ -22,6 +22,10 @@ var owned_costumes: Array[String] = ["default"]
 # ⑤帽子（新規ジオメトリの部位、コスチュームとは独立して組み合わせる）
 var hat_id: StringName = HatCatalog.DEFAULT_ID
 var owned_hats: Array[String] = ["none"]
+
+## ②課金コンテンツ用のゲーム内通貨（モック実装。実際の決済は行わず、
+## PurchaseManager 経由でのみ増減する）
+var premium_currency: int = 0
 
 # 戦績・レート（ランク戦のみ）
 var rating: int = 1500
@@ -101,6 +105,10 @@ func _apply_data(data: Dictionary) -> void:
 	if not HatCatalog.has(hat_id) or not owned_hats.has(String(hat_id)):
 		hat_id = HatCatalog.DEFAULT_ID
 
+	# ②ジェム: schema<4（フィールドが存在しない旧セーブ）は 0 で初期化する
+	if schema >= 4:
+		premium_currency = int(data.get("premium_currency", premium_currency))
+
 
 ## ④HTML文字列配列 <-> PackedColorArray の変換。保存(save_profile)・読み込み(_apply_data)・
 ## ネットワーク配信(GameManager._my_profile_payload / player.gd._apply_peer_costume)の
@@ -146,6 +154,7 @@ func save_profile() -> void:
 		"owned_costumes": owned_costumes,
 		"hat_id": String(hat_id),
 		"owned_hats": owned_hats,
+		"premium_currency": premium_currency,
 		"rating": rating,
 		"matches_played": matches_played,
 		"runner_wins": runner_wins,
@@ -221,6 +230,24 @@ func set_hat(id: StringName) -> void:
 		return
 	hat_id = id
 	save_profile()
+
+
+## ②ジェムを加算する唯一の入口（PurchaseManager の通貨パック購入・GiftManager の
+## 送金失敗時の払い戻しから呼ばれる）
+func add_currency(amount: int) -> void:
+	if amount <= 0:
+		return
+	premium_currency += amount
+	save_profile()
+
+
+## ②ジェムを消費できるか確認したうえで消費する。残高不足なら何もせず false を返す
+func spend_currency(amount: int) -> bool:
+	if amount <= 0 or premium_currency < amount:
+		return false
+	premium_currency -= amount
+	save_profile()
+	return true
 
 
 ## 戦績・レートの更新（ランク戦のみ）
