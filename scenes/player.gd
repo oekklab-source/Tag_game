@@ -135,6 +135,7 @@ func _ready() -> void:
 		# ④自分のコスチュームを反映する。他ピア分は GameManager.peer_profiles の
 		# 同期（RPC）で受け取ってから反映するため、ここでは自分の分のみ
 		humanoid.apply_costume(ProfileManager.costume_id, ProfileManager.costume_colors)
+		humanoid.apply_hat(ProfileManager.hat_id)
 	else:
 		# スポーン時の同期値へ即座に合わせる。補間に任せると原点から滑って来る
 		position = sync_position
@@ -471,3 +472,4 @@ func _apply_peer_costume() -> void:
 	var info: Dictionary = GameManager.peer_profiles[peer_id]
 	var colors := ProfileManager.colors_from_html(info.get("colors", []))
 	humanoid.apply_costume(StringName(info.get("costume", "default")), colors)
+	humanoid.apply_hat(StringName(info.get("hat", "none")))

@@ -1,0 +1,71 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scenes/costume_preview.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scenes/humanoid.tscn" id="2_humanoid"]
+
+; tools/shot_humanoid.gd と同じ配色・強さ。glow/shadow は README のドローコール
+; 最適化方針(まずグロー、次にシャドウを切る)に倣い、プレビュー用途では最初から無効にする
+[sub_resource type="Environment" id="env_preview"]
+background_mode = 1
+background_color = Color(0.14, 0.15, 0.17, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.55, 0.58, 0.65, 1)
+ambient_light_energy = 0.7
+glow_enabled = false
+
+[node name="CostumePreview" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="SubViewportContainer" type="SubViewportContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+stretch = true
+
+; カメラの位置・向きは shot_humanoid.gd と同じ値を _ready() で設定する
+; （look_at の回転行列を .tscn に手書きするより、コードで look_at_from_position を
+; 呼ぶ方が値の意味が読み取りやすい）
+[node name="SubViewport" type="SubViewport" parent="SubViewportContainer"]
+size = Vector2i(480, 480)
+msaa_3d = 0
+render_target_update_mode = 3
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="SubViewportContainer/SubViewport"]
+environment = SubResource("env_preview")
+
+[node name="Sun" type="DirectionalLight3D" parent="SubViewportContainer/SubViewport"]
+rotation_degrees = Vector3(-50, 40, 0)
+light_energy = 1.6
+shadow_enabled = false
+
+[node name="Camera3D" type="Camera3D" parent="SubViewportContainer/SubViewport"]
+fov = 45.0
+current = true
+
+[node name="Turntable" type="Node3D" parent="SubViewportContainer/SubViewport"]
+
+[node name="Humanoid" parent="SubViewportContainer/SubViewport/Turntable" instance=ExtResource("2_humanoid")]
+
+[node name="LockBadge" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = -34.0
+offset_right = 160.0
+offset_bottom = -8.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_font_sizes/font_size = 16
+text = "🔒 試着中"
+visible = false

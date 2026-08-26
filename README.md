@@ -697,9 +697,14 @@ scenes/hud.tscn(.gd)          役割バッジ・円形タイマー・9ゾーン�
 ui/pop_theme.tres             全体に適用される POP テーマ
 tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
 tools/blender/build_fallguy.py キャラを一から組み立てて glb へ書き出す（blender -b -P で実行）
+tools/blender/build_hats.py   ⑤帽子（頭部装備）を個別 glb として書き出す（blender -b -P で実行）
 tools/blender/reference.png   デザインの参考画像。.gdignore で Godot のインポート対象外
 tools/verify_humanoid.gd      glb の構造・アニメ・向き・状態遷移をヘッドレスで検証
 tools/shot_humanoid.gd        各アニメの見た目を PNG に書き出す（目視確認用）
+autoload/costume_catalog.gd   ④コスチューム（部位の塗り分けレシピ）の定義データ
+autoload/hat_catalog.gd       ⑤帽子（新規ジオメトリの部位）の定義データ。CostumeCatalog と対
+scenes/costume_preview.tscn(.gd) プロフィール設定の3Dプレビュー（ターンテーブル、SubViewport）
+scenes/profile_dialog.tscn(.gd)  プロフィール設定（名前・スキン柄/カラー/帽子・戦績）
 tests/map_connectivity.tscn   ナビメッシュの連結性・滑り台の一方通行・走路の貫通の検証
 tests/item_drop.tscn          アイテムがラウンド外でも置けることの検証
 tests/bumper.tscn             バンパーが四方と真上から弾き返すことの検証
@@ -712,6 +717,9 @@ tests/net_roles.tscn          2ピアで役割選択と湧き位置の分散を�
 tests/net_live.tscn           実際の起動経路と実キー入力で通信対戦が始まるかの検証
 tests/uishot.tscn             UI（タイトル/ロビー/対戦中/リザルト）を PNG 書き出し（--headless 不可）
 tests/host_conflict.tscn      ポートが埋まっているときホストを弾いて理由を出すかの検証
+tests/costume_model.tscn      ④コスチューム・⑤帽子のデータモデル（所持・移行・整合性）を検証
+tests/hat_placement.gd        ⑤帽子の装着位置（Chestボーン基準オフセット）を目視調整するスクリプト
+                              （godot --path . --script res://tests/hat_placement.gd -- <出力先>）
 .github/workflows/            push で Web ビルド -> web-build ブランチへ force push
 export_presets.cfg            Web エクスポート設定（CI が使うのでコミットしてある）
 ```

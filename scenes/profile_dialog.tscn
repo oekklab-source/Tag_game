@@ -1,7 +1,8 @@
-[gd_scene load_steps=5 format=3 uid="uid://cx82m7vd3kpqb"]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://scenes/profile_dialog.gd" id="2_script"]
+[ext_resource type="PackedScene" path="res://scenes/costume_preview.tscn" id="3_preview"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_modal"]
 bg_color = Color(0.12, 0.12, 0.18, 0.95)
@@ -44,17 +45,17 @@ grow_vertical = 2
 color = Color(0, 0, 0, 0.65)
 
 [node name="Panel" type="Panel" parent="."]
-custom_minimum_size = Vector2(520, 640)
+custom_minimum_size = Vector2(900, 600)
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -260.0
-offset_top = -320.0
-offset_right = 260.0
-offset_bottom = 320.0
+offset_left = -450.0
+offset_top = -300.0
+offset_right = 450.0
+offset_bottom = 300.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_modal")
@@ -97,55 +98,77 @@ size_flags_horizontal = 3
 placeholder_text = "名前を入力"
 max_length = 16
 
-[node name="CostumeTabs" type="TabContainer" parent="Panel/VBox"]
-custom_minimum_size = Vector2(0, 260)
+[node name="CustomizeRow" type="HBoxContainer" parent="Panel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 20
+
+[node name="PreviewPane" type="PanelContainer" parent="Panel/VBox/CustomizeRow"]
+custom_minimum_size = Vector2(360, 0)
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="CostumePreview" parent="Panel/VBox/CustomizeRow/PreviewPane" instance=ExtResource("3_preview")]
+layout_mode = 2
+
+[node name="RightPane" type="VBoxContainer" parent="Panel/VBox/CustomizeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="CostumeTabs" type="TabContainer" parent="Panel/VBox/CustomizeRow/RightPane"]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="CostumeTab" type="VBoxContainer" parent="Panel/VBox/CostumeTabs"]
+[node name="CostumeTab" type="VBoxContainer" parent="Panel/VBox/CustomizeRow/RightPane/CostumeTabs"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Scroll" type="ScrollContainer" parent="Panel/VBox/CostumeTabs/CostumeTab"]
+[node name="Scroll" type="ScrollContainer" parent="Panel/VBox/CustomizeRow/RightPane/CostumeTabs/CostumeTab"]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="CostumeGrid" type="GridContainer" parent="Panel/VBox/CostumeTabs/CostumeTab/Scroll"]
+[node name="CostumeGrid" type="GridContainer" parent="Panel/VBox/CustomizeRow/RightPane/CostumeTabs/CostumeTab/Scroll"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/h_separation = 10
 theme_override_constants/v_separation = 10
-columns = 4
+columns = 3
 
-[node name="HintLabel" type="Label" parent="Panel/VBox/CostumeTabs/CostumeTab"]
+[node name="ColorTab" type="VBoxContainer" parent="Panel/VBox/CustomizeRow/RightPane/CostumeTabs"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SlotsContainer" type="VBoxContainer" parent="Panel/VBox/CustomizeRow/RightPane/CostumeTabs/ColorTab"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="HatTab" type="VBoxContainer" parent="Panel/VBox/CustomizeRow/RightPane/CostumeTabs"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/VBox/CustomizeRow/RightPane/CostumeTabs/HatTab"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="HatGrid" type="GridContainer" parent="Panel/VBox/CustomizeRow/RightPane/CostumeTabs/HatTab/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
+columns = 3
+
+[node name="HintLabel" type="Label" parent="Panel/VBox/CustomizeRow/RightPane"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
 theme_override_font_sizes/font_size = 13
 horizontal_alignment = 1
 autowrap_mode = 2
 text = ""
-
-[node name="ColorTab" type="VBoxContainer" parent="Panel/VBox/CostumeTabs"]
-visible = false
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="Header" type="HBoxContainer" parent="Panel/VBox/CostumeTabs/ColorTab"]
-layout_mode = 2
-
-[node name="ColorLabel" type="Label" parent="Panel/VBox/CostumeTabs/ColorTab/Header"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "選択中のコスチューム色:"
-
-[node name="ColorPreview" type="ColorRect" parent="Panel/VBox/CostumeTabs/ColorTab/Header"]
-custom_minimum_size = Vector2(36, 36)
-layout_mode = 2
-color = Color(0.25, 0.65, 0.95, 1)
-
-[node name="SlotsContainer" type="VBoxContainer" parent="Panel/VBox/CostumeTabs/ColorTab"]
-layout_mode = 2
-theme_override_constants/separation = 6
 
 [node name="StatsBox" type="PanelContainer" parent="Panel/VBox"]
 layout_mode = 2

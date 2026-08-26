@@ -614,6 +614,7 @@ func _my_profile_payload() -> Dictionary:
 		"tier": String(RankingManager.tier_id(ProfileManager.rating)),
 		"costume": String(ProfileManager.costume_id),
 		"colors": ProfileManager.colors_to_html(ProfileManager.costume_colors),
+		"hat": String(ProfileManager.hat_id),
 	}
 
 

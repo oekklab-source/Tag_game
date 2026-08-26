@@ -53,7 +53,14 @@ var _costume_id: StringName = CostumeCatalog.DEFAULT_ID
 var _costume_colors := PackedColorArray()
 var _role_color := Color(0.5, 0.55, 0.6)
 
+## ⑤帽子（新規ジオメトリの部位）。apply_costume() が既存サーフェスの塗り分けだけを
+## 扱うのに対し、こちらはメッシュそのものの追加/削除を扱う。責務を分けることで
+## 色レシピと部位装備を独立に組み合わせられる
+var _hat_id: StringName = HatCatalog.DEFAULT_ID
+var _hat_instance: Node3D = null
+
 @onready var _anim: AnimationPlayer = $Model.find_child("AnimationPlayer", true, false)
+@onready var _hat_attachment: BoneAttachment3D = $Model.find_child("HatAttachment", true, false)
 
 
 func _ready() -> void:
@@ -67,6 +74,7 @@ func _ready() -> void:
 		if node:
 			_mesh_nodes[part] = node
 	apply_costume(CostumeCatalog.DEFAULT_ID, CostumeCatalog.default_colors(CostumeCatalog.DEFAULT_ID))
+	apply_hat(HatCatalog.DEFAULT_ID)
 	_play("Idle")
 
 
@@ -111,6 +119,25 @@ func apply_costume(id: StringName, colors: PackedColorArray) -> void:
 	# パス（自分のロール変更時）とコスチューム再適用パス（他ピアの更新受信時）とで
 	# 見た目が食い違ってしまう
 	set_role_color(_role_color)
+
+
+## ⑤頭部装備（新規ジオメトリ、スキニング無しの剛体アタッチ）を差し替える。
+## HatCatalog の各エントリは Chest ボーン(HatAttachment)基準のローカル
+## position/rotation_degrees を持つ（実測値、机上計算では出せない）
+func apply_hat(id: StringName) -> void:
+	if _hat_instance:
+		_hat_instance.queue_free()
+		_hat_instance = null
+	_hat_id = id if HatCatalog.has(id) else HatCatalog.DEFAULT_ID
+	var def: Dictionary = HatCatalog.get_def(_hat_id)
+	var packed: PackedScene = def.get("scene")
+	if packed == null or _hat_attachment == null:
+		return
+	var inst: Node3D = packed.instantiate()
+	inst.position = def.get("offset", Vector3.ZERO)
+	inst.rotation_degrees = def.get("rotation_degrees", Vector3.ZERO)
+	_hat_attachment.add_child(inst)
+	_hat_instance = inst
 
 
 func _surface_color(surf: Dictionary) -> Color:

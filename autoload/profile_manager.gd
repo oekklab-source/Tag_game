@@ -6,7 +6,7 @@ extends Node
 signal profile_updated
 
 const SAVE_PATH := "user://profile.json"
-const SCHEMA_VERSION := 2
+const SCHEMA_VERSION := 3
 
 var player_name: String = "Player"
 ## ④現在選択中のコスチュームの色見本1つ目のミラー。costume_colors[0] と常に一致させ、
@@ -18,6 +18,10 @@ var icon_id: int = 0
 var costume_id: StringName = CostumeCatalog.DEFAULT_ID
 var costume_colors: PackedColorArray = PackedColorArray([Color(0.25, 0.65, 0.95)])
 var owned_costumes: Array[String] = ["default"]
+
+# ⑤帽子（新規ジオメトリの部位、コスチュームとは独立して組み合わせる）
+var hat_id: StringName = HatCatalog.DEFAULT_ID
+var owned_hats: Array[String] = ["none"]
 
 # 戦績・レート（ランク戦のみ）
 var rating: int = 1500
@@ -83,6 +87,20 @@ func _apply_data(data: Dictionary) -> void:
 	if not CostumeCatalog.has(costume_id) or not owned_costumes.has(String(costume_id)):
 		costume_id = CostumeCatalog.DEFAULT_ID
 
+	# ⑤帽子: schema<3（帽子フィールドが存在しない旧セーブ）は所持済み帽子を初期化する。
+	# コスチュームの schema<2 分岐とは独立した条件にしてあるので、schema=2 の既存セーブは
+	# 「コスチュームはそのまま読み込み・帽子だけ初期化」という意図通りの挙動になる
+	if schema < 3:
+		hat_id = HatCatalog.DEFAULT_ID
+		owned_hats = HatCatalog.default_owned_ids()
+	else:
+		hat_id = StringName(data.get("hat_id", String(hat_id)))
+		owned_hats = _to_string_array(data.get("owned_hats", ["none"]))
+	if not owned_hats.has("none"):
+		owned_hats.append("none")
+	if not HatCatalog.has(hat_id) or not owned_hats.has(String(hat_id)):
+		hat_id = HatCatalog.DEFAULT_ID
+
 
 ## ④HTML文字列配列 <-> PackedColorArray の変換。保存(save_profile)・読み込み(_apply_data)・
 ## ネットワーク配信(GameManager._my_profile_payload / player.gd._apply_peer_costume)の
@@ -126,6 +144,8 @@ func save_profile() -> void:
 		"costume_id": String(costume_id),
 		"costume_colors": colors_html,
 		"owned_costumes": owned_costumes,
+		"hat_id": String(hat_id),
+		"owned_hats": owned_hats,
 		"rating": rating,
 		"matches_played": matches_played,
 		"runner_wins": runner_wins,
@@ -179,6 +199,28 @@ func merge_server_inventory(data: Dictionary) -> void:
 	if not raw_owned.is_empty():
 		owned_costumes = _to_string_array(raw_owned)
 		save_profile()
+
+
+## ⑤指定帽子を所持しているか
+func owns_hat(id: StringName) -> bool:
+	return owned_hats.has(String(id))
+
+
+## ⑤課金SDK・報酬付与など、帽子の所持を追加する唯一の入口（grant_costume と同じ役割）
+func grant_hat(id: StringName) -> void:
+	if not HatCatalog.has(id):
+		return
+	if not owned_hats.has(String(id)):
+		owned_hats.append(String(id))
+		save_profile()
+
+
+## ⑤帽子を選択する。未所持の場合は何もしない
+func set_hat(id: StringName) -> void:
+	if not owns_hat(id):
+		return
+	hat_id = id
+	save_profile()
 
 
 ## 戦績・レートの更新（ランク戦のみ）
