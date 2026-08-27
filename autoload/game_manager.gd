@@ -12,6 +12,7 @@ signal spotted_changed(is_spotted: bool)
 ## 準備中の役割選択が変わった。HUD は毎フレーム読み直しているので購読不要だが、
 ## 演出をエッジで駆動したくなったときのために出しておく
 signal roles_changed
+signal debug_mode_changed(enabled: bool)
 
 enum State { WAITING, PLAYING, RESULT }
 
@@ -42,6 +43,7 @@ const RESULT_TIME := 5.0
 const HEAD_START := 8.0
 ## 探索速度に線形に効く最大のレバー。きつすぎると感じたらまずここを 5 に戻す
 const SOLO_CPU_COUNT := 6
+const CPU_RUNNER_ID := 0
 ## 逃走者は中央ゾーン。座標を直書きすると ZONE_GROUND[4] == 0.0 に暗黙依存し、
 ## 中央の地面高さを変えた瞬間に宙に浮く（あるいは床に埋まる）
 const RUNNER_SPAWN_ZONE := 4
@@ -68,7 +70,10 @@ const SIGHT_TARGET_Y: Array[float] = [1.55, 0.85]
 ## player.tscn の SpringArm3D.collision_mask と同じ値 = カメラアームが当たる物は視線も遮る
 const SIGHT_MASK := 9
 const SIGHT_TICK := 0.1     # 10Hz。消費側の REPATH_INTERVAL(0.3) に対して十分速い
-const INTEL_TIME := 20.0    # 見失ってからゾーン情報が消えるまで
+const INTEL_TIME := 10.0    # 見失ってからゾーン情報が消えるまで
+const HUNTER_STAMINA_DEFAULT := 100.0
+const HUNTER_STAMINA_THREE_PLAYER := 120.0
+const HUNTER_STAMINA_TWO_PLAYER := 150.0
 ## 視認が途切れてから spotted を落とすまでの猶予。これが無いと逃走者が柱の陰を
 ## 横切るだけで 10Hz でばたつき、RPC を撒き散らしバナーも点滅する
 const SPOTTED_HOLD := 1.5
@@ -78,6 +83,7 @@ var runner_id := -1
 ## 準備中の「逃げる役」の立候補。枠は1つしかないので peer_id 1個で足りる。
 ## -1 = 未定（ラウンド開始時にランダムで選ぶ）。ホストは Tab で誰にでも付け替えられる
 var wanted_runner := -1
+var debug_cpu_runner := false
 var hunter_mult := 1.0
 var time_left := ROUND_TIME
 var head_start_left := 0.0
@@ -146,6 +152,25 @@ func hunter_mult_for(hunter_count: int) -> float:
 	return 1.0
 
 
+## 鬼のブースト時間は人数が少ないほど長くする。
+## 1人の逃走者に対して鬼が 1 / 2 / 3人以上のとき、150 / 120 / 100。
+func hunter_stamina_max_for(hunter_count: int) -> float:
+	if hunter_count <= 1:
+		return HUNTER_STAMINA_TWO_PLAYER
+	if hunter_count == 2:
+		return HUNTER_STAMINA_THREE_PLAYER
+	return HUNTER_STAMINA_DEFAULT
+
+
+func stamina_max_for(peer_id: int) -> float:
+	if state != State.PLAYING or peer_id == runner_id:
+		return HUNTER_STAMINA_DEFAULT
+	# CPU逃走者デバッグは、人間の鬼が必ず1人だけ。
+	if runner_id == CPU_RUNNER_ID:
+		return HUNTER_STAMINA_TWO_PLAYER
+	return hunter_stamina_max_for(maxi(player_ids().size() - 1, 1))
+
+
 func get_speed_mult(peer_id: int) -> float:
 	if state == State.PLAYING and peer_id != runner_id:
 		return hunter_mult
@@ -153,6 +178,10 @@ func get_speed_mult(peer_id: int) -> float:
 
 
 func get_runner() -> Node:
+	if runner_id == CPU_RUNNER_ID:
+		for cpu in get_tree().get_nodes_in_group("cpu_runners"):
+			return cpu
+		return null
 	return _find_player(runner_id)
 
 
@@ -184,7 +213,7 @@ func player_ids() -> Array[int]:
 ## 自分の立候補をトグルする。全ピアが押せる。
 ## ホストは rpc_id(1) の自己配信に頼らず直接呼ぶ（player.gd の _request_drop と同じ）
 func toggle_my_role() -> void:
-	if state != State.WAITING:
+	if state != State.WAITING or debug_cpu_runner:
 		return
 	var me := multiplayer.get_unique_id()
 	var want := wanted_runner != me
@@ -226,6 +255,12 @@ func set_wanted_runner_to(peer_id: int) -> void:
 
 ## ホスト専用。プレイヤーを順送りして逃走者を指名する（準備中の入れ替え）。
 ## 一巡に「未定(-1)」も含めるので、全員鬼＝ランダムに戻すこともできる
+func set_debug_cpu_runner(enabled: bool) -> void:
+	if not multiplayer.is_server() or state != State.WAITING:
+		return
+	_set_debug_cpu_runner.rpc(enabled)
+
+
 func cycle_wanted_runner() -> void:
 	if not multiplayer.is_server() or state != State.WAITING:
 		return
@@ -243,12 +278,16 @@ func request_start_round() -> void:
 	var ids := player_ids()
 	if ids.is_empty():
 		return
-	_clear_cpu_hunters()
-	# 1人だけならソロモード: 自分が Runner になり CPU 鬼が追う
+	_clear_cpu_characters()
 	var solo := ids.size() == 1
+	var solo_debug_runner := solo and debug_cpu_runner
+	# 1人だけなら通常ソロ: 自分が Runner になり CPU 鬼が追う。
+	# デバッグONのときだけ逆にして、自分が Hunter、CPU が Runner になる。
 	var new_runner: int
 	var mult := 1.0
-	if solo:
+	if solo_debug_runner:
+		new_runner = CPU_RUNNER_ID
+	elif solo:
 		new_runner = ids[0]
 	else:
 		# 準備中に選ばれた人がいればその人。誰も立候補していなければランダム
@@ -256,7 +295,8 @@ func request_start_round() -> void:
 		mult = hunter_mult_for(ids.size() - 1)
 	# スポーン位置: Runner は中央ゾーン、Hunter は外周ゾーンの中心に散らす
 	var spawns := {}
-	spawns[new_runner] = _runner_spawn()
+	if not solo_debug_runner:
+		spawns[new_runner] = _runner_spawn()
 	var i := 0
 	for id in ids:
 		if id == new_runner:
@@ -264,7 +304,12 @@ func request_start_round() -> void:
 		spawns[id] = _hunter_spawn(i)
 		i += 1
 	_start_round.rpc(new_runner, mult, spawns)
-	if solo:
+	if solo_debug_runner:
+		_sync_head.rpc(0.0)
+		var world := get_tree().current_scene
+		if world.has_method("spawn_cpu_runner"):
+			world.spawn_cpu_runner(_runner_spawn())
+	elif solo:
 		var world := get_tree().current_scene
 		for n in SOLO_CPU_COUNT:
 			if world.has_method("spawn_cpu_hunter"):
@@ -289,12 +334,23 @@ func _hunter_spawn(i: int) -> Vector3:
 	return p + Vector3(0, HUNTER_SPAWN_HEIGHT, 0)
 
 
+func _clear_cpu_characters() -> void:
+	_clear_cpu_hunters()
+	_clear_cpu_runners()
+
+
 func _clear_cpu_hunters() -> void:
 	for cpu in get_tree().get_nodes_in_group("cpu_hunters"):
 		# queue_free() だけではこのフレーム中グループに残る。残っていると
 		# 同フレームにテレポートしたプレイヤーが消滅予定の CPU に乗ってしまい、
 		# cpu_hunter.gd の巡回開始位置の割り当て（グループの人数）も狂う
 		cpu.remove_from_group("cpu_hunters")
+		cpu.queue_free()
+
+
+func _clear_cpu_runners() -> void:
+	for cpu in get_tree().get_nodes_in_group("cpu_runners"):
+		cpu.remove_from_group("cpu_runners")
 		cpu.queue_free()
 
 
@@ -634,6 +690,13 @@ func _set_wanted_runner(id: int) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
+func _set_debug_cpu_runner(enabled: bool) -> void:
+	debug_cpu_runner = enabled
+	debug_mode_changed.emit(enabled)
+	roles_changed.emit()
+
+
+@rpc("authority", "call_local", "reliable")
 func _back_to_waiting() -> void:
 	state = State.WAITING
 	runner_id = -1
@@ -642,7 +705,7 @@ func _back_to_waiting() -> void:
 	_clear_intel()
 	state_changed.emit(state)
 	if multiplayer.is_server():
-		_clear_cpu_hunters()
+		_clear_cpu_characters()
 
 
 ## 目撃ゾーンや「見られている」状態が変わった瞬間だけ送る（毎フレームは送らない）

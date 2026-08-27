@@ -60,8 +60,8 @@ const STAMINA_RECOVER := 30.0 # 枯渇後、この値まで回復するとダッ
 ## ロケット: 前方へ大きく飛ぶ。ジャンプ(1.38m)では届かない距離を一気に詰める/離す
 const ROCKET_FORWARD := 12.0
 const ROCKET_UP := 9.0
-const BANANA_BEHIND := 2.0    # 足元の後ろこの距離に置く
-const BLOCK_AHEAD := 3.5      # 目の前この距離に立てる
+const BANANA_BEHIND := 3.0    # 足元の後ろこの距離に置く
+const BLOCK_BEHIND := 5.0     # カメラの SpringArm(4m) に干渉しにくい背後距離
 
 const COLOR_WAITING := Color(0.62, 0.66, 0.72)
 const COLOR_RUNNER := Color(0.2, 1.0, 0.45)
@@ -305,6 +305,7 @@ func _start_dive() -> void:
 
 
 func _update_stamina(delta: float, moving: bool, frozen: bool) -> void:
+	var stamina_max := GameManager.stamina_max_for(String(name).to_int())
 	var wants_dash := Input.is_action_pressed("dash") and moving and not frozen
 	is_dashing = wants_dash and not exhausted and stamina > 0.0
 	if is_dashing:
@@ -313,9 +314,13 @@ func _update_stamina(delta: float, moving: bool, frozen: bool) -> void:
 			exhausted = true
 			is_dashing = false
 	else:
-		stamina = minf(stamina + STAMINA_REGEN * delta, STAMINA_MAX)
+		stamina = minf(stamina + STAMINA_REGEN * delta, stamina_max)
 		if exhausted and stamina >= STAMINA_RECOVER:
 			exhausted = false
+
+
+func stamina_max() -> float:
+	return GameManager.stamina_max_for(String(name).to_int())
 
 
 ## ラウンド開始時に GameManager（RPC 内）から呼ばれる。権威ピア上でのみ有効。
@@ -325,7 +330,7 @@ func teleport(pos: Vector3) -> void:
 	global_position = pos
 	sync_position = position  # 他ピアが次の物理フレームを待たずスナップできるように
 	velocity = Vector3.ZERO
-	stamina = STAMINA_MAX
+	stamina = stamina_max()
 	exhausted = false
 	buffs.clear()
 	warp_lock = 0.0
@@ -360,9 +365,9 @@ func _use_item() -> void:
 			_request_drop(Item.BANANA,
 				global_position + Vector3(back.x, 0.0, back.z).normalized() * BANANA_BEHIND)
 		Item.BLOCK:
-			var ahead := -global_transform.basis.z
+			var back := global_transform.basis.z
 			_request_drop(Item.BLOCK,
-				global_position + Vector3(ahead.x, 0.0, ahead.z).normalized() * BLOCK_AHEAD)
+				global_position + Vector3(back.x, 0.0, back.z).normalized() * BLOCK_BEHIND)
 		_:
 			return
 	item = Item.NONE
