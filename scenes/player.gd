@@ -73,7 +73,7 @@ const COLOR_HUNTER := Color(1.0, 0.18, 0.22)
 ## 25 は MultiplayerSynchronizer の replication_interval(0.05) と釣り合う値
 ## （定常的な遅れ ≒ 速度/25 ≒ 同期1回分の移動量）。上げるほど追従が速く、荒くなる
 const NET_SMOOTH := 25.0
-## これ以上離れていたら補間せず飛ばす。teleport・土管ワープ・落下復帰で
+## これ以上離れていたら補間せず飛ばす。teleport・マンホールワープ・落下復帰で
 ## 画面を横切って滑っていくのを防ぐ
 const NET_SNAP_DIST := 5.0
 
@@ -90,7 +90,7 @@ var slide_left := 0.0               # >0 の間だけ滑走状態
 var diving := false
 var dive_recover := 0.0
 var dive_cooldown := 0.0
-var warp_lock := 0.0                # 土管の往復ワープ防止
+var warp_lock := 0.0                # マンホールの往復ワープ防止
 var warp_grace := 0.0               # ワープ直後、is_on_floor() の古い値を無視する猶予
 var item: int = Item.NONE
 var stun_left := 0.0                # バナナを踏んだ時の操作不能時間
@@ -398,9 +398,9 @@ func launch(v: Vector3) -> void:
 	velocity.z += v.z
 
 
-## 土管ワープ。着地先の土管で即座に再ワープしないよう warp_lock を張る。
-## exit_kick は水平方向の勢い（warp_pipe.gd 側で「進行方向」から作る）。
-## これが無いと無操作時に真上へ飛んで同じ場所へ落ち、口に戻って再突入する
+## マンホールのワープ。着地先で即座に再ワープしないよう warp_lock を張る。
+## exit_kick は水平方向の勢い（manhole.gd 側で「進行方向」から作る）。
+## これが無いと無操作時に真上へ飛んで同じ場所へ落ち、フタへ戻って再突入する
 func warp_to(pos: Vector3, up_vel: float, exit_kick := Vector3.ZERO) -> void:
 	if not is_multiplayer_authority():
 		return

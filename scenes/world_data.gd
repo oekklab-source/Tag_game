@@ -103,11 +103,11 @@ const BOOST_PANELS: Array = [
 	[7, -18.0, 0.0, 90.0],
 ]
 
-## 土管。2本ずつペアになる（0-1 と 2-3）。高低差の大きいゾーンを直結する近道
-const WARP_PIPES: Array = [
+## マンホール。2基ずつペアになる（0-1 と 2-3）。高低差の大きいゾーンを直結する近道
+const MANHOLES: Array = [
 	[1, 14.0, 0.0],     # PIPE YARD    <-> SKY STEPS
 	[8, -14.0, 0.0],
-	[4, -20.0, 0.0],    # CASTLE COURT <-> CLOUD DECK
+	[4, -12.0, 0.0],    # CASTLE COURT <-> CLOUD DECK
 	[0, 14.0, 0.0],
 ]
 

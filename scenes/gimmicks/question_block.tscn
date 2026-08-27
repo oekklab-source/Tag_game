@@ -1,18 +1,7 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scenes/gimmicks/question_block.gd" id="1_qblock"]
-
-[sub_resource type="StandardMaterial3D" id="block_mat"]
-albedo_color = Color(1, 0.78, 0.12, 1)
-roughness = 0.7
-metallic_specular = 0.2
-emission_enabled = true
-emission = Color(1, 0.78, 0.12, 1)
-emission_energy_multiplier = 1.2
-
-[sub_resource type="BoxMesh" id="block_mesh"]
-material = SubResource("block_mat")
-size = Vector3(1.7, 1.7, 1.7)
+[ext_resource type="PackedScene" path="res://assets/props/item_box.glb" id="2_model"]
 
 [sub_resource type="BoxShape3D" id="block_shape"]
 size = Vector3(1.7, 1.7, 1.7)
@@ -23,18 +12,8 @@ size = Vector3(2.8, 2.6, 2.8)
 [node name="QuestionBlock" type="StaticBody3D"]
 script = ExtResource("1_qblock")
 
-[node name="Mesh" type="MeshInstance3D" parent="."]
+[node name="Model" parent="." instance=ExtResource("2_model")]
 position = Vector3(0, 1.5, 0)
-mesh = SubResource("block_mesh")
-
-[node name="Mark" type="Label3D" parent="."]
-position = Vector3(0, 1.5, 0)
-billboard = 1
-text = "?"
-font_size = 120
-outline_size = 18
-modulate = Color(0.35, 0.2, 0.05, 1)
-outline_modulate = Color(1, 0.95, 0.75, 1)
 
 [node name="Shape" type="CollisionShape3D" parent="."]
 position = Vector3(0, 1.5, 0)

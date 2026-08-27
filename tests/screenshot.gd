@@ -17,6 +17,11 @@ const SHOTS: Array = [
 	# ？ブロック（emission 1.2）の寄り。glow_hdr_threshold=1.0 を超えるので、
 	# ここに滲みが出ていれば Compatibility レンダラで glow が効いている証拠
 	["glow", Vector3(45.5, 5.5, -55.0), Vector3(45.5, 5.5, -61.5)],
+	# マンホール（PIPE YARD の Manhole0 は (14, 2, -53.5)）の寄りと、
+	# 遠景から光柱が見つけられるか。地面と面一にした代わりの目印なので、
+	# 遠景で見えなくなっていたらマンホールの設計が破綻している
+	["manhole", Vector3(14.0, 3.4, -49.0), Vector3(14.0, 2.3, -53.5)],
+	["manhole_far", Vector3(0.0, 7.0, -8.0), Vector3(14.0, 9.0, -53.5)],
 ]
 
 

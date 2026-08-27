@@ -375,7 +375,7 @@ func _xz_dist(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x - b.x, a.z - b.z).length()
 
 
-## 土管が「その近道は自分の役に立つか」を判断するために参照する。
+## マンホールが「その近道は自分の役に立つか」を判断するために参照する。
 ## 逃走者の位置ではなく今向かっている場所で判断させること
 func get_ai_goal() -> Vector3:
 	return _goal

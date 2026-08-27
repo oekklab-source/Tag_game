@@ -1,8 +1,8 @@
 extends Node
 
-## 土管の出口が真上だけでなく進行方向へも飛び出すことを確かめる。
+## マンホールの出口が真上だけでなく進行方向へも飛び出すことを確かめる。
 ##
-##   godot --headless --path . res://tests/warp_pipe.tscn --quit-after 900
+##   godot --headless --path . res://tests/manhole.tscn --quit-after 900
 ##
 ## 以前は出口の速度が Vector3(0, up_vel, 0) で水平成分ゼロだった。
 ## 無操作で入ると、入った時と同じ xz 座標へそのまま落ちてきて口に戻り、
@@ -22,16 +22,16 @@ func _ready() -> void:
 		await get_tree().physics_frame
 
 	var player: CharacterBody3D = world.get_node_or_null("Players/1")
-	var pipe: Node3D = world.get_node_or_null("NavRegion/Gimmicks/WarpPipe0")
-	if player == null or pipe == null:
-		print("FAIL: プレイヤーか WarpPipe0 が見つからない")
+	var hole: Node3D = world.get_node_or_null("NavRegion/Gimmicks/Manhole0")
+	if player == null or hole == null:
+		print("FAIL: プレイヤーか Manhole0 が見つからない")
 		get_tree().quit()
 		return
 
 	# 静止したまま、ある向きを向いて入る（無操作での突入を再現）
 	var facing := deg_to_rad(40.0)
 	player.rotation.y = facing
-	player.teleport(pipe.global_position + Vector3(0, 1.0, 0))
+	player.teleport(hole.global_position + Vector3(0, 0.5, 0))
 	player.velocity = Vector3.ZERO
 	await get_tree().physics_frame
 
