@@ -62,7 +62,12 @@ func _init_steam() -> void:
 			if ProfileManager.player_name.begins_with("Runner_") or ProfileManager.player_name == "Player":
 				ProfileManager.player_name = steam_username
 				ProfileManager.save_profile()
-			
+
+			# ⑥Steam Cloud とのプロフィール同期。ProfileManager は既にローカルの
+			# load_profile() を終えているので(autoload順で先に _ready() が走る)、
+			# ここではローカル読み込み後の状態を前提にクラウドとマージ/初回アップロードする
+			sync_profile_with_cloud()
+
 			steam_initialized.emit(true)
 			return
 		else:
@@ -154,6 +159,72 @@ func upload_rating(new_rating: int) -> void:
 		steam.uploadLeaderboardScore(new_rating, true)
 	else:
 		leaderboard_score_uploaded.emit(true, new_rating)
+
+
+# --- ⑥Steamworks Cloud (Remote Storage) ---
+
+const CLOUD_PROFILE_FILENAME := "profile.json"
+
+
+## プロフィールJSONをSteam Cloudへ書き込む。Steam無効時は何もせず false を返す
+func cloud_save_profile(json_text: String) -> bool:
+	if not is_steam_available:
+		return false
+	var steam = Engine.get_singleton("Steam")
+	return steam.fileWrite(CLOUD_PROFILE_FILENAME, json_text.to_utf8_buffer())
+
+
+## Steam Cloud上のプロフィールJSONを読む。存在しない/Steam無効時は空文字を返す
+func cloud_load_profile() -> String:
+	if not is_steam_available:
+		return ""
+	var steam = Engine.get_singleton("Steam")
+	if not steam.fileExists(CLOUD_PROFILE_FILENAME):
+		return ""
+	var size: int = steam.getFileSize(CLOUD_PROFILE_FILENAME)
+	if size <= 0:
+		return ""
+	var result = steam.fileRead(CLOUD_PROFILE_FILENAME, size)
+	# GodotSteamはバイナリ同梱のGDExtensionでソースを直接確認できず、fileRead()の
+	# 戻り値がPackedByteArrayそのものか{ret, buf}形式のDictionaryかはバージョン依存。
+	# 実機導入時にGodotエディタの「ヘルプ検索」で確定させるまでは両方を許容する
+	var buffer: PackedByteArray
+	if result is Dictionary:
+		buffer = result.get("buf", result.get("buffer", PackedByteArray()))
+	else:
+		buffer = result
+	return buffer.get_string_from_utf8()
+
+
+## Steam Cloud上のプロフィールJSONの最終更新時刻(UNIX秒)。未保存/Steam無効時は0
+func cloud_file_timestamp() -> int:
+	if not is_steam_available:
+		return 0
+	var steam = Engine.get_singleton("Steam")
+	if not steam.fileExists(CLOUD_PROFILE_FILENAME):
+		return 0
+	return int(steam.getFileTimestamp(CLOUD_PROFILE_FILENAME))
+
+
+## ProfileManagerのローカル状態とSteam Cloudを同期する。
+## - クラウドに未保存(初回): データ消失を防ぐため、ローカルの現在値を無条件アップロードする
+## - クラウドに既存: ダウンロード→ProfileManager.merge_server_inventory()でマージ
+##   →マージ後の状態を再アップロードして両端末を収束させる(merge-then-republish)
+func sync_profile_with_cloud() -> void:
+	if not is_steam_available:
+		return
+	if cloud_file_timestamp() == 0:
+		cloud_save_profile(JSON.stringify(ProfileManager.to_save_dict()))
+		return
+	var remote_text := cloud_load_profile()
+	if remote_text.is_empty():
+		return
+	var json := JSON.new()
+	if json.parse(remote_text) != OK or typeof(json.data) != TYPE_DICTIONARY:
+		# 破損データはマージをスキップし、ローカルを保護する(絶対にクラッシュ・削除しない)
+		return
+	ProfileManager.merge_server_inventory(json.data)
+	cloud_save_profile(JSON.stringify(ProfileManager.to_save_dict()))
 
 
 # --- コールバック群 ---

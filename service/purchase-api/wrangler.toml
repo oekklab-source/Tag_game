@@ -1,0 +1,12 @@
+name = "tag-game-purchase-api"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# KVは orderid -> {steam_id, item_def_id, granted_gems, finalized} の冪等性ストアとして使う。
+# `wrangler kv namespace create PURCHASE_TXNS` で作成し、id をここに設定する
+[[kv_namespaces]]
+binding = "PURCHASE_TXNS"
+id = "REPLACE_WITH_REAL_KV_NAMESPACE_ID"
+
+# 機密値はリポジトリに置かず、`wrangler secret put STEAM_WEB_API_KEY` で設定する
+# (Steamworksパートナーサイトで発行されるPublisherキー。申請中のため未取得)

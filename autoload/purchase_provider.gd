@@ -2,15 +2,16 @@ class_name PurchaseProvider
 extends RefCounted
 
 ## ②課金コンテンツの決済処理を差し替え可能にするための基底クラス。
-## 今は MockPurchaseProvider（即時成功）のみ実装されているが、将来
-## Steam Microtransactions API 等を使った本決済プロバイダに差し替える際は、
-## このクラスを継承して buy_pack() を実装すればよい（PurchaseManager 側の
-## 呼び出しコードは変更不要）。
+## MockPurchaseProvider（即時成功）と SteamPurchaseProvider（Steamworks
+## Microtransactions）の2実装がある。本決済プロバイダは await を含む
+## コルーチンとして buy_pack() をオーバーライドすること（PurchaseManager 側の
+## 呼び出しコードは変更不要、必ず await で呼び出す）。
 
 
-## 指定した通貨パックの決済を実行する。成功したら true を返す。
-## 本決済プロバイダでは非同期処理（await）になる想定のため、呼び出し側も
-## await で使うこと
-func buy_pack(_pack_id: StringName) -> bool:
+## 指定した通貨パックの決済を実行する。戻り値は {"ok": bool, "granted_gems": int,
+## "reason": String} 形式。ok が true の場合のみ granted_gems（プロバイダ側で
+## 確定した付与量）を信用してよい。呼び出し側はこれ以外の値でジェムを
+## 加算してはならない（クライアント側の静的カタログ値を信用しない）
+func buy_pack(_pack_id: StringName) -> Dictionary:
 	assert(false, "PurchaseProvider.buy_pack() はサブクラスで実装してください")
-	return false
+	return {"ok": false, "granted_gems": 0, "reason": "not_implemented"}

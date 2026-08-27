@@ -6,5 +6,8 @@ extends PurchaseProvider
 ## interfaceだけに依存しているので、将来ここを本決済プロバイダに差し替えるだけでよい。
 
 
-func buy_pack(pack_id: StringName) -> bool:
-	return CurrencyPackCatalog.has(pack_id)
+func buy_pack(pack_id: StringName) -> Dictionary:
+	if not CurrencyPackCatalog.has(pack_id):
+		return {"ok": false, "granted_gems": 0, "reason": "unknown_pack"}
+	var gems := int(CurrencyPackCatalog.get_def(pack_id).get("gems", 0))
+	return {"ok": true, "granted_gems": gems, "reason": ""}

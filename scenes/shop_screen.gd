@@ -24,6 +24,15 @@ const RARITY_COLORS := {
 	&"legendary": Color(1.0, 0.75, 0.2),
 }
 
+## ⑥PurchaseManagerが返す理由識別子(英語定数)を、画面表示用の日本語文言に変換する。
+## 未知の識別子(purchase_item系が返す既存の生の日本語メッセージ等)はそのまま表示する
+const FAILURE_MESSAGES := {
+	"unknown_pack": "不明な通貨パックです",
+	"steam_unavailable": "Steamに接続されていないため購入できません",
+	"network_error": "通信エラーが発生しました。時間をおいて再度お試しください",
+	"user_cancelled": "購入がキャンセルされました",
+}
+
 var _pending_gift_kind: StringName = &""
 var _pending_gift_id: StringName = &""
 
@@ -74,15 +83,24 @@ func _setup_pack_row() -> void:
 
 		var buy_btn := Button.new()
 		buy_btn.text = "購入する"
-		buy_btn.pressed.connect(_on_buy_pack_pressed.bind(id))
+		buy_btn.pressed.connect(_on_buy_pack_pressed.bind(id, buy_btn))
 		vbox.add_child(buy_btn)
 
 		box.add_child(vbox)
 		pack_row.add_child(box)
 
 
-func _on_buy_pack_pressed(pack_id: StringName) -> void:
-	if PurchaseManager.buy_currency_pack(pack_id):
+## ⑥実課金プロバイダはSteamオーバーレイ+Webサービスとの非同期往復を伴うため、
+## 処理中はボタンを無効化して連打・二重購入を防ぐ
+func _on_buy_pack_pressed(pack_id: StringName, btn: Button) -> void:
+	var original_text := btn.text
+	btn.disabled = true
+	btn.text = "処理中..."
+	var ok: bool = await PurchaseManager.buy_currency_pack(pack_id)
+	if is_instance_valid(btn):
+		btn.disabled = false
+		btn.text = original_text
+	if ok:
 		var def := CurrencyPackCatalog.get_def(pack_id)
 		status_label.text = "💎%d を獲得しました！" % int(def.get("gems", 0))
 
@@ -163,7 +181,7 @@ func _on_buy_item_pressed(kind: StringName, id: StringName) -> void:
 
 
 func _on_purchase_failed(reason: String) -> void:
-	status_label.text = reason
+	status_label.text = FAILURE_MESSAGES.get(reason, reason)
 
 
 ## ③プレゼント相手選択ピッカーを開く（オンラインのフレンドのみ表示）

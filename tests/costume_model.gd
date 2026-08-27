@@ -33,6 +33,11 @@ func _ready() -> void:
 	test_premium_currency_schema_v4_migration()
 	test_premium_currency_roundtrip()
 
+	print("\n==================================================")
+	print("【TEST】⑥CurrencyPackCatalog（実課金SKU定義） データモデル 検証")
+	print("==================================================")
+	test_currency_pack_catalog_integrity()
+
 	print("==================================================")
 	print("【TEST COMPLETED】全テストケースの検証完了")
 	print("==================================================")
@@ -245,3 +250,17 @@ func test_premium_currency_roundtrip() -> void:
 	print("   premium_currency: %d" % ProfileManager.premium_currency)
 	assert(ProfileManager.premium_currency == 1234)
 	print("   => 現行スキーマのジェム残高がそのまま反映されることを確認 [OK]")
+
+
+## CurrencyPackCatalogの全SKUがsteam_item_def_id(Steamworks連携用)を持ち、
+## ジェム数が正の値であることを確認する
+func test_currency_pack_catalog_integrity() -> void:
+	print("\n--- [11] CurrencyPackCatalog の整合性検証 ---")
+	for id in CurrencyPackCatalog.PACKS:
+		var def: Dictionary = CurrencyPackCatalog.PACKS[id]
+		print("   %s: %s" % [id, def.get("name", "?")])
+		assert(def.has("steam_item_def_id"))
+		assert(int(def["steam_item_def_id"]) > 0)
+		assert(int(def.get("gems", 0)) > 0)
+		assert(not String(def.get("display_price", "")).is_empty())
+	print("   => 全パックがsteam_item_def_id/正のジェム数を持つことを確認 [OK]")

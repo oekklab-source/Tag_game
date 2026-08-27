@@ -9,20 +9,33 @@ signal currency_changed
 signal item_purchased(kind: StringName, id: StringName)
 signal purchase_failed(reason: String)
 
-var _provider: PurchaseProvider = MockPurchaseProvider.new()
+## ⑥購入失敗理由の識別子。UI側で文言を出し分けられるよう定数化する
+const REASON_UNKNOWN_PACK := "unknown_pack"
+const REASON_STEAM_UNAVAILABLE := "steam_unavailable"
+const REASON_NETWORK := "network_error"
+const REASON_CANCELLED := "user_cancelled"
+
+var _provider: PurchaseProvider
 
 
-## ②通貨パックを購入し、成功したらジェムを付与する
+func _ready() -> void:
+	# ⑥SteamManagerはPurchaseManagerよりautoload順で先に初期化されるため、
+	# is_steam_availableをここで安全に参照できる
+	_provider = SteamPurchaseProvider.new(self) if SteamManager.is_steam_available else MockPurchaseProvider.new()
+
+
+## ②通貨パックを購入し、成功したらジェムを付与する。ジェム付与量はプロバイダの
+## 戻り値(result.granted_gems)からのみ取り、CurrencyPackCatalogの値を信用しない
+## (SteamPurchaseProvider経由の場合、これはサーバー確定値になる)
 func buy_currency_pack(pack_id: StringName) -> bool:
 	if not CurrencyPackCatalog.has(pack_id):
-		purchase_failed.emit("不明な通貨パックです")
+		purchase_failed.emit(REASON_UNKNOWN_PACK)
 		return false
-	var ok := _provider.buy_pack(pack_id)
-	if not ok:
-		purchase_failed.emit("購入処理に失敗しました")
+	var result: Dictionary = await _provider.buy_pack(pack_id)
+	if not result.get("ok", false):
+		purchase_failed.emit(String(result.get("reason", REASON_NETWORK)))
 		return false
-	var gems := int(CurrencyPackCatalog.get_def(pack_id).get("gems", 0))
-	ProfileManager.add_currency(gems)
+	ProfileManager.add_currency(int(result.get("granted_gems", 0)))
 	currency_changed.emit()
 	return true
 
