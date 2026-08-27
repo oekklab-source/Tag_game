@@ -256,10 +256,26 @@ func _on_leaderboard_scores_downloaded(message: String, result: Array) -> void:
 	for item in result:
 		entries.append({
 			"rank": item.get("global_rank", 0),
-			"name": item.get("steam_id", "Player"),
+			"name": _persona_name_for(int(item.get("steam_id", 0))),
 			"score": item.get("score", 0)
 		})
 	leaderboard_loaded.emit(entries)
+
+
+## Steam Leaderboard のエントリはプレイヤー名を含まず SteamID64 のみを返すため、
+## ここで表示名に変換する。自分自身は既に取得済みの steam_username を使い、
+## それ以外はフレンドの名前キャッシュ（getFriendPersonaName）を試す。
+## フレンドでない相手はキャッシュが無く空文字になることがあるため、その場合は
+## ID を添えて表示する（SteamID64を生のまま name として使わない）
+func _persona_name_for(entry_steam_id: int) -> String:
+	if entry_steam_id == steam_id:
+		return steam_username
+	if Engine.has_singleton("Steam"):
+		var steam = Engine.get_singleton("Steam")
+		var persona: String = steam.getFriendPersonaName(entry_steam_id)
+		if not persona.is_empty():
+			return persona
+	return "Player %d" % entry_steam_id
 
 
 func _on_leaderboard_score_uploaded(success: bool, _handle: int, score: int) -> void:

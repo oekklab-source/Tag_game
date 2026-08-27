@@ -587,12 +587,12 @@ python -m http.server 8123 --directory export/web
               `--- 参加者はそこへ ws:// / wss:// で接続（従来と同じ経路）
 ```
 
-### 使うために必要な準備（このリポジトリのコードだけでは動かない）
+### 使うために必要な準備
 
-GodotSteam という GDExtension プラグイン本体（バイナリ）がリポジトリに含まれて
-いないため、**現状は `SteamManager.is_steam_available` が常に `false` になり、
-「ルームマッチ」タブは常にモック（偽）データを表示するだけ**になっている。
-実際に動かすには次を用意する。
+GodotSteam という GDExtension プラグイン本体（バイナリ）は `addons/godotsteam/`
+以下に**同梱済み**（Windows / Linux / macOS / Android 向けバイナリと `.gdextension`
+ファイルを含む）なので、追加のダウンロード・配置作業は不要。プロジェクトを開いた
+時点で Godot 4 が `.gdextension` を自動検出する。実際に動かすには次を用意する。
 
 1. Steam クライアントを、検証に使う全PCにインストールし、実アカウントで
    ログインした状態で起動しておく
@@ -600,19 +600,12 @@ GodotSteam という GDExtension プラグイン本体（バイナリ）がリ�
    無料の Steamworks アカウントを作る。今すぐは不要だが、将来 Steam で実配布・
    販売する場合は独自 AppID の登録（Steam Direct 費用、現在1本100ドルの
    一時費用・返金あり）が必要になる
-3. GodotSteam の GDExtension 版を入手する。配布元は GitHub
-   （`GodotSteam/GodotSteam` の Releases）または Codeberg
-   （`codeberg.org/godotsteam/godotsteam` の Releases）。**「Godot 4.x」対応と
-   明記された最新版**を選ぶこと（Godot エディタの **AssetLib** タブで
-   "GodotSteam GDExtension" を検索してインストールする方法でも同じものが入る）
-4. ダウンロードした zip の中身を、このプロジェクトの**ルート直下**
-   （`project.godot` と同じ階層）に展開する。`addons/godotsteam/` 以下に
-   `.gdextension` ファイルと Windows 用 `steam_api64.dll` 等が入る。
-   `project.godot` の手動編集は不要（Godot 4 は `.gdextension` を自動検出する）
-5. Godot エディタを**再起動**する（GDExtension はエンジン起動時に読み込まれる）
-6. [steam_appid.txt](steam_appid.txt)（内容 `480`、Steamクライアント経由でなく
+3. [steam_appid.txt](steam_appid.txt)（内容 `480`、Steamクライアント経由でなく
    直接起動された場合に `steamInit` を通すためのファイル。既にリポジトリに
    含まれている）がプロジェクトルートにあることを確認する
+4. Steam クライアントが起動・ログインしていない状態（またはこのリポジトリの
+   `.gdextension` がまだ一度も読み込まれていない状態）で Godot エディタを開いた
+   場合は、一度**再起動**する（GDExtension はエンジン起動時に読み込まれる）
 
 ### 動作確認
 
