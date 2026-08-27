@@ -1,32 +1,18 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scenes/gimmicks/banana.gd" id="1_banana"]
-
-[sub_resource type="StandardMaterial3D" id="banana_mat"]
-albedo_color = Color(1, 0.86, 0.15, 1)
-roughness = 0.6
-metallic_specular = 0.2
-emission_enabled = true
-emission = Color(1, 0.86, 0.15, 1)
-emission_energy_multiplier = 0.9
-
-[sub_resource type="TorusMesh" id="banana_mesh"]
-material = SubResource("banana_mat")
-inner_radius = 0.25
-outer_radius = 0.6
-ring_segments = 8
-rings = 6
+[ext_resource type="PackedScene" path="res://assets/gimmicks/banana_peel.glb" id="2_banana_model"]
 
 [sub_resource type="CylinderShape3D" id="banana_shape"]
 height = 1.4
 radius = 1.1
 
-; 置かれた場所をスポーン時に一度だけ配る（replication_mode = 0 = 以後は同期しない）。
-; これが無いと MultiplayerSpawner はシーンと名前しか送らず、他ピアでは原点に出る
+; 位置はスポーン時と落下中に配る。空中で置かれたバナナはサーバ上で落下するため、
+; これが無いと他ピアでは空中に残って見える
 [sub_resource type="SceneReplicationConfig" id="repl_config"]
 properties/0/path = NodePath(".:position")
 properties/0/spawn = true
-properties/0/replication_mode = 0
+properties/0/replication_mode = 1
 properties/1/path = NodePath(".:rotation")
 properties/1/spawn = true
 properties/1/replication_mode = 0
@@ -36,9 +22,9 @@ collision_layer = 4
 collision_mask = 2
 script = ExtResource("1_banana")
 
-[node name="Mesh" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.4, 0, 0, 0, 1, 0, 0.3, 0)
-mesh = SubResource("banana_mesh")
+[node name="Mesh" type="Node3D" parent="."]
+
+[node name="BananaPeel" parent="Mesh" instance=ExtResource("2_banana_model")]
 
 [node name="Shape" type="CollisionShape3D" parent="."]
 position = Vector3(0, 0.7, 0)

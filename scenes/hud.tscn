@@ -309,6 +309,11 @@ custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 text = "逃げる役になる"
 
+[node name="DebugCpuRunnerButton" type="CheckButton" parent="Lobby/Box/Col"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "デバッグ: CPU逃走者 OFF"
+
 [node name="StartButton" type="Button" parent="Lobby/Box/Col"]
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2

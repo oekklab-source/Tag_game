@@ -6,6 +6,7 @@ extends Node3D
 
 const PLAYER_SCENE := preload("res://scenes/player.tscn")
 const CPU_SCENE := preload("res://scenes/cpu_hunter.tscn")
+const CPU_RUNNER_SCENE := preload("res://scenes/cpu_runner.tscn")
 const BANANA_SCENE := preload("res://scenes/gimmicks/banana.tscn")
 const BLOCK_SCENE := preload("res://scenes/gimmicks/placed_block.tscn")
 const INITIAL_SPAWN_RADIUS := 6.0
@@ -142,6 +143,15 @@ func spawn_cpu_hunter(pos: Vector3) -> void:
 	_cpu_counter += 1
 	var cpu: CharacterBody3D = CPU_SCENE.instantiate()
 	cpu.name = "CPU%d" % _cpu_counter
+	cpu.position = pos
+	cpu.sync_position = pos
+	players.add_child(cpu)
+
+## デバッグモード時に GameManager（ホスト）から呼ばれる
+func spawn_cpu_runner(pos: Vector3) -> void:
+	_cpu_counter += 1
+	var cpu: CharacterBody3D = CPU_RUNNER_SCENE.instantiate()
+	cpu.name = "CPURunner%d" % _cpu_counter
 	cpu.position = pos
 	cpu.sync_position = pos
 	players.add_child(cpu)
