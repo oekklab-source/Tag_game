@@ -47,6 +47,10 @@ const ITEM_INFO := {
 	Player.Item.BANANA: ["バナナ", Color(1.0, 0.86, 0.2)],
 	Player.Item.BLOCK: ["ブロック", Color(0.45, 0.85, 1.0)],
 }
+## 取得直後に回すルーレットの出目の並びと、切り替え間隔（速い→遅い）
+const ROULETTE_ORDER := [Player.Item.ROCKET, Player.Item.BANANA, Player.Item.BLOCK]
+const ROULETTE_FAST := 0.05
+const ROULETTE_SLOW := 0.22
 ## バフの表示名と、残量ゲージの基準になる持続時間
 const BUFF_INFO := {
 	&"speed": ["スピード", 6.0, Color(1.0, 0.85, 0.25)],
@@ -62,6 +66,9 @@ var _sb_full: StyleBoxFlat
 var _sb_low: StyleBoxFlat
 var _sb_empty: StyleBoxFlat
 var _sb_row: StyleBoxFlat
+var _spinning := false
+var _spin_index := 0
+var _spin_next := 0.0
 var _roster_key := ""
 
 @onready var vignette: TextureRect = $Vignette
@@ -174,7 +181,7 @@ func _process(delta: float) -> void:
 	_update_hunter_distance_delay(delta, player)
 	_update_labels()
 	_update_stamina(player)
-	_update_item(player)
+	_update_item(player, delta)
 	_update_buffs(player)
 	_update_tracking(player)
 	timer_ring.queue_redraw()
@@ -444,20 +451,58 @@ func _on_stamina_draw() -> void:
 
 ## --- 持ち物スロット（1個持ち） -------------------------------------------
 
-func _update_item(player: Player) -> void:
+func _update_item(player: Player, delta: float) -> void:
 	item_slot.visible = player != null and GameManager.state == GameManager.State.PLAYING
 	if not item_slot.visible:
+		_spinning = false
 		return
+	# 取得直後（Player.item_lock 中）は中身を伏せ、出目を切り替え続ける。
+	# 使用可否と足並みを揃えるため、回している判断は HUD 側では持たない
+	if player.item != Player.Item.NONE and player.item_lock > 0.0:
+		_spin_item(player, delta)
+		return
+	if _spinning:
+		_spinning = false
+		_confirm_item(player.item)
 	var info: Array = ITEM_INFO.get(player.item, ITEM_INFO[Player.Item.NONE])
 	item_label.text = info[0]
 	item_label.modulate = info[1]
 
 
-func _on_item_changed(held: int) -> void:
+## 残りロック時間が減るほど切り替え間隔を広げ、止まりかけているように見せる
+func _spin_item(player: Player, delta: float) -> void:
+	if not _spinning:
+		_spinning = true
+		_spin_next = 0.0
+		_spin_index = randi() % ROULETTE_ORDER.size()
+	_spin_next -= delta
+	if _spin_next <= 0.0:
+		_spin_index = (_spin_index + 1) % ROULETTE_ORDER.size()
+		var t := 1.0 - clampf(player.item_lock / Player.ITEM_ROULETTE, 0.0, 1.0)
+		_spin_next = lerpf(ROULETTE_FAST, ROULETTE_SLOW, t * t)
+	var info: Array = ITEM_INFO[ROULETTE_ORDER[_spin_index]]
+	var color: Color = info[1]
+	item_label.text = info[0]
+	item_label.modulate = Color(color, 0.7)  # 確定前は薄く出す
+
+
+## ルーレットが止まった瞬間。ここで初めて中身を名乗る
+func _confirm_item(held: int) -> void:
 	if held == Player.Item.NONE:
-		return  # 使い切った時はトーストを出さない
+		return  # ラウンド開始などで持ち物ごと消えた場合
 	var info: Array = ITEM_INFO.get(held, ITEM_INFO[Player.Item.NONE])
 	_toast("%s を手に入れた（E キー）" % info[0], info[1])
+	item_slot.pivot_offset = item_slot.size * 0.5
+	var tw := create_tween()
+	var tween := tw.tween_property(item_slot, "scale", Vector2.ONE, 0.4)
+	tween.from(Vector2(1.4, 1.4))
+	tween.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+
+## トーストは確定時（_confirm_item）に出すので、ここでは回転の後始末だけ行う
+func _on_item_changed(held: int) -> void:
+	if held == Player.Item.NONE:
+		_spinning = false
 
 
 ## --- バフ表示（ローカルプレイヤーのバフを直接読む） ------------------------

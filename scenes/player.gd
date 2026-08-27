@@ -62,6 +62,8 @@ const ROCKET_FORWARD := 12.0
 const ROCKET_UP := 9.0
 const BANANA_BEHIND := 3.0    # 足元の後ろこの距離に置く
 const BLOCK_BEHIND := 5.0     # カメラの SpringArm(4m) に干渉しにくい背後距離
+## 取得直後のルーレット時間。この間は中身が確定しておらず使えない（HUD が回して見せる）
+const ITEM_ROULETTE := 1.2
 
 const COLOR_WAITING := Color(0.62, 0.66, 0.72)
 const COLOR_RUNNER := Color(0.2, 1.0, 0.45)
@@ -93,6 +95,7 @@ var dive_cooldown := 0.0
 var warp_lock := 0.0                # マンホールの往復ワープ防止
 var warp_grace := 0.0               # ワープ直後、is_on_floor() の古い値を無視する猶予
 var item: int = Item.NONE
+var item_lock := 0.0                # >0 の間はルーレット中で、まだ使えない
 var stun_left := 0.0                # バナナを踏んだ時の操作不能時間
 
 ## MultiplayerSynchronizer が配る位置と向き。権威が毎物理フレーム書き、
@@ -192,6 +195,7 @@ func _physics_process(delta: float) -> void:
 	warp_lock = maxf(warp_lock - delta, 0.0)
 	stun_left = maxf(stun_left - delta, 0.0)
 	dive_cooldown = maxf(dive_cooldown - delta, 0.0)
+	item_lock = maxf(item_lock - delta, 0.0)
 	_tick_dive(delta)
 
 	var my_id := String(name).to_int()
@@ -341,20 +345,26 @@ func teleport(pos: Vector3) -> void:
 	dive_cooldown = 0.0
 	stun_left = 0.0
 	item = Item.NONE
+	item_lock = 0.0
 	item_changed.emit(item)
 
 
 ## --- 持ち物アイテム -----------------------------------------------------
 
-## ？ブロックから受け取る。1個だけ持てるので、新しく取ると上書きされる
+## ？ブロックから受け取る。1個だけ持てるので、新しく取ると上書きされる。
+## 中身は ITEM_ROULETTE 秒かけて確定する演出にするため、その間は使用も止める
+## （見た目だけ回して裏では即使える、という食い違いを作らない）
 func give_item(id: int) -> void:
 	if not is_multiplayer_authority():
 		return
 	item = id
+	item_lock = ITEM_ROULETTE
 	item_changed.emit(item)
 
 
 func _use_item() -> void:
+	if item_lock > 0.0:
+		return  # ルーレットが回りきるまでは中身が確定していない
 	match item:
 		Item.ROCKET:
 			var fwd := -global_transform.basis.z

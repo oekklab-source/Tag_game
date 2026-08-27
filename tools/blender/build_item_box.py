@@ -6,11 +6,9 @@
     tools/blender/item_box.blend      編集元（.gdignore で Godot のインポート対象外）
     assets/props/item_box.glb         Godot が読むモデル
 
-これまで question_block は単色の BoxMesh + Label3D の「？」文字だけだった。
-manhole.glb と同じくモデルを Blender 側で作り、「何が出るか分からない」を
-単色ではなく側面ごとに違う原色パネルで表現する。「？」は Label3D のような
-ビルボードにできない（glTF は常に正面を向けない）ので、側面4方向すべてに
-金色の発光ジオメトリとして配置し、どの角度から見ても読めるようにしてある。
+見た目は「リボンを掛けたプレゼント箱」。下箱・フタ・十字のリボン・
+上面の蝶結びだけで作り、色も包装紙／リボンの2色に絞る。中身が何かは
+見せない（「？」も舞う結晶も置かない）。
 
 アニメーションは書き出さない。回転演出は manhole と同じく Godot 側の
 _process() で毎フレーム rotate_y する（AnimationPlayer を増やさない）。
@@ -22,40 +20,48 @@ import sys
 
 import bmesh
 import bpy
+import mathutils
 
 PROJECT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 BLEND_PATH = os.path.join(PROJECT, "tools", "blender", "item_box.blend")
 GLB_PATH = os.path.join(PROJECT, "assets", "props", "item_box.glb")
 
 # ---- 寸法（Blender は Z-up。単位はメートル。原点が箱の中心）----
-# 既存の question_block.tscn の当たり判定（BoxShape3D 1.7m）に合わせる。
-# シェルはわずかに小さくして、パネルの縁がはみ出さないようにする
-BODY_SIZE = 1.6
-BEVEL = 0.10        # 角の面取り量。角ばりすぎず、ただの球にもならない程度
-PANEL_INSET = 0.30  # パネルが面より一回り小さく、暗い枠を覗かせる
-PANEL_THICK = 0.05
-PANEL_PAD = 0.06    # シェル面から浮かせる量。Z ファイティング防止
+# question_block.tscn の当たり判定（BoxShape3D 1.7m）に収める。
+# 下箱を低くしてフタと蝶結びの分の高さを空け、全体で 1.7m 角に収まるようにする
+BODY_W = 1.56       # 下箱の幅・奥行き
+BASE_H = 1.12       # 下箱の高さ
+BASE_Z = -0.16      # 下箱の中心高さ
+LID_W = 1.66        # フタは下箱より一回り大きく被せる
+LID_H = 0.24
+LID_Z = 0.48
+BEVEL = 0.06        # 角の面取り量。角ばりすぎず、ただの球にもならない程度
+
+# リボンは箱を貫く2枚の板で表現する（実際に巻くのではなく、側面・上面・底面に
+# 帯として現れる幅にする）。2枚の上端・外形をわずかにずらすのは、
+# 上面／底面の中央で天面が重なって Z ファイティングするのを避けるため
+RIBBON_W = 0.26
+RIBBON_OUT = 0.845  # フタ(0.83)より外へ出す
+RIBBON_TOP = 0.620  # フタ上面(0.60)より上
+RIBBON_BOT = -0.750 # 下箱の底(-0.72)より下
+RIBBON_SKEW = 0.004 # 2枚目をこの分だけ大きく/高くする
+
+BOW_R = 0.20        # 蝶結びの輪の半径
+BOW_TUBE = 0.055
+BOW_Z = 0.72        # 輪の中心高さ（結び目の高さに合わせる）
 
 # ---- 配色 ----
-# 「中身は分からない」を単色ではなく側面ごとに違う原色で表現する。
-# 底面は常時見えないので塗らず、シェルの暗色のままにする
+# 包装紙とリボンの2色だけで構成する。色数を増やすより、
+# 「リボンの掛かった箱」という形の分かりやすさを優先する
 COLORS = {
-    "Shell": (0.20, 0.20, 0.26),
-    "PanelRed": (0.92, 0.18, 0.20),
-    "PanelBlue": (0.16, 0.42, 0.94),
-    "PanelGreen": (0.22, 0.78, 0.32),
-    "PanelPurple": (0.62, 0.22, 0.86),
-    "PanelYellow": (0.98, 0.80, 0.12),
-    "MarkGold": (1.0, 0.86, 0.30),
+    "Wrap": (0.90, 0.20, 0.26),
+    "Lid": (0.98, 0.32, 0.36),   # 同系の明るい色。フタの段差を光ではなく色で見せる
+    "Ribbon": (0.99, 0.93, 0.80),
 }
-# 「？」だけを他のどのパーツより強く光らせて、可読性を最優先にする
+# 暗い場所でも沈まないよう、全体をわずかに発光させる
 EMISSION = {
-    "Shell": 0.0,
-    "PanelRed": 0.18, "PanelBlue": 0.18, "PanelGreen": 0.18,
-    "PanelPurple": 0.18, "PanelYellow": 0.18,
-    "MarkGold": 1.6,
+    "Wrap": 0.10, "Lid": 0.12, "Ribbon": 0.20,
 }
-PANEL_COLORS = ["PanelRed", "PanelBlue", "PanelGreen", "PanelPurple", "PanelYellow"]
 
 
 # =====================================================================
@@ -132,6 +138,33 @@ def box(name, size, loc=(0, 0, 0), rot=(0, 0, 0)):
     return bake(obj, loc=loc, rot=rot, scale=size)
 
 
+def beveled_box(name, size, loc=(0, 0, 0), bevel=BEVEL, segments=3):
+    """面取りした直方体。bevel を先に掛けてから移動するので、辺の丸みが等幅になる。"""
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    bmesh.ops.scale(bm, vec=mathutils.Vector(size), verts=bm.verts)
+    if bevel > 0.0:
+        bmesh.ops.bevel(bm, geom=bm.edges[:], offset=bevel, segments=segments, affect='EDGES')
+    bmesh.ops.translate(bm, vec=mathutils.Vector(loc), verts=bm.verts)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    for poly in mesh.polygons:
+        poly.use_smooth = False
+    return obj
+
+
+def torus(name, radius, tube, segments=14, ring=10):
+    """XY 平面に寝たドーナツ。lathe の profile を一周させて閉じる（重複頂点は cleanup で潰す）。"""
+    profile = [(math.sin(2.0 * math.pi * i / ring) * tube,
+                radius + math.cos(2.0 * math.pi * i / ring) * tube)
+               for i in range(ring + 1)]
+    return cleanup(lathe(name, profile, segments))
+
+
 def join_into(target, others):
     bpy.ops.object.select_all(action='DESELECT')
     for obj in others:
@@ -159,99 +192,59 @@ def cleanup(obj):
 # パーツ
 # =====================================================================
 
-def build_shell():
-    """角を面取りした暗色の箱。パネルの原色が引き立つよう地味な色にする。"""
-    bm = bmesh.new()
-    bmesh.ops.create_cube(bm, size=BODY_SIZE)
-    bmesh.ops.bevel(bm, geom=bm.edges[:], offset=BEVEL, segments=3, affect='EDGES')
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    mesh = bpy.data.meshes.new("Shell")
-    bm.to_mesh(mesh)
-    bm.free()
-    obj = bpy.data.objects.new("Shell", mesh)
-    bpy.context.collection.objects.link(obj)
-    for poly in mesh.polygons:
-        poly.use_smooth = False
-    return paint(obj, "Shell")
+def build_base():
+    """下箱。包装紙の色ひとつで塗る。"""
+    return paint(beveled_box("Base", (BODY_W, BODY_W, BASE_H), loc=(0, 0, BASE_Z)), "Wrap")
+
+
+def build_lid():
+    """一回り大きく被せるフタ。ここが乗ることで「箱」ではなく「贈り物」に見える。"""
+    return paint(beveled_box("Lid", (LID_W, LID_W, LID_H), loc=(0, 0, LID_Z), bevel=0.04), "Lid")
+
+
+def build_ribbon():
+    """箱を十字に貫く2枚の帯。側面・フタ上面・底面に同じ幅で現れる。
+
+    2枚目をわずかに大きく・高くしているのは、上面／底面の中央で
+    天面同士が同一平面になって Z ファイティングするのを避けるため。
+    2枚目は呼び出し側で Z 軸まわりに90度回してから使う。
+    """
+    height = RIBBON_TOP - RIBBON_BOT
+    z = (RIBBON_TOP + RIBBON_BOT) / 2.0
+    skew = RIBBON_SKEW
+    return [
+        paint(box("RibbonX", (RIBBON_OUT * 2.0, RIBBON_W, height), loc=(0, 0, z)), "Ribbon"),
+        paint(box("RibbonY", ((RIBBON_OUT + skew) * 2.0, RIBBON_W, height + skew * 2.0),
+                  loc=(0, 0, z)), "Ribbon"),
+    ]
+
+
+def build_bow():
+    """蝶結び。結び目の角丸キューブ＋左右の輪2枚だけ。"""
+    parts = [paint(beveled_box("Knot", (0.28, 0.24, 0.16),
+                               loc=(0, 0, RIBBON_TOP + 0.05), bevel=0.05), "Ribbon")]
+    for side in (1.0, -1.0):
+        loop = torus("BowLoop", BOW_R, BOW_TUBE)
+        # 寝たドーナツを立てつつ、輪を横長の楕円に潰す（リボンらしい平たさ）
+        bake(loop, scale=(1.3, 0.6, 1.0), rot=(math.pi / 2.0, 0, 0))
+        # 外側へ倒して結び目の左右へ置く
+        bake(loop, rot=(0.0, -0.5 * side, 0.0), loc=(BOW_R * 1.2 * side, 0.0, BOW_Z))
+        parts.append(paint(loop, "Ribbon"))
+    return parts
 
 
 def build_body():
-    """シェル＋側面5面（底面を除く）の原色パネルを1メッシュへ結合する。
+    """下箱・フタ・リボン・蝶結びを1メッシュ（Body）へ結合する。
 
-    底面は地面に対して常に下向きで、フロートするアイテムボックスを
-    見上げる形にはならないため塗らない（ポリゴンを増やすだけになる）。
+    取得後の「使用済み」表示は question_block.gd が Body へ material_override を
+    掛けて一括で暗くするので、色の違うパーツもすべてここに含める。
     """
-    half = BODY_SIZE / 2.0
-    w = BODY_SIZE - PANEL_INSET
-    panels = [
-        paint(box("PanelX+", (PANEL_THICK, w, w), loc=(half + PANEL_PAD, 0, 0)), "PanelRed"),
-        paint(box("PanelX-", (PANEL_THICK, w, w), loc=(-half - PANEL_PAD, 0, 0)), "PanelBlue"),
-        paint(box("PanelY+", (w, PANEL_THICK, w), loc=(0, half + PANEL_PAD, 0)), "PanelGreen"),
-        paint(box("PanelY-", (w, PANEL_THICK, w), loc=(0, -half - PANEL_PAD, 0)), "PanelPurple"),
-        paint(box("PanelZ+", (w, w, PANEL_THICK), loc=(0, 0, half + PANEL_PAD)), "PanelYellow"),
-    ]
-    body = cleanup(join_into(build_shell(), panels))
+    ribbon_x, ribbon_y = build_ribbon()
+    bake(ribbon_y, rot=(0.0, 0.0, math.pi / 2.0))
+    parts = [ribbon_x, ribbon_y] + build_bow() + [build_lid()]
+    body = cleanup(join_into(build_base(), parts))
     body.name = body.data.name = "Body"
     return body
-
-
-def build_mark_glyph():
-    """「？」1個を短い角柱の弧（フック5本＋点1個）で近似する。
-
-    XZ 平面（Blender 上で見て正面）に構築し、厚みは Y 方向に薄く持たせる。
-    build_mark() 側で 4方向へ回転コピーして側面に貼り付ける。
-    """
-    hook = [
-        (0.00, 0.34, 15), (0.13, 0.30, -20), (0.19, 0.16, -60),
-        (0.12, 0.03, -105), (-0.02, -0.02, -140),
-    ]
-    segs = [box("MarkSeg", (0.09, 0.045, 0.16), loc=(x, 0.0, z), rot=(0, math.radians(a), 0))
-            for x, z, a in hook]
-    segs.append(box("MarkDot", (0.11, 0.045, 0.11), loc=(-0.02, 0.0, -0.30)))
-    return cleanup(join_into(segs[0], segs[1:]))
-
-
-def build_mark():
-    """「？」を箱の4側面（前後左右）すべてに配置する。
-
-    Label3D と違って glTF はビルボードにできないため、どの向きから
-    近づいても読めるよう側面4方向へ複製する（上面・底面は省略）。
-    """
-    half = BODY_SIZE / 2.0
-    pad = 0.09
-    placements = [
-        (0.0, 0.0, 0.0, (0, half + pad, 0)),            # +Y 面
-        (0.0, math.pi, 0.0, (0, -half - pad, 0)),        # -Y 面
-        (0.0, math.pi / 2, 0.0, (half + pad, 0, 0)),     # +X 面
-        (0.0, -math.pi / 2, 0.0, (-half - pad, 0, 0)),   # -X 面
-    ]
-    pieces = [bake(build_mark_glyph(), loc=loc, rot=(rx, ry, rz))
-              for rx, ry, rz, loc in placements]
-    mark = paint(cleanup(join_into(pieces[0], pieces[1:])), "MarkGold")
-    mark.name = mark.data.name = "Mark"
-    return mark
-
-
-def build_sparkles():
-    """箱の周りを舞う小さな結晶。5色を順番に割り当てて「サプライズ」を演出する。
-
-    manhole の build_shards() と同じ黄金角スパイラル配置（結晶同士が
-    同じ方位に重ならないようにする）を流用する。
-    """
-    count = 8
-    parts = []
-    for i in range(count):
-        a = 2.4 * i
-        radius = 0.95 + 0.10 * (i % 3)
-        s = 0.09 + 0.02 * (i % 2)
-        h = 0.15 * i - 0.5
-        oct_profile = [(-s * 1.5, 0.0), (0.0, s), (s * 1.5, 0.0)]
-        shard = lathe("Shard", oct_profile, 4, smooth=False)
-        bake(shard, loc=(math.cos(a) * radius, math.sin(a) * radius, h), rot=(0.0, 0.0, a))
-        parts.append(paint(shard, PANEL_COLORS[i % len(PANEL_COLORS)]))
-    sparkles = cleanup(join_into(parts[0], parts[1:]))
-    sparkles.name = sparkles.data.name = "Sparkles"
-    return sparkles
 
 
 # =====================================================================
@@ -265,8 +258,6 @@ def clear_scene():
 def build():
     clear_scene()
     build_body()
-    build_mark()
-    build_sparkles()
     for obj in bpy.data.objects:
         print("object :", obj.name, "verts", len(obj.data.vertices),
               "loc", tuple(round(v, 3) for v in obj.location))
@@ -303,9 +294,9 @@ def render_previews(out_dir):
     scene.camera = cam
     # (名前, カメラ角度, 注視点の高さ, 距離)
     shots = [
-        ("three_quarter", (68, 0, -35), 0.0, 3.4),
-        ("front", (85, 0, 0), 0.0, 3.0),
-        ("top", (10, 0, 0), 0.0, 3.2),
+        ("three_quarter", (68, 0, -35), 0.0, 4.2),
+        ("front", (85, 0, 0), 0.0, 3.8),
+        ("top", (10, 0, 0), 0.0, 3.8),
     ]
     for name, deg, target_z, dist in shots:
         euler = mathutils.Euler([math.radians(a) for a in deg], 'XYZ')
