@@ -239,7 +239,6 @@ const SPINNER_SCENE := preload("res://scenes/gimmicks/rotating_platform.tscn")
 const WALL_TOP_SCRIPT := preload("res://scenes/gimmicks/wall_top.gd")
 const SLIDE_SCRIPT := preload("res://scenes/gimmicks/slide.gd")
 const BUMPER_SCRIPT := preload("res://scenes/gimmicks/bumper.gd")
-const BALLOON_TEX := preload("res://assets/textures/balloon_wall.png")
 const FLOAT_SHADER := preload("res://scenes/decor_float.gdshader")
 
 
@@ -270,20 +269,18 @@ static func build(map_root: Node3D, gimmick_root: Node3D, decor_root: Node3D) ->
 	# 構造物はゾーンごとのアクセント色で建てる。
 	# 床（ZONE_COLORS）と分離した色にしないと、地形と一体化して形が読めない
 	var accent_mats: Array[StandardMaterial3D] = []
-	var balloon_mats: Array[StandardMaterial3D] = []
 	for idx in WorldData.ZONE_COUNT:
 		# BOOST CIRCUIT だけネオンにして「サーキット」の性格を出す。
 		# ネオンは glow の閾値を超えて滲むので、広げると画面全体がボケる
 		accent_mats.append(neon_material(WorldData.ZONE_ACCENTS[idx]) if idx == NEON_ZONE
 			else soft_material(WorldData.ZONE_ACCENTS[idx]))
-		balloon_mats.append(balloon_material(WorldData.ZONE_ACCENTS[idx]))
 	# バンパーはプロップより先に建てて、自分の矩形を keepout へ積む。
 	# こうしないと後から建つ壁がバンパーにめり込む
 	_build_bumpers(map_root, accent_mats, occupied, keepout)
 	# 構造物の描画は MultiMesh へ集約する。当たり判定は _solid() が
 	# 1個ずつ StaticBody3D として作ったまま残るので、通行・視線・ベイクは変わらない
 	var batch := Batch.new()
-	_build_props(map_root, accent_mats, balloon_mats, occupied, keepout, batch)
+	_build_props(map_root, accent_mats, occupied, keepout, batch)
 	batch.flush(map_root)
 	_build_decor(decor_root)
 
@@ -471,26 +468,6 @@ static func neon_material(c: Color) -> StandardMaterial3D:
 	m.albedo_color = c.lerp(Color.WHITE, 0.15)
 	m.emission = c
 	m.emission_energy_multiplier = 1.9
-	return m
-
-
-## 風船の壁。Blender で焼き込んだ「膨らんだクッション+縁のハイライト+継ぎ目の陰」の
-## グレースケール画像をアルベドへ掛けることで、平らな箱のままでも膨らんで見える。
-## トライプラナー世界貼りなので、壁の長さや向きに関わらず継ぎ目の間隔が揃う
-## （床の市松模様 _apply_checker と同じ手法）
-static func balloon_material(c: Color) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = c.lerp(Color.WHITE, 0.08)
-	m.albedo_texture = BALLOON_TEX
-	m.uv1_triplanar = true
-	m.uv1_world_triplanar = true
-	m.uv1_scale = Vector3(0.5, 0.5, 0.5)  # テクスチャの1タイル=2m四方
-	m.roughness = 0.55
-	m.metallic = 0.0
-	m.metallic_specular = 0.25
-	m.emission_enabled = true
-	m.emission = c.lerp(Color.WHITE, 0.3)
-	m.emission_energy_multiplier = 0.16
 	return m
 
 
@@ -999,7 +976,6 @@ static func _bumper(root: Node3D, node_name: String, pos: Vector3, mat: Material
 ## 以上あることから従う。加えて CORRIDOR_HALF の十字通路と
 ## WALL_OUTER_MARGIN の外周帯は常に完全に開いている。
 static func _build_props(root: Node3D, mats: Array[StandardMaterial3D],
-		balloon_mats: Array[StandardMaterial3D],
 		occupied: Array[Vector3], keepout: Array, batch: Batch) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = WorldData.BUILD_SEED + 2
@@ -1016,9 +992,7 @@ static func _build_props(root: Node3D, mats: Array[StandardMaterial3D],
 		var mark: Array = WorldData.ZONE_LANDMARKS[idx]
 		var mark_span: float = SIGHT_WALL_MAX_LEN * mark[4] * 0.5
 		var mark_pos := Vector3(center.x + mark[1], center.y, center.z + mark[2])
-		var mark_mat: Material = (balloon_mats[idx] if mark[3] == WorldData.Prop.WALL
-			else mats[idx])
-		_prop(root, "Landmark%d" % idx, mark[3], mark_pos, mark_span, true, mark_mat, batch)
+		_prop(root, "Landmark%d" % idx, mark[3], mark_pos, mark_span, true, mats[idx], batch)
 		placed.append([mark_pos, _prop_footprint(mark[3], mark_span, true)])
 
 		for sx: float in [-1.0, 1.0]:
@@ -1061,9 +1035,7 @@ static func _build_props(root: Node3D, mats: Array[StandardMaterial3D],
 							break
 					if clash:
 						continue
-					var prop_mat: Material = (balloon_mats[idx] if kind == WorldData.Prop.WALL
-						else mats[idx])
-					_prop(root, "Prop%d_%d" % [idx, n], kind, pos, prop_len, along_x, prop_mat,
+					_prop(root, "Prop%d_%d" % [idx, n], kind, pos, prop_len, along_x, mats[idx],
 						batch)
 					placed.append([pos, half])
 					n += 1
