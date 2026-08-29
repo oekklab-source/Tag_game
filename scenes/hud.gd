@@ -24,7 +24,6 @@ const COLOR_GOLD := Color(1.0, 0.82, 0.25)
 const WORLD_MIN := -WorldData.WORLD_HALF
 const WORLD_SIZE := WorldData.WORLD_HALF * 2.0
 
-const STAMINA_SEGMENTS := 12
 const HUNTER_DISTANCE_DELAY := 10.0
 const BUFF_BAR_WIDTH := 64.0
 const DANGER_FAR := 28.0   # この距離からヴィネットが出はじめる
@@ -63,8 +62,10 @@ var _spotted_tween: Tween
 var _banner_hiding := false
 var _hunter_distance_delay_left := HUNTER_DISTANCE_DELAY
 var _sb_full: StyleBoxFlat
+var _sb_mid: StyleBoxFlat
 var _sb_low: StyleBoxFlat
 var _sb_empty: StyleBoxFlat
+var _sb_border: StyleBoxFlat
 var _sb_row: StyleBoxFlat
 var _spinning := false
 var _spin_index := 0
@@ -113,8 +114,17 @@ func _ready() -> void:
 	GameManager.state_changed.connect(_on_state_changed)
 	GameManager.spotted_changed.connect(_on_spotted_changed)
 	_sb_full = _bar_style(Color(0.3, 0.95, 0.55))
+	_sb_mid = _bar_style(Color(1.0, 0.85, 0.25))
 	_sb_low = _bar_style(Color(1.0, 0.35, 0.35))
 	_sb_empty = _bar_style(Color(1, 1, 1, 0.13))
+	_sb_border = StyleBoxFlat.new()
+	_sb_border.draw_center = false
+	_sb_border.bg_color = Color(0, 0, 0, 0)
+	_sb_border.set_corner_radius_all(6)
+	_sb_border.set_border_width_all(3)
+	_sb_border.border_color = Color(1, 1, 1, 0.6)
+	_sb_border.anti_aliasing = true
+	_sb_border.anti_aliasing_size = 4.0
 	_sb_row = _row_style()
 	vignette.texture = _radial_texture()
 	vignette.modulate = Color(1.0, 0.12, 0.12, 0.0)
@@ -429,7 +439,7 @@ func _on_timer_draw() -> void:
 	timer_ring.draw_arc(c, 54.0, -PI * 0.5, -PI * 0.5 + TAU * frac, 64, col, 12.0, true)
 
 
-## --- スタミナ（分割ゲージ） ---------------------------------------------
+## --- スタミナ（連続バー） -----------------------------------------------
 
 func _update_stamina(player: Player) -> void:
 	var show := player != null and GameManager.state != GameManager.State.WAITING
@@ -441,14 +451,22 @@ func _on_stamina_draw() -> void:
 	var player := _get_local_player()
 	if player == null:
 		return
-	var gap := 4.0
-	var w := (stamina_bar.size.x - (STAMINA_SEGMENTS - 1) * gap) / STAMINA_SEGMENTS
-	var filled := int(player.stamina / player.stamina_max() * STAMINA_SEGMENTS)
-	for i in STAMINA_SEGMENTS:
-		var sb := _sb_empty
-		if i < filled:
-			sb = _sb_low if player.exhausted else _sb_full
-		stamina_bar.draw_style_box(sb, Rect2(i * (w + gap), 0.0, w, stamina_bar.size.y))
+	var w := stamina_bar.size.x
+	var h := stamina_bar.size.y
+	stamina_bar.draw_style_box(_sb_empty, Rect2(0.0, 0.0, w, h))
+	var frac := clampf(player.stamina / player.stamina_max(), 0.0, 1.0)
+	if frac > 0.0:
+		# 残量が僅かでも角丸が潰れないよう、最低でも高さ分の幅は残す
+		var fill: StyleBoxFlat
+		if frac <= 0.10:
+			fill = _sb_low
+		elif frac <= 0.30:
+			fill = _sb_mid
+		else:
+			fill = _sb_full
+		stamina_bar.draw_style_box(fill, Rect2(0.0, 0.0, maxf(w * frac, h), h))
+	# 背景に同化しないよう、残量に関わらず枠は常に最前面へ重ねる
+	stamina_bar.draw_style_box(_sb_border, Rect2(0.0, 0.0, w, h))
 
 
 ## --- 持ち物スロット（1個持ち） -------------------------------------------
