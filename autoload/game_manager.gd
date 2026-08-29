@@ -192,6 +192,14 @@ func _find_player(peer_id: int) -> Node:
 	return null
 
 
+## 表示名。sync_nickname が未到着/未設定ならフォールバックの仮表記を返す
+func nickname_for(peer_id: int) -> String:
+	var p := _find_player(peer_id)
+	if p and "sync_nickname" in p and not p.sync_nickname.is_empty():
+		return p.sync_nickname
+	return "プレイヤー %d" % peer_id
+
+
 ## --- ホスト側ロジック -------------------------------------------------
 
 ## 全ピア共通のプレイヤーの並び順。

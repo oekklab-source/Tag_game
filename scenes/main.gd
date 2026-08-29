@@ -4,6 +4,7 @@ extends Control
 
 @onready var status_label: Label = $CenterContainer/VBox/StatusLabel
 @onready var version_label: Label = $VersionLabel
+@onready var nickname_edit: LineEdit = $CenterContainer/VBox/NicknameEdit
 @onready var host_button: Button = $CenterContainer/VBox/HostButton
 @onready var address_edit: LineEdit = $CenterContainer/VBox/JoinRow/AddressEdit
 @onready var join_button: Button = $CenterContainer/VBox/JoinRow/JoinButton
@@ -13,6 +14,7 @@ func _ready() -> void:
 	# ブラウザは WebSocket サーバになれないため、Web 版ではホスト不可
 	if OS.has_feature("web"):
 		host_button.visible = false
+	nickname_edit.text = PlayerPrefs.nickname
 	status_label.text = NetworkManager.last_error
 	NetworkManager.last_error = ""
 	# ホストと参加者でここが違うと通信が噛み合わない。ひと目で分かるように出す
@@ -45,6 +47,7 @@ func _server_from_query() -> String:
 
 
 func _on_host_pressed() -> void:
+	PlayerPrefs.set_nickname(nickname_edit.text)
 	if NetworkManager.start_host():
 		return
 	# 始められなかった（たいていはポートの取り合い）。理由をその場で見せる
@@ -57,4 +60,5 @@ func _on_join_pressed() -> void:
 	if address.is_empty():
 		status_label.text = "ホストのアドレスを入力してください"
 		return
+	PlayerPrefs.set_nickname(nickname_edit.text)
 	NetworkManager.start_client(address)

@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 NetworkManager="*res://autoload/network_manager.gd"
 GameManager="*res://autoload/game_manager.gd"
+PlayerPrefs="*res://autoload/player_prefs.gd"
 
 [display]
 

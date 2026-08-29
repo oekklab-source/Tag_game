@@ -123,12 +123,15 @@ var _stuck_kick_left := 0.0
 ## 速度は権威ピアだけが正確に知っているので、素直に配るのが一番確実で安い
 @export var sync_speed := 0.0
 @export var sync_air := false
+## 味方ハンターの頭上ラベルに使うニックネーム。権威ピアが PlayerPrefs から一度だけ書く
+@export var sync_nickname := ""
 
 var _current_color := Color.TRANSPARENT
 
 @onready var spring_arm: SpringArm3D = $SpringArm3D
 @onready var camera: Camera3D = $SpringArm3D/Camera3D
 @onready var humanoid: Node3D = $Humanoid
+@onready var name_label: Label3D = $NameLabel
 
 
 func _enter_tree() -> void:
@@ -142,6 +145,7 @@ func _ready() -> void:
 	if is_multiplayer_authority():
 		sync_position = position
 		sync_yaw = rotation.y
+		sync_nickname = PlayerPrefs.nickname
 		camera.current = true
 		spring_arm.add_excluded_object(get_rid())
 	else:
@@ -197,6 +201,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	_update_role_visuals()
+	_update_name_label()
 	if not is_multiplayer_authority():
 		return
 
@@ -513,3 +518,16 @@ func _update_role_visuals() -> void:
 	if color != _current_color:
 		_current_color = color
 		humanoid.set_color(color)
+
+
+## 頭上の名前ラベル。逃走者には見せない（味方ハンター同士にのみ表示する）。
+## WAITING 中は runner_id が未確定(-1)なので、PLAYING に限定して誤表示を避ける
+func _update_name_label() -> void:
+	var my_id := String(name).to_int()
+	var local_id := multiplayer.get_unique_id()
+	var playing := GameManager.state == GameManager.State.PLAYING
+	var viewer_is_hunter := playing and local_id != GameManager.runner_id
+	var target_is_hunter := playing and my_id != GameManager.runner_id
+	name_label.visible = viewer_is_hunter and target_is_hunter and my_id != local_id
+	if not sync_nickname.is_empty() and name_label.text != sync_nickname:
+		name_label.text = sync_nickname

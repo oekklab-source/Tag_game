@@ -27,6 +27,9 @@ properties/3/replication_mode = 1
 properties/4/path = NodePath(".:sync_air")
 properties/4/spawn = true
 properties/4/replication_mode = 2
+properties/5/path = NodePath(".:sync_nickname")
+properties/5/spawn = true
+properties/5/replication_mode = 2
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
@@ -47,6 +50,16 @@ shape = SubResource("tag_shape")
 
 ; モデルが実寸（全高1.74m）なので拡大は不要
 [node name="Humanoid" parent="." instance=ExtResource("2_humanoid")]
+
+; 味方ハンター同士にのみ表示する頭上の名前ラベル。Humanoid の兄弟に置き、
+; ダイブ演出で Humanoid.rotation.x が直接書き換わっても傾かないようにする
+[node name="NameLabel" type="Label3D" parent="."]
+visible = false
+position = Vector3(0, 2.0, 0)
+billboard = 1
+outline_size = 8
+outline_modulate = Color(0, 0, 0, 1)
+font_size = 48
 
 [node name="SpringArm3D" type="SpringArm3D" parent="."]
 position = Vector3(0, 1.6, 0)

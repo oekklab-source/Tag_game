@@ -281,7 +281,8 @@ func _update_lobby() -> void:
 
 ## 一覧は毎フレーム作り直さず、中身が変わったときだけ組み直す
 func _rebuild_roster(ids: Array[int], me: int, is_host: bool) -> void:
-	var key := "%s|%d|%d" % [ids, GameManager.wanted_runner, int(is_host)]
+	var names := ids.map(func(id): return GameManager.nickname_for(id))
+	var key := "%s|%s|%d|%d" % [ids, names, GameManager.wanted_runner, int(is_host)]
 	if key == _roster_key:
 		return
 	_roster_key = key
@@ -305,7 +306,8 @@ func _roster_row(id: int, me: int, is_host: bool) -> Control:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 12)
 	var name_label := Label.new()
-	name_label.text = "あなた" if id == me else "プレイヤー %d" % id
+	var nickname := GameManager.nickname_for(id)
+	name_label.text = "あなた（%s）" % nickname if id == me else nickname
 	name_label.add_theme_font_size_override("font_size", 19)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var badge := Label.new()

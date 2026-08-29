@@ -48,6 +48,15 @@ shape = SubResource("tag_shape")
 ; モデルが実寸（全高1.74m）なので拡大は不要
 [node name="Humanoid" parent="." instance=ExtResource("2_humanoid")]
 
+; 味方ハンター（人間）にのみ表示する頭上の名前ラベル。player.tscn の NameLabel と同じ配置
+[node name="NameLabel" type="Label3D" parent="."]
+visible = false
+position = Vector3(0, 2.0, 0)
+billboard = 1
+outline_size = 8
+outline_modulate = Color(0, 0, 0, 1)
+font_size = 48
+
 [node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
 path_desired_distance = 0.6
 target_desired_distance = 0.8
