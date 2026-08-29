@@ -8,7 +8,9 @@ extends Area3D
 
 const LAUNCH := 13.0
 
-@onready var mesh: MeshInstance3D = $Mesh
+## バネ本体（Coil+Pad）だけを指す。根元が台座の上面（ローカルy=0）に
+## あるので、ここの scale.y を動かせば「台座は動かず上だけ伸び縮みする」動きになる
+@onready var spring: Node3D = $Mesh/SpringPadModel/SpringPad/Spring
 
 
 func _ready() -> void:
@@ -16,13 +18,14 @@ func _ready() -> void:
 
 
 func _on_body_entered(body: Node3D) -> void:
-	_squash()
+	_boing()
 	if body.has_method("launch") and body.is_multiplayer_authority():
 		body.launch(Vector3(0, LAUNCH, 0))
 
 
-func _squash() -> void:
+func _boing() -> void:
 	var t := create_tween()
-	t.tween_property(mesh, "scale", Vector3(1.3, 0.3, 1.3), 0.07)
-	t.tween_property(mesh, "scale", Vector3.ONE, 0.35) \
+	t.tween_property(spring, "scale", Vector3(1.4, 0.15, 1.4), 0.05)
+	t.tween_property(spring, "scale", Vector3(0.5, 1.7, 0.5), 0.12)
+	t.tween_property(spring, "scale", Vector3.ONE, 0.5) \
 		.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)

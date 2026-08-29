@@ -680,6 +680,7 @@ scenes/humanoid.tscn(.gd)     豆型キャラの読み込みとアニメ切り�
 assets/character/fallguy.glb  Blender 製の恐竜きぐるみキャラ（16ボーン・4アニメ）
 assets/props/manhole.glb      Blender 製のマンホール（Frame/Lid/Shaft/Halo/Beacon/Shards）
 assets/props/item_box.glb     Blender 製の？ブロック（Body/Mark/Sparkles、側面ごとに色違い）
+assets/gimmicks/spring_pad.glb Blender 製のジャンプ台（Base/Coil/Pad、暗色台座+ゾーンアクセント橙）
 scenes/beacon.gdshader        光柱と結晶の加算合成シェーダ
 scenes/gimmicks/              マンホール・ジャンプ台・ダッシュパネル・動く床・回転床・？ブロック
                               + 滑り台・バンパー・壁の天面ガード・バナナ・設置ブロック
@@ -689,6 +690,7 @@ tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを�
 tools/blender/build_fallguy.py キャラを一から組み立てて glb へ書き出す（blender -b -P で実行）
 tools/blender/build_manhole.py マンホール（フタ・枠・光柱・回転リング・結晶）を同じ手順で書き出す
 tools/blender/build_item_box.py ？ブロック（側面パネル・「？」・結晶）を同じ手順で書き出す
+tools/blender/build_spring_pad.py ジャンプ台（暗色台座・コイル・ゾーンアクセント橙の着地面）を同じ手順で書き出す
 tools/blender/reference.png   デザインの参考画像。.gdignore で Godot のインポート対象外
 tools/verify_humanoid.gd      glb の構造・アニメ・向き・状態遷移をヘッドレスで検証
 tools/shot_humanoid.gd        各アニメの見た目を PNG に書き出す（目視確認用）
