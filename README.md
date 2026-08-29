@@ -691,6 +691,7 @@ tools/blender/build_fallguy.py キャラを一から組み立てて glb へ書�
 tools/blender/build_manhole.py マンホール（フタ・枠・光柱・回転リング・結晶）を同じ手順で書き出す
 tools/blender/build_item_box.py ？ブロック（側面パネル・「？」・結晶）を同じ手順で書き出す
 tools/blender/build_spring_pad.py ジャンプ台（暗色台座・コイル・ゾーンアクセント橙の着地面）を同じ手順で書き出す
+tools/blender/build_banana_peel.py バナナの皮（長い本体1本＋跳ね上がる皮3枚）を同じ手順で書き出す
 tools/blender/reference.png   デザインの参考画像。.gdignore で Godot のインポート対象外
 tools/verify_humanoid.gd      glb の構造・アニメ・向き・状態遷移をヘッドレスで検証
 tools/shot_humanoid.gd        各アニメの見た目を PNG に書き出す（目視確認用）
