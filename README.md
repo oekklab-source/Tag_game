@@ -82,7 +82,7 @@ Recast が構造物の上に孤立したナビ島を作らない。加えて `To
 
 | ギミック | 効果 |
 | --- | --- |
-| マンホールワープ | フタを踏むとペアのフタが開いて飛び出す。進行方向へ軽く逃げる。CPU は近道になる時だけ入る |
+| マンホールワープ | 光の柱に入るとペアの柱から飛び出す。進行方向へ軽く逃げる。CPU は近道になる時だけ入る |
 | ジャンプ台 | 真上に打ち上げ（頂点 約8.6m）。高いゾーンへの主要ルート |
 | ダッシュパネル | 2.5秒間スピード1.6倍＋矢印方向へ蹴り出し |
 | 動く床 | 昇降リフト／上空シャトル。乗ると一緒に運ばれる |
@@ -678,7 +678,7 @@ scenes/cpu_hunter.tscn(.gd)   CPU 鬼（巡回 / 捜索 / 追跡の3状態 + 回
 scenes/buff_set.gd            時限バフ（プレイヤーと CPU で共用）
 scenes/humanoid.tscn(.gd)     豆型キャラの読み込みとアニメ切り替え（Idle/Run/Jump/Dive）
 assets/character/fallguy.glb  Blender 製の恐竜きぐるみキャラ（16ボーン・4アニメ）
-assets/props/manhole.glb      Blender 製のマンホール（Frame/Lid/Shaft/Halo/Beacon/Shards）
+assets/props/manhole.glb      Blender 製のワープ地点の光の柱（Halo/Beacon/Shards）
 assets/props/item_box.glb     Blender 製の？ブロック（Body/Mark/Sparkles、側面ごとに色違い）
 assets/gimmicks/spring_pad.glb Blender 製のジャンプ台（Base/Coil/Pad、暗色台座+ゾーンアクセント橙）
 scenes/beacon.gdshader        光柱と結晶の加算合成シェーダ
@@ -688,7 +688,7 @@ scenes/hud.tscn(.gd)          役割バッジ・円形タイマー・9ゾーン�
 ui/pop_theme.tres             全体に適用される POP テーマ
 tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
 tools/blender/build_fallguy.py キャラを一から組み立てて glb へ書き出す（blender -b -P で実行）
-tools/blender/build_manhole.py マンホール（フタ・枠・光柱・回転リング・結晶）を同じ手順で書き出す
+tools/blender/build_manhole.py ワープ地点の光の柱（光柱・回転リング・結晶）を同じ手順で書き出す
 tools/blender/build_item_box.py ？ブロック（側面パネル・「？」・結晶）を同じ手順で書き出す
 tools/blender/build_spring_pad.py ジャンプ台（暗色台座・コイル・ゾーンアクセント橙の着地面）を同じ手順で書き出す
 tools/blender/build_banana_peel.py バナナの皮（長い本体1本＋跳ね上がる皮3枚）を同じ手順で書き出す

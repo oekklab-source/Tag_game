@@ -1,6 +1,6 @@
 shader_type spatial;
 
-// マンホールの「神々しい目印」を作る加算合成シェーダ。
+// ワープ地点の「光の柱」を作る加算合成シェーダ。
 // 光柱（Beacon）と舞う結晶（Shards）で共用し、uniform で振る舞いを変える。
 //
 // 規約: 当たり判定のある物は GameManager.world_time（全ピアで揃える必要がある）、
@@ -13,7 +13,7 @@ shader_type spatial;
 render_mode blend_add, unshaded, cull_disabled, depth_draw_never, shadows_disabled;
 
 uniform vec3 albedo : source_color = vec3(0.62, 0.92, 1.0);
-uniform float energy = 1.0;       // 1.0 前後。上げると加算が飽和して真っ白に潰れる
+uniform float energy = 1.0;       // 1.0 前後。上げると加算が飽和して真っ白に輝く
 uniform float fade_height = 0.0;  // >0 でこの高さに向かって薄れる（光柱用・メートル）
 uniform float bob = 0.0;          // 上下の揺れ幅(m)
 uniform float stripe = 0.0;       // 上へ流れる縞の強さ
@@ -36,11 +36,9 @@ void fragment() {
 	float k = 1.0;
 	if (fade_height > 0.0) {
 		float t = clamp(local_y / fade_height, 0.0, 1.0);
-		// 上へ線形に薄れて空に溶ける。二次だと中腹から先が消えてしまい、
-		// 遠景で「地面の光る点」にしか見えなくなる（実測）。
-		// 根元は 1.5m ほどかけて立ち上げる。ここを抜かないと加算が飽和して
-		// フタの意匠が真っ白に飛ぶ
-		k = (1.0 - t) * smoothstep(0.0, 0.11, t);
+		// 上へ線形に薄れて空に溶ける。
+		// 地面から自然に光が立ち上がるよう根元を smoothstep で馴染ませる
+		k = (1.0 - t) * smoothstep(0.0, 0.04, t);
 	}
 	float pulse = 0.72 + 0.28 * sin(TIME * 1.6);
 	if (stripe > 0.0) {

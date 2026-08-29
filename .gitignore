@@ -17,3 +17,7 @@ export/
 
 # Blender の自動バックアップ
 *.blend1
+
+# 確認用に生成される PNG（tests/screenshot.tscn --shots、build_*.py --render の出力）
+tests/shots/
+tools/blender/renders/
