@@ -257,9 +257,15 @@ func _update_lobby() -> void:
 	var me := multiplayer.get_unique_id()
 	var ids := GameManager.player_ids()
 	var is_host := multiplayer.is_server()
-	# 版数を出しておくと、古いビルドが混ざったときに見ただけで分かる
-	lobby_status.text = "%s ／ %d人が参加中 ／ v%d" % ["ホスト（あなた）" if is_host
-		else "参加中（ホストは別の人）", ids.size(), GameManager.PROTOCOL_VERSION]
+	# 版数を出しておくと、古いビルドが混ざったときに見ただけで分かる。
+	# 定員は常に4人（逃走者1 + 鬼3）で、足りない鬼は CPU が埋めることも書いておく
+	var humans_on_hunt: int = maxi(ids.size() - 1, 0)
+	var cpu_fill: int = maxi(GameManager.MAX_HUNTERS - humans_on_hunt, 0)
+	if GameManager.debug_cpu_runner:
+		cpu_fill = 0  # デバッグ（CPU逃走者）は1対1の検証用で CPU 鬼を足さない
+	var fill_text := "" if cpu_fill <= 0 else "（うち CPU の鬼 %d人）" % cpu_fill
+	lobby_status.text = "%s ／ 4人であそぶ: %d人が参加中%s ／ v%d" % ["ホスト（あなた）" if is_host
+		else "参加中（ホストは別の人）", ids.size(), fill_text, GameManager.PROTOCOL_VERSION]
 
 	_rebuild_roster(ids, me, is_host)
 

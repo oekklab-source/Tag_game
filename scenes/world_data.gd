@@ -229,6 +229,21 @@ static func zone_color(idx: int) -> Color:
 	return ZONE_COLORS[idx]
 
 
+## 直交で隣り合うゾーン。斜めは角でしか接しておらずスロープも無いので含めない
+## （RAMP_PAIRS_X / RAMP_PAIRS_Z と同じ接続関係）
+static func zone_neighbors(idx: int) -> Array[int]:
+	var out: Array[int] = []
+	if ZONE_COL[idx] > 0:
+		out.append(idx - 1)
+	if ZONE_COL[idx] < 2:
+		out.append(idx + 1)
+	if ZONE_ROW[idx] > 0:
+		out.append(idx - 3)
+	if ZONE_ROW[idx] < 2:
+		out.append(idx + 3)
+	return out
+
+
 ## ゾーンの床の平面サイズ（x, z）
 static func zone_extent(idx: int) -> Vector2:
 	return Vector2(AXIS_SIZE[ZONE_COL[idx]], AXIS_SIZE[ZONE_ROW[idx]])

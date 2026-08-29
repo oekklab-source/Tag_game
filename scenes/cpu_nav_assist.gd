@@ -10,6 +10,11 @@ const SLIDE_ENTRY_CAPTURE_RADIUS := 9.0
 const SPRING_DIRECT_RADIUS := 2.2
 const SPRING_CAPTURE_RADIUS := 8.0
 const SPRING_AIRBORNE_HEIGHT := 2.0
+## ダッシュパネルへ寄り道する条件。ナビ目標は差し替えず、進む向きに
+## 上乗せするだけにする（目標を書き換えると経路探索が壊れる）
+const BOOST_SEEK_RANGE := 12.0
+const BOOST_SEEK_DOT := 0.64      # パネルの向きと目的地方向の一致（約50°）
+const BOOST_SEEK_WEIGHT := 1.2
 const BUMPER_AVOID_LOOKAHEAD := 7.0
 const BUMPER_AVOID_RADIUS := 4.5
 const BUMPER_AVOID_WEIGHT := 1.5
@@ -98,6 +103,39 @@ static func _low_side_index(zone: int, along_x: bool) -> int:
 
 static func _xz_dist(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x - b.x, a.z - b.z).length()
+
+
+## 目的地の方を向いているダッシュパネルが進路の近くにあれば、そこを踏みに寄る。
+## シーンではなく WorldData.BOOST_PANELS を直接見る（静的データなので
+## ツリー探索が要らず、毎フレーム呼んでも安い）
+static func boost_assist(pos: Vector3, dir: Vector3, goal: Vector3) -> Vector3:
+	dir.y = 0.0
+	if dir.length_squared() < 0.01:
+		return dir
+	var forward := dir.normalized()
+	var to_goal := goal - pos
+	to_goal.y = 0.0
+	if to_goal.length_squared() < 1.0:
+		return forward
+	var goal_dir := to_goal.normalized()
+	var steer := forward
+	for e in WorldData.BOOST_PANELS:
+		var pad := WorldData.zone_point(e[0], e[1], e[2])
+		var to_pad := pad - pos
+		to_pad.y = 0.0
+		var pad_dist := to_pad.length()
+		if pad_dist > BOOST_SEEK_RANGE or pad_dist < 0.5:
+			continue
+		if to_pad.normalized().dot(forward) <= 0.0:
+			continue  # 後ろのパネルのために引き返さない
+		# パネルは -Z へ蹴り出す。world_builder と同じくヨーから向きを起こす
+		var yaw := deg_to_rad(float(e[3]))
+		var kick := Vector3(-sin(yaw), 0.0, -cos(yaw))
+		if kick.dot(goal_dir) < BOOST_SEEK_DOT:
+			continue  # 目的地と違う方向へ蹴られるパネルは踏むだけ損
+		var pull := (1.0 - pad_dist / BOOST_SEEK_RANGE) * BOOST_SEEK_WEIGHT
+		steer += to_pad.normalized() * pull
+	return steer.normalized() if steer.length_squared() > 0.01 else forward
 
 
 static func avoid_bumpers(pos: Vector3, dir: Vector3, tree: SceneTree) -> Vector3:

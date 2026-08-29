@@ -1,54 +1,87 @@
 extends CharacterBody3D
 
 const CPU_NAV_ASSIST := preload("res://scenes/cpu_nav_assist.gd")
+const STUCK_ESCAPE := preload("res://scenes/stuck_escape.gd")
 
 ## ソロモード用の CPU 鬼。ロジックはホスト（サーバ）でのみ動作し、
 ## 位置・回転は MultiplayerSynchronizer で途中参加者にも配信される。
 ##
 ## 逃走者の位置は**知らない**。人間の鬼とまったく同じ情報しか持たず、3状態で動く:
-##   CHASE       自分が視認している -> 実際の位置へ回り込みながら直接追う
-##   INVESTIGATE 誰かが通報したゾーンがある -> そこへ行き、中を掃くように歩き回る
-##   PATROL      情報なし -> マップ全体を決まった順路で巡回して探す
+##   CHASE       自分が視認している -> 追跡役は直接、他は逃走方向を塞ぐ位置へ
+##   INVESTIGATE 誰かが通報したゾーンがある -> 現地か、その隣（逃げ道）を張る
+##   PATROL      情報なし -> 長く見ていないゾーンを分担して掃く
 ## 視認判定は GameManager に一本化してあり、ここでレイは飛ばさない。
+##
+## 「どのゾーンを誰が担当するか」「包囲のどの角度を持つか」も自分では決めず、
+## GameManager.squad（HunterSquad）に問い合わせる。個体が勝手に決めると
+## 全員が同じゾーンへ重なり、同じ側から追ってしまう。
 
-## 逃走者の持続平均速度（約8.65 m/s）よりわずかに遅く、歩行(7.0)より明確に速い。
-## この差がじわじわ詰められる圧力になる。
+## 脚は逃走者とまったく同じにする。鬼が強い理由を「足が速いから」ではなく
+## 「見つける・読む・詰めるのが上手いから」に一本化するため。
+## この結果、直線で逃げ続ける相手には**原理的に追いつけない**。捕獲力はすべて
+## 早期発見・先読み・挟み込み・退路封鎖から来る。
+## 弱すぎると感じた時に最初に戻すレバーがここ（Player.BASE_SPEED の定数倍にする）。
 ## 補足: get_speed_mult() は peer_id 基準で CPU はピアではないため、
 ## 人数による速度補正の対象外。CPU はこの定数だけで調整する
-const SPEED := 8.2
-const FLANK_RADIUS := 4.0
+const SPEED := Player.BASE_SPEED
+## 巡航の上に乗せる全力。人間の鬼・逃走者と同じ 10.5 m/s
+const DASH_SPEED := Player.BASE_SPEED * Player.DASH_MULT
+## 消費・回復・復帰だけでなく総量も player.gd と同じにする。
+## 経済が完全に一致するので「どれくらい粘れるか」の読みが両者で食い違わない
+const STAMINA_MAX := Player.STAMINA_MAX
+const STAMINA_DRAIN := Player.STAMINA_DRAIN
+const STAMINA_REGEN := Player.STAMINA_REGEN
+const STAMINA_RECOVER := Player.STAMINA_RECOVER
+## 見えていてもこの距離より遠ければ吐かない。追いつく前に切れては意味がない
+const DASH_ENGAGE := 34.0
+## 通報が入った直後のこの秒数だけは、現地へ全力で急行する
+const DASH_INTEL_BURST := 6.0
+
+## 進行方向に対して首を振る幅。can_see() はボディの -Z を使うので、
+## ここを広げるとそのまま実効視野が広がる（100° -> 約190°）。
+## 移動は velocity が別に駆動しているので進路には影響しない
+const SCAN_ANGLE := 45.0
+const SCAN_RATE := 2.2        # rad/s。速すぎると首がガクガクして見える
+
+## --- アイテムの使用方針 -------------------------------------------------
+## 置き物は「自分の背後」に出る（player.gd の BANANA_BEHIND / BLOCK_BEHIND）。
+## つまり先回りして逃走者に背を向けて走っている時に置くと、相手の進路に置ける
+const ITEM_BEHIND_DOT := -0.3   # 逃走者がこれより後ろにいれば「先回りできている」
+const BANANA_RANGE := 12.0
+const BLOCK_RANGE_MIN := 8.0
+const BLOCK_RANGE_MAX := 18.0
+## ロケットは正面へ飛ぶので、逃走者を正面に捉えている時だけ使う
+const ROCKET_DOT := 0.87        # 約30°
+const ROCKET_RANGE_MIN := 8.0
 
 enum Mind { PATROL, INVESTIGATE, CHASE }
 
-## 巡回の順路。隣り合う要素が必ず辺で接するので、各区間は短くスロープも確実にある。
-## 端で折り返す（環状にしない）ので 8->0 の150m移動は起きない
-const PATROL_ORDER: Array[int] = [0, 1, 2, 5, 4, 3, 6, 7, 8]
-## ゾーン中心からこの距離まで寄れば到着とみなす。
-## zone_index による判定にすると、境界を歩く CPU が跨いだ瞬間に「到着」して
-## 次（＝今出たゾーン）へ進み、継ぎ目で永久に振動する。
-## 12m は壁のない十字通路の内側（壁は local 9 から）なので必ず到達できる
-const PATROL_ARRIVE := 12.0
-const PATROL_TIMEOUT := 20.0
 ## 捜索中はゾーン中心に立ち止まらず歩き回る。6m壁があると中心からは
 ## ゾーンの3割程度しか見えず、視野を振って初めて死角が潰れる
 const SWEEP_RADIUS := 18.0
 const SWEEP_ARRIVE := 4.0
 const SWEEP_TIMEOUT := 6.0
+## 1つのゾーンを何回掃いたら次へ移るか。多いほど取りこぼしが減るが、
+## 鬼3体で9ゾーンを回すため、増やすとマップ一周が目に見えて遅くなる
+const SWEEPS_PER_ZONE := 2
 ## 目的地があるのにほとんど進めていない＝何かに押し付けられている。
 ## ナビメッシュに焼かれていない設置ブロックが典型だが、壁の角や
-## CPU 同士の押し合いでも起きるので汎用の脱出手段として持たせる
-const STUCK_DIST := 0.6
-const STUCK_TIME := 1.0
+## CPU 同士の押し合いでも起きるので汎用の脱出手段として持たせる。
+## 検知の閾値は stuck_escape.gd 側で player.gd と共有する
 const SIDESTEP_TIME := 1.2
 const SIDESTEP_DIST := 6.0
 const AIR_STEER := 6.0        # 空中での方向転換（プレイヤーより弱く、慣性を残す）
-const REPATH_INTERVAL := 0.3
-const TURN_SPEED := 8.0
-const DIRECT_CHASE_DIST := 10.0
+const REPATH_INTERVAL := 0.15
+const TURN_SPEED := 14.0
+const DIRECT_CHASE_DIST := 16.0
+## 挟み役が持ち場を捨てて直接掴みに行く距離。追跡役(16m)よりずっと短くして、
+## 触れる寸前まで逃げ道を塞ぎ続けさせる。長くすると全員が一列に詰まって
+## ただの追いかけっこに戻ってしまう
+const FLANK_DIRECT_DIST := 7.0
 ## ダイブで飛びかかる距離。近すぎると走って触った方が速く、
 ## 遠すぎると空振りして起き上がりの隙を晒すだけになる
 const DIVE_MIN := 3.0
-const DIVE_MAX := 6.5
+const DIVE_MAX := 9.0
 const HUNTER_COLOR := Player.COLOR_HUNTER
 ## 滑走・ブースト・ロケットの勢いは player.gd と同じ値で扱う
 ## （鬼だけ勢いが残る/残らないの差が出ると追跡バランスが崩れる）
@@ -81,19 +114,27 @@ var diving := false
 var dive_recover := 0.0
 var dive_cooldown := 0.0
 
+var stamina := STAMINA_MAX
+var exhausted := false
+var is_dashing := false
+## player.gd と同じ契約。CPU の権威はサーバなのでホスト上だけで進む
+var item: int = Player.Item.NONE
+var item_lock := 0.0
+
 var _repath_timer := 0.0
-var _flank_angle := 0.0
+var _scan_phase := 0.0
 var _mind: int = Mind.PATROL
-var _patrol_i := 0
-var _patrol_dir := 1
 var _goal := Vector3.ZERO
 var _goal_timer := 0.0
+var _sweeps_left := 0
 var _rng := RandomNumberGenerator.new()
 var stun_left := 0.0
 var _stuck_timer := 0.0
 var _stuck_from := Vector3.ZERO
 var _sidestep_left := 0.0
 var _sidestep_goal := Vector3.ZERO
+var _stuck_kick := Vector3.ZERO
+var _stuck_kick_left := 0.0
 
 ## ホストが書き、他ピアはここへ補間する。詳細は player.gd の同名変数を参照。
 ## CPU が他ピアから見えるのはソロ戦の途中に誰かが入って来た場合だけだが、
@@ -107,11 +148,13 @@ var _sidestep_goal := Vector3.ZERO
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
 @onready var humanoid: Node3D = $Humanoid
+@onready var name_label: Label3D = $NameLabel
 
 
 func _ready() -> void:
 	add_to_group("cpu_hunters")
 	humanoid.set_color(HUNTER_COLOR)
+	name_label.text = name
 	if multiplayer.is_server():
 		sync_position = position
 		sync_yaw = rotation.y
@@ -119,14 +162,11 @@ func _ready() -> void:
 		position = sync_position
 		rotation.y = sync_yaw
 	$TagArea.body_entered.connect(_on_tag_area_body_entered)
-	# 個体ごとに狙う位置をずらし、再経路探索のタイミングも散らす
-	_flank_angle = randf() * TAU
+	# 再経路探索のタイミングを個体ごとに散らす（同フレームに固まらせない）
 	_repath_timer = randf() * REPATH_INTERVAL
 	_rng.seed = hash(name)
-	# 巡回の開始位置を個体ごとにずらして全員が同じゾーンへ集まらないようにする。
-	# add_to_group の直後なので size() は 1..N（5体なら順路の 2,4,6,8,1 番目）
-	var spawn_index := get_tree().get_nodes_in_group("cpu_hunters").size()
-	_patrol_i = (spawn_index * 2) % PATROL_ORDER.size()
+	# 3体が同期して首を振ると死角まで揃ってしまう。位相を個体ごとにずらす
+	_scan_phase = _rng.randf() * TAU
 
 
 func _on_tag_area_body_entered(body: Node3D) -> void:
@@ -135,6 +175,7 @@ func _on_tag_area_body_entered(body: Node3D) -> void:
 
 
 func _process(delta: float) -> void:
+	_update_name_label()
 	if delta <= 0.0:
 		return
 	if not multiplayer.is_server():
@@ -143,6 +184,12 @@ func _process(delta: float) -> void:
 	humanoid.update_motion(sync_speed, not sync_air, delta)
 	humanoid.rotation.x = lerpf(humanoid.rotation.x,
 		DIVE_PITCH if diving else 0.0, minf(delta * 12.0, 1.0))
+
+
+## 頭上の名前ラベル。player.gd と同じく、味方ハンター（人間）にのみ見せる
+func _update_name_label() -> void:
+	name_label.visible = (GameManager.state == GameManager.State.PLAYING
+		and multiplayer.get_unique_id() != GameManager.runner_id)
 
 
 func _physics_process(delta: float) -> void:
@@ -167,6 +214,8 @@ func _physics_process(delta: float) -> void:
 		and stun_left <= 0.0 and not diving)
 	var dir := Vector3.ZERO
 	var rise := 0.0
+	var wants_dash := false
+	item_lock = maxf(item_lock - delta, 0.0)
 	if chasing:
 		var runner: Node3D = GameManager.get_runner()
 		if runner:
@@ -187,8 +236,12 @@ func _physics_process(delta: float) -> void:
 				_stuck_timer = 0.0
 				_stuck_from = global_position
 				_sidestep_left = 0.0
+				_stuck_kick_left = 0.0
 			else:
 				_avoid_stuck(delta)
+			if _stuck_kick_left > 0.0:
+				add_carry(_stuck_kick)
+				_stuck_kick_left -= delta
 
 			var nav_goal: Vector3 = _sidestep_goal if _sidestep_left > 0.0 else assist["target"]
 			_repath_timer -= delta
@@ -201,8 +254,11 @@ func _physics_process(delta: float) -> void:
 				next = nav_goal
 			var to_runner := runner.global_position - global_position
 			var h_dist := Vector2(to_runner.x, to_runner.z).length()
-			# 見えている近距離で高低差が小さい、またはナビで到達不能なら直接追跡へ
-			if (_mind == Mind.CHASE and h_dist < DIRECT_CHASE_DIST
+			# 見えている近距離で高低差が小さい、またはナビで到達不能なら直接追跡へ。
+			# 挟み役は触れる寸前まで持ち場を保つので、切り替える距離をずっと短くする
+			var direct_dist := (DIRECT_CHASE_DIST if GameManager.squad.is_prime(self)
+				else FLANK_DIRECT_DIST)
+			if (_mind == Mind.CHASE and h_dist < direct_dist
 					and (absf(to_runner.y) < 1.2 or not agent.is_target_reachable())):
 				next = runner.global_position
 			dir = next - global_position
@@ -210,14 +266,19 @@ func _physics_process(delta: float) -> void:
 			dir.y = 0.0
 			dir = dir.normalized() if dir.length() > 0.05 else Vector3.ZERO
 			dir = CPU_NAV_ASSIST.avoid_bumpers(global_position, dir, get_tree())
+			dir = CPU_NAV_ASSIST.boost_assist(global_position, dir, _goal)
+			wants_dash = _wants_dash(h_dist)
+			_try_use_item(to_runner, h_dist)
 			# 見えている逃走者が手頃な距離にいたら飛びかかる。
 			# プレイヤーと同じくダイブ中は操作できず、外せば起き上がりの隙を晒す
 			if (_mind == Mind.CHASE and grounded and dive_cooldown <= 0.0
 					and h_dist > DIVE_MIN and h_dist < DIVE_MAX and absf(to_runner.y) < 2.0):
 				_start_dive(Vector3(to_runner.x, 0.0, to_runner.z))
 
+	_update_stamina(delta, wants_dash)
+
 	# プレイヤーと同じく、空中では慣性を保つ（打ち上げ・ブーストが消えないように）
-	var speed := SPEED * buffs.get_mult(&"speed")
+	var speed := (DASH_SPEED if is_dashing else SPEED) * buffs.get_mult(&"speed")
 	var target := Vector2(dir.x, dir.z) * speed
 	if slide_left > 0.0:
 		velocity = SlideMotion.step(velocity, delta, slide_dir, slide_accel, slide_cap,
@@ -252,7 +313,13 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, target.x, AIR_STEER * delta)
 		velocity.z = move_toward(velocity.z, target.y, AIR_STEER * delta)
 	if dir != Vector3.ZERO:
-		rotation.y = lerp_angle(rotation.y, atan2(-dir.x, -dir.z), TURN_SPEED * delta)
+		# 捜索中は進行方向から首を振って死角を潰す。can_see() はボディの -Z を
+		# 見るので、ここに足すだけで実効視野が広がる（velocity は別なので進路は不変）
+		var face := atan2(-dir.x, -dir.z)
+		if _mind != Mind.CHASE:
+			_scan_phase += SCAN_RATE * delta
+			face += sin(_scan_phase) * deg_to_rad(SCAN_ANGLE)
+		rotation.y = lerp_angle(rotation.y, face, TURN_SPEED * delta)
 
 	# 重なりをほどく速度は carry_velocity と同じく一時的に足すだけにする。
 	# velocity に残すと毎フレーム蓄積して吹き飛ぶ
@@ -288,27 +355,128 @@ func _follow_sync(delta: float) -> void:
 ## 目的地は「到着したか時間切れの時」だけ差し替え、毎フレーム動かさない
 ## （動かすと NavigationAgent3D の経路が落ち着かず、その場で震える）
 func _update_goal(runner: Node3D, _delta: float) -> void:
+	var squad: HunterSquad = GameManager.squad
 	match _mind:
 		Mind.CHASE:
-			# 全員が一列に詰まらないよう、個体ごとに違う側から回り込む
-			_flank_angle += REPATH_INTERVAL * 0.5
-			_goal = runner.global_position \
-				+ Vector3(cos(_flank_angle), 0.0, sin(_flank_angle)) * FLANK_RADIUS
+			# 追跡役は逃走者そのもの、挟み役は逃走方向を塞ぐ持ち場へ。
+			# 割り当ては squad が全鬼をまとめて見て決めている
+			_goal = squad.pincer_goal(self, runner)
 		Mind.INVESTIGATE:
-			var zone: int = GameManager.spotted_zone
-			if WorldData.zone_index(global_position) != zone:
-				_goal = WorldData.zone_center(zone)  # まず現地へ
-				_goal_timer = SWEEP_TIMEOUT
-			elif _goal_timer <= 0.0 or _xz_dist(global_position, _goal) < SWEEP_ARRIVE:
-				# 着いたらゾーン内を掃くように歩き回る
-				_goal = WorldData.zone_point(zone,
-					_rng.randf_range(-SWEEP_RADIUS, SWEEP_RADIUS),
-					_rng.randf_range(-SWEEP_RADIUS, SWEEP_RADIUS))
-				_goal_timer = SWEEP_TIMEOUT
+			# 現地へ入るのは1体だけ。残りは隣のゾーン（逃げ出す先）を張る
+			_sweep_zone(squad.watch_zone(self, GameManager.spotted_zone))
 		_:
-			_goal = WorldData.zone_center(PATROL_ORDER[_patrol_i])
-			if _xz_dist(global_position, _goal) < PATROL_ARRIVE or _goal_timer <= 0.0:
-				_advance_patrol()
+			# 掃き終えたら次の担当を貰う。他の鬼が持っているゾーンは来ない
+			if _sweep_zone(squad.search_zone(self)):
+				squad.next_search_zone(self)
+
+
+## 担当ゾーンへ入り、中を掃くように歩き回る。掃き終わったら true。
+## ゾーン中心に立っているだけでは6m壁に阻まれて3割ほどしか見えないため、
+## 到着後も何度か中を歩かせて死角を潰す
+func _sweep_zone(zone: int) -> bool:
+	if zone < 0:
+		return false
+	if WorldData.zone_index(global_position) != zone:
+		_goal = WorldData.zone_center(zone)  # まず現地へ
+		_goal_timer = SWEEP_TIMEOUT
+		_sweeps_left = SWEEPS_PER_ZONE
+		return false
+	if _goal_timer > 0.0 and _xz_dist(global_position, _goal) >= SWEEP_ARRIVE:
+		return false
+	_sweeps_left -= 1
+	_goal = WorldData.zone_point(zone,
+		_rng.randf_range(-SWEEP_RADIUS, SWEEP_RADIUS),
+		_rng.randf_range(-SWEEP_RADIUS, SWEEP_RADIUS))
+	_goal_timer = SWEEP_TIMEOUT
+	# 次の一歩は必ず用意した上で報告する。呼び出し側が担当を替えない
+	# INVESTIGATE では、掃き終わってもその場に立ち止まらず掃き続けてほしい
+	if _sweeps_left <= 0:
+		_sweeps_left = SWEEPS_PER_ZONE
+		return true
+	return false
+
+
+## スタミナを吐く価値があるか。ここが鬼の強さの本体で、
+## 「見えているから全力」ではなく「今吐けば届くか」で決める
+func _wants_dash(h_dist: float) -> bool:
+	match _mind:
+		Mind.CHASE:
+			# 遠いうちに吐いても追いつく前に切れて、肝心の詰めで息が上がる
+			return h_dist < DASH_ENGAGE
+		Mind.INVESTIGATE:
+			# 通報が入った直後だけ全力で急行する。古い情報に全力は出さない
+			return GameManager.intel_left > GameManager.INTEL_TIME - DASH_INTEL_BURST
+		_:
+			return false  # 巡回中は温存して、見つけた時に必ず吐けるようにする
+
+
+## player.gd の _update_stamina と同じ経済（消費20/s・回復18/s・復帰30）。
+## スタミナはレプリケートしない。結果である「速く動くこと」は位置同期で伝わる
+func _update_stamina(delta: float, wants: bool) -> void:
+	is_dashing = wants and not exhausted and stamina > 0.0 and stun_left <= 0.0
+	if is_dashing:
+		stamina = maxf(stamina - STAMINA_DRAIN * delta, 0.0)
+		if stamina <= 0.0:
+			exhausted = true
+			is_dashing = false
+	else:
+		stamina = minf(stamina + STAMINA_REGEN * delta, STAMINA_MAX)
+		if exhausted and stamina >= STAMINA_RECOVER:
+			exhausted = false
+
+
+## --- アイテム（？ブロックから渡される） ---------------------------------
+## player.gd の give_item と同契約。ルーレットが回りきるまで使えないのも同じで、
+## 「中身が見えていないのに使ってくる」という不自然さを避ける
+func give_item(id: int) -> void:
+	if not is_multiplayer_authority():
+		return
+	item = id
+	item_lock = Player.ITEM_ROULETTE
+
+
+## 置き物は自分の背後に出るので、「逃走者に背を向けて走っている＝先回りできている」
+## 時にだけ置くと相手の進路に置ける。追いかけながら後ろに撒いても無意味。
+##
+## 条件を「自分が見ている(_mind == CHASE)」にしてはいけない。視界は前方100°しか
+## 無いので、背後に置く条件（dot < -0.3 ＝ 107°以上うしろ）と絶対に両立しない。
+## 判断には仲間の誰かが見ている(GameManager.spotted)という共有情報を使う。
+## 挟み込みが共有情報で動いているのと同じ筋で、先回り役にも目が回ってくる
+func _try_use_item(to_runner: Vector3, h_dist: float) -> void:
+	if item == Player.Item.NONE or item_lock > 0.0 or not GameManager.spotted:
+		return
+	var flat := Vector2(to_runner.x, to_runner.z)
+	if flat.length_squared() < 0.01:
+		return
+	var fwd := -global_transform.basis.z
+	var dot := Vector2(fwd.x, fwd.z).normalized().dot(flat.normalized())
+	match item:
+		Player.Item.ROCKET:
+			# 正面へ飛ぶので、逃走者を正面に捉えて追っている時だけ意味がある
+			if dot < ROCKET_DOT or h_dist < ROCKET_RANGE_MIN:
+				return
+			launch(Vector3(fwd.x, 0.0, fwd.z).normalized() * Player.ROCKET_FORWARD
+				+ Vector3(0, Player.ROCKET_UP, 0))
+		Player.Item.BANANA:
+			if dot > ITEM_BEHIND_DOT or h_dist > BANANA_RANGE:
+				return
+			_drop_behind(Player.Item.BANANA, Player.BANANA_BEHIND)
+		Player.Item.BLOCK:
+			# 壁は射程が長い分、バナナより遠い間合いで通路を塞ぐのに使う
+			if dot > ITEM_BEHIND_DOT or h_dist < BLOCK_RANGE_MIN or h_dist > BLOCK_RANGE_MAX:
+				return
+			_drop_behind(Player.Item.BLOCK, Player.BLOCK_BEHIND)
+		_:
+			return
+	item = Player.Item.NONE
+
+
+## CPU はサーバ上でしか動かないので、player.gd の rpc 分岐は要らず直接呼べる
+func _drop_behind(kind: int, back_dist: float) -> void:
+	var back := global_transform.basis.z
+	GameManager.request_drop(kind,
+		global_position + Vector3(back.x, 0.0, back.z).normalized() * back_dist,
+		rotation.y)
 
 
 ## player.gd の _tick_dive / _start_dive と同じ契約。
@@ -333,20 +501,28 @@ func _start_dive(toward: Vector3) -> void:
 	dive_cooldown = DIVE_COOLDOWN
 
 
-## 目的地があるのに進めていないとき、横へずれる目標に一時的に差し替える。
-## 設置ブロックはナビメッシュに焼かれないため経路探索では避けられない。
-## 壁の角や CPU 同士の押し合いにも同じ手で抜けられる
+## 目的地があるのに進めていないとき、まず直前の衝突法線から抜け出す向きへ
+## 一時的にキックする（壁の角で2枚の法線に押し返されているケースはこれで
+## 対角線方向へ抜ける）。法線が拾えない時（設置ブロックがまだナビに
+## 焼かれていない等）だけ、目的地に対して直角のランダムな側へ逃がす旧来の
+## サイドステップへフォールバックする
 func _avoid_stuck(delta: float) -> void:
 	if _sidestep_left > 0.0:
 		_sidestep_left -= delta
 		return
 	_stuck_timer += delta
-	if _stuck_timer < STUCK_TIME:
+	if _stuck_timer < STUCK_ESCAPE.STUCK_TIME:
 		return
 	var moved := _xz_dist(global_position, _stuck_from)
 	_stuck_timer = 0.0
 	_stuck_from = global_position
-	if moved >= STUCK_DIST:
+	if moved >= STUCK_ESCAPE.STUCK_DIST:
+		return
+	var kick := STUCK_ESCAPE.normal_kick(self, SPEED)
+	if kick != Vector3.ZERO:
+		_stuck_kick = kick
+		_stuck_kick_left = STUCK_ESCAPE.KICK_TIME
+		_repath_timer = 0.0
 		return
 	# 目的地の方向に対して直角の、開いている側へ逃がす
 	var to_goal := _goal - global_position
@@ -355,19 +531,6 @@ func _avoid_stuck(delta: float) -> void:
 		side = -side
 	_sidestep_goal = global_position + side * SIDESTEP_DIST
 	_sidestep_left = SIDESTEP_TIME
-	_repath_timer = 0.0
-
-
-func _advance_patrol() -> void:
-	_patrol_i += _patrol_dir
-	if _patrol_i >= PATROL_ORDER.size():
-		_patrol_i = PATROL_ORDER.size() - 2
-		_patrol_dir = -1
-	elif _patrol_i < 0:
-		_patrol_i = 1
-		_patrol_dir = 1
-	_goal = WorldData.zone_center(PATROL_ORDER[_patrol_i])
-	_goal_timer = PATROL_TIMEOUT
 	_repath_timer = 0.0
 
 
@@ -389,6 +552,12 @@ func teleport(pos: Vector3) -> void:
 	sync_position = position
 	velocity = Vector3.ZERO
 	buffs.clear()
+	# ラウンド開始のテレポートでも呼ばれる。player.gd と同じく息を整えておく
+	stamina = STAMINA_MAX
+	exhausted = false
+	is_dashing = false
+	item = Player.Item.NONE
+	item_lock = 0.0
 	warp_lock = 0.0
 	warp_grace = 0.0
 	slide_left = 0.0
@@ -397,6 +566,7 @@ func teleport(pos: Vector3) -> void:
 	dive_cooldown = 0.0
 	_repath_timer = 0.0
 	_goal_timer = 0.0
+	_stuck_kick_left = 0.0
 
 
 func launch(v: Vector3) -> void:
@@ -406,6 +576,7 @@ func launch(v: Vector3) -> void:
 	velocity.z += v.z
 	_repath_timer = 0.0
 	_stuck_from = global_position
+	_stuck_kick_left = 0.0
 
 
 ## exit_kick は水平方向の勢い。player.gd の warp_to と同じ理由
@@ -417,6 +588,7 @@ func warp_to(pos: Vector3, up_vel: float, exit_kick := Vector3.ZERO) -> void:
 	slide_left = 0.0
 	_repath_timer = 0.0  # ワープ直後は経路と目的地を引き直す
 	_goal_timer = 0.0
+	_stuck_kick_left = 0.0
 
 
 func apply_boost(mult: float, dur: float, kick: Vector3) -> void:
