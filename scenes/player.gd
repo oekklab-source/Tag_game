@@ -1,6 +1,8 @@
 class_name Player
 extends CharacterBody3D
 
+const STUCK_ESCAPE := preload("res://scenes/stuck_escape.gd")
+
 ## プレイヤーキャラクター。
 ## 自分が権威を持つインスタンスのみ入力・物理を処理し、
 ## 位置と回転は MultiplayerSynchronizer が他ピアへ配信する。
@@ -97,6 +99,13 @@ var warp_grace := 0.0               # ワープ直後、is_on_floor() の古い�
 var item: int = Item.NONE
 var item_lock := 0.0                # >0 の間はルーレット中で、まだ使えない
 var stun_left := 0.0                # バナナを踏んだ時の操作不能時間
+
+## 壁の角に押し付けられて動けなくなった時の検知・脱出用。
+## cpu_hunter.gd / cpu_runner.gd と同じ stuck_escape.gd を共有する
+var _stuck_timer := 0.0
+var _stuck_from := Vector3.ZERO
+var _stuck_kick := Vector3.ZERO
+var _stuck_kick_left := 0.0
 
 ## MultiplayerSynchronizer が配る位置と向き。権威が毎物理フレーム書き、
 ## 他ピアは position / rotation.y をここへ補間する。
@@ -223,6 +232,7 @@ func _physics_process(delta: float) -> void:
 		input_dir = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var direction := (transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
 
+	_update_stuck(delta, direction, grounded, frozen)
 	_update_stamina(delta, direction != Vector3.ZERO, frozen)
 
 	var speed := BASE_SPEED * GameManager.get_speed_mult(my_id) * buffs.get_mult(&"speed")
@@ -308,6 +318,34 @@ func _start_dive() -> void:
 	dive_cooldown = DIVE_COOLDOWN
 
 
+## 壁の角に押し付けられて move_and_slide() が動けなくなった時の脱出。
+## 移動しようとしている(direction != ZERO)のにほとんど動けていない状態を検知し、
+## 直前の衝突法線から離れる向きへ一時的にキックする。cpu_hunter.gd の
+## _avoid_stuck と同じ判断だが、逃走者にはナビ目標が無いので入力方向で見る
+func _update_stuck(delta: float, direction: Vector3, grounded: bool, frozen: bool) -> void:
+	if _stuck_kick_left > 0.0:
+		add_carry(_stuck_kick)
+		_stuck_kick_left -= delta
+	if frozen or not grounded or direction == Vector3.ZERO \
+			or slide_left > 0.0 or warp_grace > 0.0:
+		_stuck_timer = 0.0
+		_stuck_from = global_position
+		return
+	_stuck_timer += delta
+	if _stuck_timer < STUCK_ESCAPE.STUCK_TIME:
+		return
+	var moved := Vector2(global_position.x - _stuck_from.x,
+		global_position.z - _stuck_from.z).length()
+	_stuck_timer = 0.0
+	_stuck_from = global_position
+	if moved >= STUCK_ESCAPE.STUCK_DIST:
+		return
+	var kick := STUCK_ESCAPE.normal_kick(self, BASE_SPEED)
+	if kick != Vector3.ZERO:
+		_stuck_kick = kick
+		_stuck_kick_left = STUCK_ESCAPE.KICK_TIME
+
+
 func _update_stamina(delta: float, moving: bool, frozen: bool) -> void:
 	var stamina_max := GameManager.stamina_max_for(String(name).to_int())
 	var wants_dash := Input.is_action_pressed("dash") and moving and not frozen
@@ -347,6 +385,8 @@ func teleport(pos: Vector3) -> void:
 	item = Item.NONE
 	item_lock = 0.0
 	item_changed.emit(item)
+	_stuck_from = global_position
+	_stuck_kick_left = 0.0
 
 
 ## --- 持ち物アイテム -----------------------------------------------------
@@ -406,6 +446,8 @@ func launch(v: Vector3) -> void:
 		velocity.y = v.y
 	velocity.x += v.x
 	velocity.z += v.z
+	_stuck_from = global_position
+	_stuck_kick_left = 0.0
 
 
 ## マンホールのワープ。着地先で即座に再ワープしないよう warp_lock を張る。
@@ -419,6 +461,8 @@ func warp_to(pos: Vector3, up_vel: float, exit_kick := Vector3.ZERO) -> void:
 	warp_lock = 0.9
 	warp_grace = WARP_GRACE
 	slide_left = 0.0  # 滑走状態のまま飛ぶと出口で明後日の方向へ加速する
+	_stuck_from = global_position
+	_stuck_kick_left = 0.0
 	effect_gained.emit(Effect.WARP)
 
 

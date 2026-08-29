@@ -1,6 +1,7 @@
 extends CharacterBody3D
 
 const CPU_NAV_ASSIST := preload("res://scenes/cpu_nav_assist.gd")
+const STUCK_ESCAPE := preload("res://scenes/stuck_escape.gd")
 
 ## デバッグ用の CPU 逃走者。
 ## ホスト上だけでAIを動かし、9エリアを順番に巡回する。
@@ -10,8 +11,6 @@ const SPEED := Player.BASE_SPEED
 const RUN_ORDER: Array[int] = [4, 3, 0, 1, 2, 5, 8, 7, 6]
 const ARRIVE_DIST := 10.0
 const GOAL_TIMEOUT := 18.0
-const STUCK_DIST := 0.5
-const STUCK_TIME := 1.0
 const SIDESTEP_TIME := 1.0
 const SIDESTEP_DIST := 5.0
 const AIR_STEER := 6.0
@@ -48,6 +47,8 @@ var _stuck_timer := 0.0
 var _stuck_from := Vector3.ZERO
 var _sidestep_left := 0.0
 var _sidestep_goal := Vector3.ZERO
+var _stuck_kick := Vector3.ZERO
+var _stuck_kick_left := 0.0
 var _rng := RandomNumberGenerator.new()
 
 @export var sync_position := Vector3.ZERO
@@ -111,8 +112,12 @@ func _physics_process(delta: float) -> void:
 			_stuck_timer = 0.0
 			_stuck_from = global_position
 			_sidestep_left = 0.0
+			_stuck_kick_left = 0.0
 		else:
 			_avoid_stuck(delta)
+		if _stuck_kick_left > 0.0:
+			add_carry(_stuck_kick)
+			_stuck_kick_left -= delta
 		var nav_goal: Vector3 = _sidestep_goal if _sidestep_left > 0.0 else assist["target"]
 		_repath_timer -= delta
 		if _repath_timer <= 0.0:
@@ -210,12 +215,18 @@ func _avoid_stuck(delta: float) -> void:
 		_sidestep_left -= delta
 		return
 	_stuck_timer += delta
-	if _stuck_timer < STUCK_TIME:
+	if _stuck_timer < STUCK_ESCAPE.STUCK_TIME:
 		return
 	var moved := _xz_dist(global_position, _stuck_from)
 	_stuck_timer = 0.0
 	_stuck_from = global_position
-	if moved >= STUCK_DIST:
+	if moved >= STUCK_ESCAPE.STUCK_DIST:
+		return
+	var kick := STUCK_ESCAPE.normal_kick(self, SPEED)
+	if kick != Vector3.ZERO:
+		_stuck_kick = kick
+		_stuck_kick_left = STUCK_ESCAPE.KICK_TIME
+		_repath_timer = 0.0
 		return
 	var to_goal := _goal - global_position
 	var side := Vector3(-to_goal.z, 0.0, to_goal.x).normalized()
@@ -248,6 +259,7 @@ func teleport(pos: Vector3) -> void:
 	_repath_timer = 0.0
 	_goal_timer = 0.0
 	_stuck_from = global_position
+	_stuck_kick_left = 0.0
 
 
 func launch(v: Vector3) -> void:
@@ -257,6 +269,7 @@ func launch(v: Vector3) -> void:
 	velocity.z += v.z
 	_repath_timer = 0.0
 	_stuck_from = global_position
+	_stuck_kick_left = 0.0
 
 
 func warp_to(pos: Vector3, up_vel: float, exit_kick := Vector3.ZERO) -> void:
@@ -268,6 +281,7 @@ func warp_to(pos: Vector3, up_vel: float, exit_kick := Vector3.ZERO) -> void:
 	_repath_timer = 0.0
 	_goal_timer = 0.0
 	_stuck_from = global_position
+	_stuck_kick_left = 0.0
 
 
 func apply_boost(mult: float, dur: float, kick: Vector3) -> void:

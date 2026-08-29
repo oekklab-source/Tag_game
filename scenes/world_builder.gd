@@ -91,6 +91,10 @@ const CORRIDOR_HALF := 9.0
 const WALL_OUTER_MARGIN := 2.5  # ゾーン外周から空ける帯
 const WALL_GAP := 2.5           # 壁同士の最低隙間（CPU が通れる幅）
 const WALL_CLEARANCE := 2.0     # ギミック・遮蔽ブロックの脇を通れるだけの距離
+## 外周4隅の面取り長さ。壁が直角に交差したままだと move_and_slide() が
+## 2枚の壁の法線を相殺してキャラがその場で詰まる（部屋の角にハマる典型例）。
+## 対角の壁面で1つに減らし、速度を斜めへ逃がせるようにする
+const WALL_CORNER_CHAMFER := 4.0
 ## 隣接ゾーンの床は突き合わせだとボクセル化で継ぎ目が分断されたり、
 ## 隙間から落下しうるので、必ずこの分だけ重ねる（スロープの取り付け位置も追従する）
 const SEAM_OVERLAP := 1.0
@@ -254,7 +258,9 @@ static func build(map_root: Node3D, gimmick_root: Node3D, decor_root: Node3D) ->
 	var ramp_mat := pop_material(Color(0.86, 0.5, 0.24))
 	_apply_checker(ramp_mat, checker)
 	_build_ramps(map_root, ramp_mat)
-	_build_walls(map_root, pop_material(Color(0.32, 0.26, 0.48)))
+	var wall_mat := pop_material(Color(0.32, 0.26, 0.48))
+	_build_walls(map_root, wall_mat)
+	_build_wall_corners(map_root, wall_mat)
 	_build_parapets(map_root, pop_material(Color(0.94, 0.72, 0.32)))
 	# 後から置く物が先に置いた物へ重ならないよう、確定した位置を順に積み上げていく
 	var occupied := _build_gimmicks(gimmick_root)
@@ -869,6 +875,24 @@ static func _build_walls(root: Node3D, mat: Material) -> void:
 	_box(root, "WallS", Vector3(0, cy, half + 0.5), Vector3(span, h, 1.0), mat)
 	_box(root, "WallW", Vector3(-half - 0.5, cy, 0), Vector3(1.0, h, span), mat)
 	_box(root, "WallE", Vector3(half + 0.5, cy, 0), Vector3(1.0, h, span), mat)
+
+
+## 外周4隅の直角を対角に切り落とす。壁が直角のままだと move_and_slide() が
+## 2枚の壁の法線を相殺してその場に詰まる（部屋の角にハマる典型例）。
+## 対角の壁1枚に置き換えて、90°の凹んだ角を2つの135°の角へ変える
+static func _build_wall_corners(root: Node3D, mat: Material) -> void:
+	var h := WorldData.WALL_HEIGHT
+	var half := WorldData.WORLD_HALF
+	var cy: float = WorldData.SLAB_BOTTOM + h * 0.5
+	var chamfer := WALL_CORNER_CHAMFER
+	var corners: Array[Vector2] = [
+		Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]
+	for i in corners.size():
+		var s: Vector2 = corners[i]
+		var mid := Vector2(s.x * (half - chamfer * 0.5), s.y * (half - chamfer * 0.5))
+		var yaw := atan2(s.y, s.x)
+		_box(root, "WallCorner%d" % i, Vector3(mid.x, cy, mid.y),
+			Vector3(chamfer * sqrt(2.0), h, 1.0), mat, Vector3(0, yaw, 0))
 
 
 ## 遮蔽ブロック。配置は固定シードの乱数なので全ピアで同一になる。
