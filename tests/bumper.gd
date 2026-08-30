@@ -1,80 +1,94 @@
 extends Node
 
-## バンパーが実際に弾き返すかを確かめる。
+## バンパーが全キャラクターを一定の強さで弾き返すかを確かめる。
 ##
-##   godot --headless --path . res://tests/bumper.tscn --quit-after 900
+##   godot --headless --path . --scene res://tests/bumper.tscn
 ##
-## 見るところは2つ:
-##   1. どの向きから当たっても「バンパーから離れる向き」へ速度が向くこと
-##   2. 天面に落ちても弾かれること（上に立てないの保証をこの Area が兼ねている）
-##
-## 以前ここには当たり判定の無い緑のドームが飾りとして置いてあり、
-## 走ると素通りしてしまっていた。素通りに戻っていないかの回帰でもある。
+## 通信ポートを使うワールド全体テストにはせず、バンパーの実際の接触処理と
+## Player / CPU鬼 / CPU逃走者の実シーンを直接組み合わせる。
+## これならゲームを起動したままでも、接触後の速度を決定論的に検証できる。
 
-const APPROACH := 8.0  # 走り込む速度（Player.SPEED 相当）
-const SETTLE := 24     # 弾かれた後、向きを見るまでに回す物理フレーム
+const BUMPER_SCRIPT := preload("res://scenes/gimmicks/bumper.gd")
+const PLAYER_SCENE := preload("res://scenes/player.tscn")
+const CPU_HUNTER_SCENE := preload("res://scenes/cpu_hunter.tscn")
+const CPU_RUNNER_SCENE := preload("res://scenes/cpu_runner.tscn")
+
+const PUSH := 13.0
+const LIFT := 4.0
+
+var _failures := 0
 
 
 func _ready() -> void:
+	var bumper := Area3D.new()
+	bumper.set_script(BUMPER_SCRIPT)
+	add_child(bumper)
 	await get_tree().process_frame
-	var world: Node = load("res://scenes/world.tscn").instantiate()
-	get_tree().root.add_child(world)
-	get_tree().current_scene = world
-	for i in 20:
-		await get_tree().physics_frame
 
-	var player: Node3D = world.get_node_or_null("Players/1")
-	if player == null:
-		print("FAIL: プレイヤーがスポーンしていない")
-		get_tree().quit()
-		return
+	for setup in [
+		{"name": "Player", "scene": PLAYER_SCENE},
+		{"name": "CPU鬼", "scene": CPU_HUNTER_SCENE},
+		{"name": "CPU逃走者", "scene": CPU_RUNNER_SCENE},
+	]:
+		var body := (setup["scene"] as PackedScene).instantiate() as CharacterBody3D
+		body.name = setup["name"]
+		add_child(body)
+		await get_tree().process_frame
+		# Player は権威ピアだけが衝突効果を適用する。本番のローカルプレイヤーと
+		# 同じ条件にして、CPU と同じ接触処理を検証する。子ノードの同期設定が
+		# 準備された後に設定しないと、Player 側の権威が更新されない。
+		body.set_multiplayer_authority(1, true)
+		await _run_cases(bumper, body)
+		body.queue_free()
+		await get_tree().process_frame
 
-	var bumpers: Array[Node3D] = []
-	for n in world.get_node("NavRegion/Map").get_children():
-		if String(n.name).begins_with("Bumper"):
-			bumpers.append(n)
-	print("bumpers: %d" % bumpers.size())
-	if bumpers.is_empty():
-		print("FAIL: バンパーが1つも建っていない")
-		get_tree().quit()
-		return
-	print("  Hit エリアあり: %d / %d" % [
-		bumpers.filter(func(b: Node3D) -> bool: return b.has_node("Hit")).size(),
-		bumpers.size()])
-
-	var target: Node3D = bumpers[0]
-	print("\n--- 横から当たる（%s） ---" % target.name)
-	for deg in [0.0, 90.0, 180.0, 270.0]:
-		var dir := Vector3(cos(deg_to_rad(deg)), 0.0, sin(deg_to_rad(deg)))
-		await _hit(player, target, target.global_position + dir * 4.6, -dir * APPROACH, deg)
-
-	print("\n--- 真上から落ちる ---")
-	await _hit(player, target, target.global_position + Vector3(0, 3.0, 0),
-		Vector3(0, -4.0, 0), -1.0)
-	get_tree().quit()
+	print("=== bumper の結果: %s ===" % ["ALL OK" if _failures == 0 else "%d 件 FAIL" % _failures])
+	get_tree().quit(_failures)
 
 
-## start へ置いて vel で撃ち込み、離れる向きへ弾かれたかを見る
-func _hit(player: Node3D, target: Node3D, start: Vector3, vel: Vector3,
-		deg: float) -> void:
-	player.teleport(start)
+func _run_cases(bumper: Area3D, body: CharacterBody3D) -> void:
+	var direction := Vector3.RIGHT
+	var tangent := Vector3.FORWARD
+	await _hit(bumper, body, "正面", direction * 1.0, -direction * 8.0, direction)
+	await _hit(bumper, body, "低速", direction * 1.0, -direction * 1.0, direction)
+	await _hit(bumper, body, "斜め", direction * 1.0,
+		-direction * 8.0 + tangent * 3.0, direction)
+	await _hit(bumper, body, "ダッシュボード後", direction * 1.0,
+		-direction * 8.0, direction, true)
+	# 真上は水平の接触位置が中心になる。実装どおり FORWARD へ逃がす。
+	await _hit(bumper, body, "真上", Vector3(0.0, 3.0, 0.0),
+		Vector3(0.0, -4.0, 0.0), Vector3.FORWARD)
+
+
+## Bumper._on_body_entered は Area3D のシグナルから呼ばれる本体処理。
+## ここでは接触位置と接触直前の速度を固定して直接呼び、接触後の値を検証する。
+func _hit(bumper: Area3D, body: CharacterBody3D, case_name: String, position: Vector3,
+		incoming: Vector3, expected_away: Vector3, with_boost := false) -> void:
+	body.global_position = position
+	body.velocity = incoming
+	if with_boost:
+		# ダッシュボードの蹴り出しと加速中でも、バンパーの反動を保持できること。
+		body.call("apply_boost", 1.6, 2.5, -expected_away * 4.0)
+	bumper.call("_on_body_entered", body)
+	var horizontal := Vector3(body.velocity.x, 0.0, body.velocity.z)
+	var horizontal_speed := horizontal.length()
+	var outward_speed := horizontal.dot(expected_away)
+	var launch_y := body.velocity.y
+	var immediate_ok := is_equal_approx(horizontal_speed, PUSH) \
+		and is_equal_approx(outward_speed, PUSH) \
+		and is_equal_approx(launch_y, LIFT)
 	await get_tree().physics_frame
-	player.velocity = vel
-	var closest := INF
-	for i in SETTLE:
-		await get_tree().physics_frame
-		closest = minf(closest, _flat_dist(player.global_position, target.global_position))
-	var away := player.global_position - target.global_position
-	away.y = 0.0
-	var moved := _flat_dist(player.global_position, target.global_position)
-	# 弾かれていれば「最接近点より離れた場所」に居て、速度も外を向く
-	var out := Vector2(player.velocity.x, player.velocity.z).dot(
-		Vector2(away.x, away.z).normalized())
-	var label := "上から" if deg < 0.0 else "%3.0f°から" % deg
-	print("  %s: 最接近 %.2fm -> 現在 %.2fm  外向き速度 %+.2f m/s  %s"
-		% [label, closest, moved, out,
-			"OK" if moved > closest + 0.3 and out > 0.0 else "FAIL"])
+	var after_frame := Vector3(body.velocity.x, 0.0, body.velocity.z)
+	var held_ok := is_equal_approx(after_frame.length(), PUSH) \
+		and is_equal_approx(after_frame.dot(expected_away), PUSH) \
+		and float(body.get("bumper_bounce_left")) > 0.0
+	var passed := immediate_ok and held_ok
+	var detail := "水平 %.2f / 外向き %.2f / 上向き %.2f" % [
+		horizontal_speed, outward_speed, launch_y]
+	_report("%s: %s" % [body.name, case_name], passed, detail)
 
 
-func _flat_dist(a: Vector3, b: Vector3) -> float:
-	return Vector2(a.x - b.x, a.z - b.z).length()
+func _report(what: String, passed: bool, detail: String) -> void:
+	print("  %s  %s (%s)" % [what, "OK" if passed else "FAIL", detail])
+	if not passed:
+		_failures += 1

@@ -86,6 +86,8 @@ var exhausted := false
 var is_dashing := false
 var buffs := BuffSet.new()
 var carry_velocity := Vector3.ZERO  # 動く床から毎フレーム渡される搬送速度
+var bumper_bounce_velocity := Vector3.ZERO
+var bumper_bounce_left := 0.0
 var slide_dir := Vector3.ZERO       # 滑り台から毎フレーム渡される最急降下方向
 var slide_accel := 0.0
 var slide_cap := 0.0
@@ -239,6 +241,8 @@ func _physics_process(delta: float) -> void:
 
 	_update_stuck(delta, direction, grounded, frozen)
 	_update_stamina(delta, direction != Vector3.ZERO, frozen)
+	var holding_bumper_bounce := bumper_bounce_left > 0.0
+	bumper_bounce_left = maxf(bumper_bounce_left - delta, 0.0)
 
 	var speed := BASE_SPEED * GameManager.get_speed_mult(my_id) * buffs.get_mult(&"speed")
 	if is_dashing:
@@ -248,7 +252,10 @@ func _physics_process(delta: float) -> void:
 	# ジャンプ台やブーストで得た初速が次フレームで消えないようにするため、
 	# 空中で入力が無い場合は水平速度に一切手を加えない。
 	var target := Vector2(direction.x, direction.z) * speed
-	if slide_left > 0.0:
+	if holding_bumper_bounce:
+		velocity.x = bumper_bounce_velocity.x
+		velocity.z = bumper_bounce_velocity.z
+	elif slide_left > 0.0:
 		velocity = SlideMotion.step(velocity, delta, slide_dir, slide_accel, slide_cap,
 			SLIDE_STEER, direction, SLIDE_MIN_SPEED)
 		floor_snap_length = SLIDE_SNAP
@@ -377,6 +384,7 @@ func teleport(pos: Vector3) -> void:
 	global_position = pos
 	sync_position = position  # 他ピアが次の物理フレームを待たずスナップできるように
 	velocity = Vector3.ZERO
+	bumper_bounce_left = 0.0
 	stamina = stamina_max()
 	exhausted = false
 	buffs.clear()
@@ -455,6 +463,15 @@ func launch(v: Vector3) -> void:
 	_stuck_kick_left = 0.0
 
 
+## バンパー反動の間だけ、ダッシュ・ブースト由来の目標速度で押し戻されないようにする。
+## 視点操作や上方向の物理は止めず、操作不能状態は作らない。
+func hold_bumper_bounce(horizontal: Vector3, duration: float) -> void:
+	if not is_multiplayer_authority():
+		return
+	bumper_bounce_velocity = horizontal
+	bumper_bounce_left = duration
+
+
 ## マンホールのワープ。着地先で即座に再ワープしないよう warp_lock を張る。
 ## exit_kick は水平方向の勢い（manhole.gd 側で「進行方向」から作る）。
 ## これが無いと無操作時に真上へ飛んで同じ場所へ落ち、フタへ戻って再突入する
@@ -463,6 +480,7 @@ func warp_to(pos: Vector3, up_vel: float, exit_kick := Vector3.ZERO) -> void:
 		return
 	global_position = pos
 	velocity = Vector3(exit_kick.x, up_vel, exit_kick.z)
+	bumper_bounce_left = 0.0
 	warp_lock = 0.9
 	warp_grace = WARP_GRACE
 	slide_left = 0.0  # 滑走状態のまま飛ぶと出口で明後日の方向へ加速する
