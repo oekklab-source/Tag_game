@@ -32,10 +32,16 @@ const WALK_EXIT := 0.45
 const SPEED_SMOOTH := 14.0
 
 const BLEND := 0.15  # アニメ切り替えのクロスフェード秒
-const LOOPING := ["Idle", "Run", "Jump"]
+## エモートは数秒間まわし続けるので、Idle/Run と同じくループ扱いにする
+## （glTF 既定のワンショットのままだと1周で止まったポーズのまま固まる）
+const LOOPING := ["Idle", "Run", "Jump", "Nice", "Come"]
+## エモート ID（Player.Emote）と再生するクリップ名の対応
+const EMOTE_ANIM := {1: "Nice", 2: "Come"}
 
 var _mat_body := StandardMaterial3D.new()
 var _diving := false
+var _stunned := false
+var _emote := 0
 var _state := ""
 var _speed := 0.0
 
@@ -71,8 +77,18 @@ func set_color(color: Color) -> void:
 ## 差分ゼロのフレームが混ざり、Idle と Run が交互に出てガタガタになる
 func update_motion(speed: float, on_floor: bool, delta: float) -> void:
 	_speed = lerpf(_speed, speed, 1.0 - exp(-delta * SPEED_SMOOTH))
+	# 転倒は最優先。接地していて速度もほぼゼロなので、放っておくと Idle で棒立ちになる
+	if _stunned:
+		_play("Slip")
+		return
 	if _diving:
 		_play("Dive")
+		return
+	# エモートのポーズは脚まで含めて全身を上書きするので、走りながら出すと
+	# 脚が止まって見える。立ち止まっている時だけ再生し、走り出したら
+	# 見た目は Run に戻す（吹き出しとマップの光は player.gd 側で出したままにする）
+	if _emote != 0 and on_floor and _speed <= WALK_EXIT:
+		_play(EMOTE_ANIM[_emote])
 		return
 	if not on_floor:
 		_play("Jump")
@@ -89,6 +105,17 @@ func update_motion(speed: float, on_floor: bool, delta: float) -> void:
 ## 体の前傾そのものは親が Humanoid ごと rotation.x を倒して作る
 func set_diving(value: bool) -> void:
 	_diving = value
+
+
+## バナナを踏んで転んでいる間。Slip は 1.5秒ワンショットで、
+## banana.gd の STUN と同じ長さなので終わりがそのままスタン明けに一致する
+func set_stunned(value: bool) -> void:
+	_stunned = value
+
+
+## Player.Emote の値。0 = 出していない。CPU は呼ばないので既定の 0 のまま
+func set_emote(value: int) -> void:
+	_emote = value if EMOTE_ANIM.has(value) else 0
 
 
 func _play(anim_name: String) -> void:

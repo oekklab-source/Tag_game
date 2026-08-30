@@ -87,6 +87,7 @@ const HUNTER_COLOR := Player.COLOR_HUNTER
 ## （鬼だけ勢いが残る/残らないの差が出ると追跡バランスが崩れる）
 const GROUND_DRAG := Player.GROUND_DRAG
 const STEER_WHILE_FAST := Player.STEER_WHILE_FAST
+const SLIP_DRAG := Player.SLIP_DRAG
 const SLIDE_STEER := Player.SLIDE_STEER
 const SLIDE_MIN_SPEED := Player.SLIDE_MIN_SPEED
 const SLIDE_SNAP := Player.SLIDE_SNAP
@@ -129,6 +130,9 @@ var _goal_timer := 0.0
 var _sweeps_left := 0
 var _rng := RandomNumberGenerator.new()
 var stun_left := 0.0
+## 転んでいる最中か。見た目の Slip モーションに使うのでレプリケートする
+## （stun_left はサーバしか持っていないので、そのままでは他ピアで棒立ちになる）
+var stunned := false
 var _stuck_timer := 0.0
 var _stuck_from := Vector3.ZERO
 var _sidestep_left := 0.0
@@ -181,6 +185,7 @@ func _process(delta: float) -> void:
 	if not multiplayer.is_server():
 		_follow_sync(delta)
 	humanoid.set_diving(diving)
+	humanoid.set_stunned(stunned)
 	humanoid.update_motion(sync_speed, not sync_air, delta)
 	humanoid.rotation.x = lerpf(humanoid.rotation.x,
 		DIVE_PITCH if diving else 0.0, minf(delta * 12.0, 1.0))
@@ -199,6 +204,8 @@ func _physics_process(delta: float) -> void:
 	buffs.tick(delta)
 	warp_lock = maxf(warp_lock - delta, 0.0)
 	stun_left = maxf(stun_left - delta, 0.0)
+	# 終わるたび必ず false を挟むので、続けて2回転んでも ON_CHANGE の同期が発火する
+	stunned = stun_left > 0.0
 
 	# player.gd と同じ。他キャラの頭の上を接地扱いすると重力が止まり、
 	# 相手に乗ったまま空中で静止する
@@ -296,6 +303,13 @@ func _physics_process(delta: float) -> void:
 		if dir != Vector3.ZERO:
 			velocity.x = move_toward(velocity.x, target.x, AIR_STEER * delta)
 			velocity.z = move_toward(velocity.z, target.y, AIR_STEER * delta)
+	elif stun_left > 0.0 and grounded:
+		# 転倒中は目標速度がゼロなので、通常の接地処理だと即座に止まってしまう。
+		# player.gd と同じく摩擦だけで落として、尻で滑る勢いを残す
+		floor_snap_length = 0.1
+		var slip := Vector2(velocity.x, velocity.z).move_toward(Vector2.ZERO, SLIP_DRAG * delta)
+		velocity.x = slip.x
+		velocity.z = slip.y
 	elif grounded:
 		floor_snap_length = 0.1
 		var hv := Vector2(velocity.x, velocity.z)
@@ -612,5 +626,5 @@ func apply_slide(dir: Vector3, accel: float, cap: float) -> void:
 ## CPU が受け取るアイテム系の効果はこれだけ
 func apply_stun(seconds: float) -> void:
 	stun_left = maxf(stun_left, seconds)
-	velocity.x = 0.0
-	velocity.z = 0.0
+	stunned = true
+	# 水平速度は殺さない。走っていた勢いのまま尻で滑らせる（SLIP_DRAG で減速する）

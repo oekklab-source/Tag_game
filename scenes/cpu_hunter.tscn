@@ -27,6 +27,9 @@ properties/3/replication_mode = 1
 properties/4/path = NodePath(".:sync_air")
 properties/4/spawn = true
 properties/4/replication_mode = 2
+properties/5/path = NodePath(".:stunned")
+properties/5/spawn = true
+properties/5/replication_mode = 2
 
 [node name="CPUHunter" type="CharacterBody3D"]
 collision_layer = 2
