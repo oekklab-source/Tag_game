@@ -1,4 +1,4 @@
-"""？ブロック（アイテムボックス）を一から組み立てて glTF に書き出すビルドスクリプト。
+"""アイテムボックス（プレゼント箱）を一から組み立てて glTF に書き出すビルドスクリプト。
 
     blender -b -P tools/blender/build_item_box.py -- [--render <出力ディレクトリ>]
 
@@ -10,8 +10,11 @@
 上面の蝶結びだけで作り、色も包装紙／リボンの2色に絞る。中身が何かは
 見せない（「？」も舞う結晶も置かない）。
 
-アニメーションは書き出さない。回転演出は manhole と同じく Godot 側の
-_process() で毎フレーム rotate_y する（AnimationPlayer を増やさない）。
+メッシュは Base（下箱＋リボン下部）と Lid（フタ＋リボン上部＋蝶結び）の
+2オブジェクトに分ける。取得時にフタだけを跳ね上げる開封演出のため。
+
+アニメーションは書き出さない。回転演出・開封演出はどちらも Godot 側
+（question_block.gd）の _process()/Tween で行う（AnimationPlayer を増やさない）。
 """
 
 import math
@@ -36,6 +39,12 @@ LID_W = 1.66        # フタは下箱より一回り大きく被せる
 LID_H = 0.24
 LID_Z = 0.48
 BEVEL = 0.06        # 角の面取り量。角ばりすぎず、ただの球にもならない程度
+
+# Base と Lid を切り分ける高さ（＝フタの下端）。リボンもここで上下に分ける
+SEAM = LID_Z - LID_H / 2.0
+# リボン上部の下端をこの分だけ下へ潜り込ませる。切り口の面が SEAM で
+# ぴたりと同一平面になると Z ファイティングするので、体積として重ねて逃がす
+SEAM_OVERLAP = 0.03
 
 # リボンは箱を貫く2枚の板で表現する（実際に巻くのではなく、側面・上面・底面に
 # 帯として現れる幅にする）。2枚の上端・外形をわずかにずらすのは、
@@ -127,6 +136,23 @@ def bake(obj, loc=(0, 0, 0), rot=(0, 0, 0), scale=(1, 1, 1)):
     return obj
 
 
+def set_origin(obj, origin):
+    """メッシュを -origin だけ動かし、その分をオブジェクト変換として残す。
+
+    bake() と違い transform_apply しないので、この location は glTF の
+    ノード変換として書き出される（export_apply はモディファイアにしか効かない）。
+    Godot 側でそのノードを回すと、原点＝ここで指定した点が回転の軸になる。
+    """
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bmesh.ops.translate(bm, vec=-mathutils.Vector(origin), verts=bm.verts)
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    obj.location = origin
+    return obj
+
+
 def box(name, size, loc=(0, 0, 0), rot=(0, 0, 0)):
     bm = bmesh.new()
     bmesh.ops.create_cube(bm, size=1.0)
@@ -192,29 +218,33 @@ def cleanup(obj):
 # パーツ
 # =====================================================================
 
-def build_base():
+def build_box_part():
     """下箱。包装紙の色ひとつで塗る。"""
-    return paint(beveled_box("Base", (BODY_W, BODY_W, BASE_H), loc=(0, 0, BASE_Z)), "Wrap")
+    return paint(beveled_box("BoxPart", (BODY_W, BODY_W, BASE_H), loc=(0, 0, BASE_Z)), "Wrap")
 
 
-def build_lid():
+def build_lid_part():
     """一回り大きく被せるフタ。ここが乗ることで「箱」ではなく「贈り物」に見える。"""
-    return paint(beveled_box("Lid", (LID_W, LID_W, LID_H), loc=(0, 0, LID_Z), bevel=0.04), "Lid")
+    return paint(beveled_box("LidPart", (LID_W, LID_W, LID_H),
+                             loc=(0, 0, LID_Z), bevel=0.04), "Lid")
 
 
-def build_ribbon():
+def build_ribbon(z_lo, z_hi, suffix):
     """箱を十字に貫く2枚の帯。側面・フタ上面・底面に同じ幅で現れる。
+
+    Base 用と Lid 用で上下に分けて2回呼ぶので、高さの範囲を引数で受ける。
 
     2枚目をわずかに大きく・高くしているのは、上面／底面の中央で
     天面同士が同一平面になって Z ファイティングするのを避けるため。
     2枚目は呼び出し側で Z 軸まわりに90度回してから使う。
     """
-    height = RIBBON_TOP - RIBBON_BOT
-    z = (RIBBON_TOP + RIBBON_BOT) / 2.0
+    height = z_hi - z_lo
+    z = (z_hi + z_lo) / 2.0
     skew = RIBBON_SKEW
     return [
-        paint(box("RibbonX", (RIBBON_OUT * 2.0, RIBBON_W, height), loc=(0, 0, z)), "Ribbon"),
-        paint(box("RibbonY", ((RIBBON_OUT + skew) * 2.0, RIBBON_W, height + skew * 2.0),
+        paint(box("RibbonX" + suffix, (RIBBON_OUT * 2.0, RIBBON_W, height),
+                  loc=(0, 0, z)), "Ribbon"),
+        paint(box("RibbonY" + suffix, ((RIBBON_OUT + skew) * 2.0, RIBBON_W, height + skew * 2.0),
                   loc=(0, 0, z)), "Ribbon"),
     ]
 
@@ -233,18 +263,30 @@ def build_bow():
     return parts
 
 
-def build_body():
-    """下箱・フタ・リボン・蝶結びを1メッシュ（Body）へ結合する。
-
-    取得後の「使用済み」表示は question_block.gd が Body へ material_override を
-    掛けて一括で暗くするので、色の違うパーツもすべてここに含める。
-    """
-    ribbon_x, ribbon_y = build_ribbon()
+def build_ribbon_cross(z_lo, z_hi, suffix):
+    """十字のリボン。2枚目を Z 軸まわりに90度回して交差させる。"""
+    ribbon_x, ribbon_y = build_ribbon(z_lo, z_hi, suffix)
     bake(ribbon_y, rot=(0.0, 0.0, math.pi / 2.0))
-    parts = [ribbon_x, ribbon_y] + build_bow() + [build_lid()]
-    body = cleanup(join_into(build_base(), parts))
-    body.name = body.data.name = "Body"
-    return body
+    return [ribbon_x, ribbon_y]
+
+
+def build_base():
+    """下箱＋リボン下部を1メッシュ（Base）へ結合する。"""
+    base = cleanup(join_into(build_box_part(), build_ribbon_cross(RIBBON_BOT, SEAM, "Lo")))
+    base.name = base.data.name = "Base"
+    return base
+
+
+def build_lid():
+    """フタ＋リボン上部＋蝶結びを1メッシュ（Lid）へ結合する。
+
+    原点をフタの中心に置くので、Godot 側で Lid ノードを回すと
+    その場で傾く（箱の中心を軸にした公転にならない）。開封演出のため。
+    """
+    parts = build_ribbon_cross(SEAM - SEAM_OVERLAP, RIBBON_TOP, "Hi") + build_bow()
+    lid = cleanup(join_into(build_lid_part(), parts))
+    lid.name = lid.data.name = "Lid"
+    return set_origin(lid, (0.0, 0.0, LID_Z))
 
 
 # =====================================================================
@@ -257,7 +299,8 @@ def clear_scene():
 
 def build():
     clear_scene()
-    build_body()
+    build_base()
+    build_lid()
     for obj in bpy.data.objects:
         print("object :", obj.name, "verts", len(obj.data.vertices),
               "loc", tuple(round(v, 3) for v in obj.location))
