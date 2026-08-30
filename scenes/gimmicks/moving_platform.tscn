@@ -13,6 +13,8 @@ emission_energy_multiplier = 0.35
 [sub_resource type="BoxMesh" id="lift_mesh"]
 material = SubResource("lift_mat")
 size = Vector3(6, 0.5, 6)
+subdivide_width = 1
+subdivide_depth = 1
 
 [sub_resource type="BoxShape3D" id="lift_shape"]
 size = Vector3(6, 0.5, 6)

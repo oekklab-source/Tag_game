@@ -35,15 +35,15 @@ const ZONE_GROUND: Array[float] = [8.0, 2.0, 4.0, 1.0, 0.0, 1.0, 3.0, 0.0, 6.0]
 
 ## 床の基調色。HUD のラベル色とミニマップ色はここから導出する
 const ZONE_COLORS: Array[Color] = [
-	Color(0.50, 0.80, 1.00),  # CLOUD DECK    水色
-	Color(0.18, 0.72, 0.30),  # PIPE YARD     緑
-	Color(0.95, 0.48, 0.10),  # BLOCK PLAZA   橙
-	Color(0.48, 0.80, 0.20),  # GARDEN GREEN  黄緑
-	Color(0.82, 0.24, 0.24),  # CASTLE COURT  赤
-	Color(0.52, 0.30, 0.92),  # BOOST CIRCUIT 紫
-	Color(0.96, 0.76, 0.12),  # SPRING VALLEY 黄
-	Color(0.18, 0.48, 0.92),  # LIFT HARBOR   青
-	Color(0.96, 0.38, 0.64),  # SKY STEPS     桃
+	Color(0.22, 0.68, 0.98),  # CLOUD DECK    鮮やかなスカイブルー
+	Color(0.08, 0.72, 0.28),  # PIPE YARD     鮮烈なエメラルドグリーン
+	Color(0.98, 0.42, 0.04),  # BLOCK PLAZA   濃厚なビビッドオレンジ
+	Color(0.40, 0.78, 0.12),  # GARDEN GREEN  鮮烈なライムグリーン
+	Color(0.90, 0.16, 0.16),  # CASTLE COURT  濃密なクリムゾンレッド
+	Color(0.56, 0.20, 0.96),  # BOOST CIRCUIT 鮮烈なディープパープル
+	Color(0.98, 0.74, 0.04),  # SPRING VALLEY 濃厚なマスタードイエロー
+	Color(0.10, 0.44, 0.98),  # LIFT HARBOR   深みのあるロイヤルブルー
+	Color(0.88, 0.32, 0.56),  # SKY STEPS     落ち着いたチェリーピンク
 ]
 
 ## 隣接ゾーンのペア。前が西/北側、後ろが東/南側。スロープはこの順で生成する
@@ -83,24 +83,22 @@ const SPRING_PADS: Array = [
 	[1, -19.0, 0.0, 0],    # PIPE YARD     -> CLOUD DECK
 	[3, 0.0, -19.0, 0],    # GARDEN GREEN  -> CLOUD DECK
 	[7, 19.0, 0.0, 8],     # LIFT HARBOR   -> SKY STEPS
-	[7, -19.0, 0.0, 8],    # LIFT HARBOR   -> SKY STEPS（対側にも追加）
 	[5, 0.0, 19.0, 8],     # BOOST CIRCUIT -> SKY STEPS
 	[6, -12.0, -12.0, -1],  # SPRING VALLEY
 	[6, 12.0, -12.0, -1],
 	[6, 0.0, 14.0, -1],
-	[4, 0.0, -20.0, -1],   # CASTLE COURT  -> PIPE YARD（落差2mなので柵は無い）
 ]
 
 ## ダッシュパネル。BOOST CIRCUIT の周回コース4枚 + 各所に4枚
 const BOOST_PANELS: Array = [
-	[5, 0.0, -16.0, -90.0],
-	[5, 16.0, 0.0, 180.0],
-	[5, 0.0, 16.0, 90.0],
-	[5, -16.0, 0.0, 0.0],
-	[4, 20.0, 0.0, -90.0],
+	[5, 0.0, -12.0, -90.0],
+	[5, 12.0, 0.0, 180.0],
+	[5, 0.0, 12.0, 90.0],
+	[5, -12.0, 0.0, 0.0],
+	[4, 11.0, 0.0, -90.0],
 	[2, 0.0, 16.0, 180.0],
 	[3, 16.0, 0.0, -90.0],
-	[7, -18.0, 0.0, 90.0],
+	[7, 0.0, 14.0, 0.0],
 ]
 
 ## マンホール。2基ずつペアになる（0-1 と 2-3）。高低差の大きいゾーンを直結する近道
@@ -185,18 +183,17 @@ const ZONE_LANDMARKS: Array = [
 	[8, 17.0, 17.0, Prop.TOWER, 2.0],
 ]
 
-## 構造物のアクセント色。床（ZONE_COLORS）と分離して見えるよう、
-## 同系色ではなく一段濃い/ずらした色にする
+## 構造物のアクセント色。各ステージ（ブロック）ごとのテーマ色（ZONE_COLORS）に統一
 const ZONE_ACCENTS: Array[Color] = [
-	Color(0.72, 0.84, 1.00),  # 0 CLOUD DECK    青みの白（雲）
-	Color(0.16, 0.52, 0.42),  # 1 PIPE YARD     深緑
-	Color(0.80, 0.28, 0.24),  # 2 BLOCK PLAZA   レンガ
-	Color(0.30, 0.55, 0.28),  # 3 GARDEN GREEN  葉の緑
-	Color(0.74, 0.66, 0.52),  # 4 CASTLE COURT  石灰
-	Color(0.55, 0.24, 0.94),  # 5 BOOST CIRCUIT ネオン紫
-	Color(0.96, 0.48, 0.20),  # 6 SPRING VALLEY 橙
-	Color(0.18, 0.34, 0.60),  # 7 LIFT HARBOR   紺
-	Color(0.95, 0.42, 0.70),  # 8 SKY STEPS     桃
+	Color(0.22, 0.68, 0.98),  # 0 CLOUD DECK    スカイブルー
+	Color(0.08, 0.72, 0.28),  # 1 PIPE YARD     エメラルドグリーン
+	Color(0.98, 0.42, 0.04),  # 2 BLOCK PLAZA   ビビッドオレンジ
+	Color(0.40, 0.78, 0.12),  # 3 GARDEN GREEN  ライムグリーン
+	Color(0.90, 0.16, 0.16),  # 4 CASTLE COURT  クリムゾンレッド
+	Color(0.56, 0.20, 0.96),  # 5 BOOST CIRCUIT ディープパープル
+	Color(0.98, 0.74, 0.04),  # 6 SPRING VALLEY マスタードイエロー
+	Color(0.10, 0.44, 0.98),  # 7 LIFT HARBOR   ロイヤルブルー
+	Color(0.88, 0.32, 0.56),  # 8 SKY STEPS     チェリーピンク
 ]
 
 
