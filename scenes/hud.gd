@@ -6,10 +6,12 @@ extends CanvasLayer
 ##   Hunter  : 誰かが Runner を「視認」した時だけ、共有された最後の目撃ゾーンの
 ##             名前と色を受け取る。視認中は SPOTTED、途切れたら残り秒の
 ##             カウントダウン、さらに10秒の NO INTEL 後は距離だけ受け取る。
-##             方向・マーカー・座標は無し。
+##             逃走者の方向・マーカー・座標は無し。
+##             マップは出すが、描かれるのは**味方の鬼と自分だけ**（連携用）。
 ##   Runner  : 全体の2Dマップ（鬼の位置つき）＋最寄りの鬼への矢印・距離・危険ヴィネット、
 ##             そして「今 見られている」ことを知らせる SPOTTED バナー。
 ## Runner 側の情報が多いのは意図的で、非対称性を弱めず強めている。
+## マップに逃走者のドットは誰の画面にも描かれない（_on_map_draw を参照）。
 
 const ARROW_COLOR := Color(1.0, 0.3, 0.25)
 const HUNTER_DOT := Color(1.0, 0.25, 0.2)
@@ -71,6 +73,9 @@ var _spinning := false
 var _spin_index := 0
 var _spin_next := 0.0
 var _roster_key := ""
+var _shown_item: int = Player.Item.NONE
+var _shown_alpha := 1.0
+var _icon_tween: Tween
 
 @onready var vignette: TextureRect = $Vignette
 @onready var role_badge: PanelContainer = $RoleBadge
@@ -86,7 +91,8 @@ var _roster_key := ""
 @onready var distance_label: Label = $DistanceChip/DistanceLabel
 @onready var spotted_banner: Label = $SpottedBanner
 @onready var item_slot: PanelContainer = $ItemSlot
-@onready var item_label: Label = $ItemSlot/ItemLabel
+@onready var item_icon: Control = $ItemSlot/Row/ItemIcon
+@onready var item_label: Label = $ItemSlot/Row/ItemLabel
 @onready var buff_tray: HBoxContainer = $BuffTray
 @onready var stamina_label: Label = $StaminaLabel
 @onready var stamina_bar: Control = $StaminaBar
@@ -111,6 +117,7 @@ func _ready() -> void:
 	compass.draw.connect(_on_compass_draw)
 	map_panel.draw.connect(_on_map_draw)
 	stamina_bar.draw.connect(_on_stamina_draw)
+	item_icon.draw.connect(_on_item_icon_draw)
 	GameManager.state_changed.connect(_on_state_changed)
 	GameManager.spotted_changed.connect(_on_spotted_changed)
 	_sb_full = _bar_style(Color(0.3, 0.95, 0.55))
@@ -121,10 +128,9 @@ func _ready() -> void:
 	_sb_border.draw_center = false
 	_sb_border.bg_color = Color(0, 0, 0, 0)
 	_sb_border.set_corner_radius_all(6)
-	_sb_border.set_border_width_all(3)
+	_sb_border.set_border_width_all(2)
 	_sb_border.border_color = Color(1, 1, 1, 0.6)
 	_sb_border.anti_aliasing = true
-	_sb_border.anti_aliasing_size = 4.0
 	_sb_row = _row_style()
 	vignette.texture = _radial_texture()
 	vignette.modulate = Color(1.0, 0.12, 0.12, 0.0)
@@ -168,6 +174,7 @@ func _bar_style(c: Color) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = c
 	sb.set_corner_radius_all(6)
+	sb.anti_aliasing = true
 	return sb
 
 
@@ -234,9 +241,9 @@ func _update_labels() -> void:
 
 	var lines := PackedStringArray()
 	if GameManager.state == GameManager.State.WAITING:
-		lines.append("Esc: マウスを離してロビーを操作")
+		lines.append("Esc: マウスを離してロビーを操作 / F: ナイス！")
 	else:
-		lines.append("クリック: 視点を操作 / Esc: マウスを離す")
+		lines.append("クリック: 視点を操作 / Esc: マウスを離す / F: カモン！")
 		if GameManager.head_start_left > 0.0:
 			lines.append("にげる時間！ 今のうちに走れ" if is_runner
 				else "にげる時間 ― おには動けない")
@@ -462,7 +469,6 @@ func _on_stamina_draw() -> void:
 	stamina_bar.draw_style_box(_sb_empty, Rect2(0.0, 0.0, w, h))
 	var frac := clampf(player.stamina / player.stamina_max(), 0.0, 1.0)
 	if frac > 0.0:
-		# 残量が僅かでも角丸が潰れないよう、最低でも高さ分の幅は残す
 		var fill: StyleBoxFlat
 		if frac <= 0.10:
 			fill = _sb_low
@@ -470,7 +476,7 @@ func _on_stamina_draw() -> void:
 			fill = _sb_mid
 		else:
 			fill = _sb_full
-		stamina_bar.draw_style_box(fill, Rect2(0.0, 0.0, maxf(w * frac, h), h))
+		stamina_bar.draw_style_box(fill, Rect2(0.0, 0.0, w * frac, h))
 	# 背景に同化しないよう、残量に関わらず枠は常に最前面へ重ねる
 	stamina_bar.draw_style_box(_sb_border, Rect2(0.0, 0.0, w, h))
 
@@ -493,6 +499,7 @@ func _update_item(player: Player, delta: float) -> void:
 	var info: Array = ITEM_INFO.get(player.item, ITEM_INFO[Player.Item.NONE])
 	item_label.text = info[0]
 	item_label.modulate = info[1]
+	_set_shown_icon(player.item, 1.0)
 
 
 ## 残りロック時間が減るほど切り替え間隔を広げ、止まりかけているように見せる
@@ -506,10 +513,12 @@ func _spin_item(player: Player, delta: float) -> void:
 		_spin_index = (_spin_index + 1) % ROULETTE_ORDER.size()
 		var t := 1.0 - clampf(player.item_lock / Player.ITEM_ROULETTE, 0.0, 1.0)
 		_spin_next = lerpf(ROULETTE_FAST, ROULETTE_SLOW, t * t)
+		_punch_icon()  # コマが切り替わった瞬間だけ弾ませ、リールが1コマ進んだ手応えを出す
 	var info: Array = ITEM_INFO[ROULETTE_ORDER[_spin_index]]
 	var color: Color = info[1]
 	item_label.text = info[0]
 	item_label.modulate = Color(color, 0.7)  # 確定前は薄く出す
+	_set_shown_icon(ROULETTE_ORDER[_spin_index], 0.7)
 
 
 ## ルーレットが止まった瞬間。ここで初めて中身を名乗る
@@ -518,11 +527,58 @@ func _confirm_item(held: int) -> void:
 		return  # ラウンド開始などで持ち物ごと消えた場合
 	var info: Array = ITEM_INFO.get(held, ITEM_INFO[Player.Item.NONE])
 	_toast("%s を手に入れた（E キー）" % info[0], info[1])
+	_set_shown_icon(held, 1.0)
 	item_slot.pivot_offset = item_slot.size * 0.5
 	var tw := create_tween()
 	var tween := tw.tween_property(item_slot, "scale", Vector2.ONE, 0.4)
 	tween.from(Vector2(1.4, 1.4))
 	tween.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+
+## 絵柄アイコンに表示中の出目を反映する。ラベルと同じ情報源から描くので、
+## 出目の伏せ方（薄さ）がラベルの文字色とズレない
+func _set_shown_icon(item: int, alpha: float) -> void:
+	_shown_item = item
+	_shown_alpha = alpha
+	item_icon.queue_redraw()
+
+
+## リールが1コマ進むたびに小さく弾ませる。連続で呼ばれるので前のを必ず止めてから張り直す
+func _punch_icon() -> void:
+	if _icon_tween != null and _icon_tween.is_valid():
+		_icon_tween.kill()
+	item_icon.pivot_offset = item_icon.size * 0.5
+	item_icon.scale = Vector2(1.25, 1.25)
+	_icon_tween = create_tween()
+	_icon_tween.tween_property(item_icon, "scale", Vector2.ONE, 0.12) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## スロットの絵柄。画像を増やさず、既存の円形タイマーやスタミナバーと同じ
+## Control.draw() での自前描画で済ませる
+func _on_item_icon_draw() -> void:
+	if _shown_item == Player.Item.NONE:
+		return
+	var c := item_icon.size * 0.5
+	var col: Color = ITEM_INFO[_shown_item][1]
+	col.a = _shown_alpha
+	match _shown_item:
+		Player.Item.ROCKET:
+			var pts := PackedVector2Array([
+				c + Vector2(0, -13), c + Vector2(8, 10), c + Vector2(0, 5), c + Vector2(-8, 10),
+			])
+			item_icon.draw_colored_polygon(pts, col)
+		Player.Item.BANANA:
+			var pts := PackedVector2Array()
+			for i in 17:
+				var t := i / 16.0
+				pts.append(c + Vector2(lerpf(-11.0, 11.0, t), -10.0 * sin(t * PI)))
+			item_icon.draw_polyline(pts, col, 5.0, true)
+		Player.Item.BLOCK:
+			var r := Rect2(c - Vector2(10, 10), Vector2(20, 20))
+			item_icon.draw_rect(r, col, false, 4.0)
+		_:
+			pass
 
 
 ## トーストは確定時（_confirm_item）に出すので、ここでは回転の後始末だけ行う
@@ -577,16 +633,15 @@ func _make_buff_chip(key: StringName) -> Control:
 	return panel
 
 
-## --- Runner 専用: ミニマップ・方位・距離・危険表示 --------------------------
+## --- ミニマップ（両陣営）と Runner 専用の方位・距離・危険表示 ----------------
 
 func _update_tracking(player: Player) -> void:
-	var is_runner := (
-		GameManager.state == GameManager.State.PLAYING
-		and player != null
-		and multiplayer.get_unique_id() == GameManager.runner_id
-	)
-	map_panel.visible = is_runner
-	if is_runner:
+	var playing := GameManager.state == GameManager.State.PLAYING and player != null
+	var is_runner := playing and multiplayer.get_unique_id() == GameManager.runner_id
+	# マップは両陣営に出す。鬼の画面には味方の鬼と自分しか描かれないので
+	# （_on_map_draw を参照）、逃走者の位置が漏れることはない
+	map_panel.visible = playing
+	if playing:
 		map_panel.queue_redraw()
 
 	var target: Node3D = _nearest_hunter(player) if is_runner else null
@@ -650,32 +705,49 @@ func _on_map_draw() -> void:
 		c.a = 0.92
 		map_panel.draw_rect(_zone_rect(idx), c)
 		map_panel.draw_rect(_zone_rect(idx), Color(0, 0, 0, 0.25), false, 1.0)
-	# 角丸は draw_rect では出せないので、太い枠を上から重ねて角を隠す
-	var frame := StyleBoxFlat.new()
-	frame.draw_center = false
-	frame.bg_color = Color(0, 0, 0, 0)
-	frame.set_corner_radius_all(18)
-	frame.set_border_width_all(10)
-	frame.border_color = Color(0.06, 0.05, 0.12, 1)
-	map_panel.draw_style_box(frame, Rect2(Vector2.ZERO, s))
+	# マップ全体の外枠を真四角・細く淡い色で描画する（角丸や太枠にせずスッキリ馴染ませる）
+	map_panel.draw_rect(Rect2(Vector2.ZERO, s), Color(0.12, 0.10, 0.22, 0.5), false, 2.0)
 
+	# 逃走者のドットは**誰の画面にも**描かない。
+	# 逃走者が見るとこれは「鬼全員」、鬼が見ると「味方の鬼」になる。
+	# デバッグの CPU 逃走者は cpu_runners グループなのでどちらのループにも入らない
 	var runner_name := str(GameManager.runner_id)
+	# ここに来るのは必ず鬼なので、エモートを見せてよいのは**鬼から見た時だけ**。
+	# 逃走者にも見せると、鬼の合図（＝これから挟みに来る）まで読めてしまう
+	var viewer_is_hunter := multiplayer.get_unique_id() != GameManager.runner_id
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.name != runner_name:
-			_draw_marker(_map_point(p.global_position), HUNTER_DOT)
+			_draw_marker(_map_point(p.global_position), HUNTER_DOT,
+				_emote_of(p) if viewer_is_hunter else Player.Emote.NONE)
 	for cpu in get_tree().get_nodes_in_group("cpu_hunters"):
-		_draw_marker(_map_point(cpu.global_position), HUNTER_DOT)
+		_draw_marker(_map_point(cpu.global_position), HUNTER_DOT, Player.Emote.NONE)
 
 	var player := _get_local_player()
 	if player:
 		var center := _map_point(player.global_position)
-		_draw_marker(center, SELF_DOT)
+		_draw_marker(center, SELF_DOT, player.sync_emote)
 		var forward: Vector3 = -player.global_transform.basis.z
 		var dir2 := Vector2(forward.x, forward.z).normalized()
 		map_panel.draw_line(center, center + dir2 * 13.0, SELF_DOT, 2.5, true)
 
 
-func _draw_marker(p: Vector2, c: Color) -> void:
+## CPU 鬼は sync_emote を持たないので、存在を確かめてから読む
+## （GameManager.nickname_for() が sync_nickname に対してやっているのと同じ）
+func _emote_of(node: Node) -> int:
+	if "sync_emote" in node:
+		return node.sync_emote
+	return Player.Emote.NONE
+
+
+func _draw_marker(p: Vector2, c: Color, emote: int) -> void:
+	if emote != Player.Emote.NONE:
+		# 「呼んでいる」ことを目立たせるための脈打つリング。
+		# 誰のエモートかは色ではなく位置で読むので、リングの色は文言ごとに変える
+		var ring: Color = Player.EMOTE_COLOR.get(emote, Color.WHITE)
+		var t := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.010)
+		map_panel.draw_circle(p, lerpf(13.0, 21.0, t), Color(ring, lerpf(0.45, 0.05, t)))
+		map_panel.draw_arc(p, lerpf(13.0, 21.0, t), 0.0, TAU, 24,
+			Color(ring, lerpf(0.95, 0.15, t)), 2.5, true)
 	map_panel.draw_circle(p, 11.0, Color(c.r, c.g, c.b, 0.22))
 	map_panel.draw_circle(p, 5.5, c)
 	map_panel.draw_circle(p, 2.2, Color(1, 1, 1, 0.9))
