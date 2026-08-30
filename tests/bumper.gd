@@ -20,6 +20,7 @@ var _failures := 0
 
 
 func _ready() -> void:
+	await _test_visual_and_collision()
 	var bumper := Area3D.new()
 	bumper.set_script(BUMPER_SCRIPT)
 	add_child(bumper)
@@ -44,6 +45,72 @@ func _ready() -> void:
 
 	print("=== bumper の結果: %s ===" % ["ALL OK" if _failures == 0 else "%d 件 FAIL" % _failures])
 	get_tree().quit(_failures)
+
+
+func _test_visual_and_collision() -> void:
+	var root := Node3D.new()
+	add_child(root)
+	WorldBuilder._bumper(root, "VisualSample", Vector3.ZERO,
+		WorldBuilder.soft_material(Color.WHITE))
+	var sample := root.get_node_or_null("VisualSample") as StaticBody3D
+	var hit_area := root.get_node_or_null("VisualSample/Hit") as Area3D
+	var hit_shape: CollisionShape3D = null
+	if hit_area:
+		for child in hit_area.get_children():
+			if child is CollisionShape3D:
+				hit_shape = child
+				break
+	var hit := hit_shape.shape as CylinderShape3D if hit_shape else null
+	var required := [
+		"Visual/Base", "Visual/BaseTrim", "Visual/BounceVisual/Dome",
+		"Visual/BounceVisual/InnerPad", "Visual/BounceVisual/Rim",
+		"Visual/BounceVisual/Clip0", "Visual/BounceVisual/Clip1",
+		"Visual/BounceVisual/Clip2", "Visual/BounceVisual/Clip3",
+		"Visual/BounceVisual/Spring0_0", "Visual/BounceVisual/Spring1_0",
+		"Visual/BounceVisual/Spring2_0", "Visual/BounceVisual/Spring3_0",
+	]
+	var parts_ok := sample != null
+	if sample:
+		for path in required:
+			parts_ok = parts_ok and sample.has_node(path)
+	var collision_ok := hit != null and is_equal_approx(hit.radius, 2.7) \
+		and is_equal_approx(hit.height, 3.2)
+	var dome_instance := sample.get_node_or_null("Visual/BounceVisual/Dome") as MeshInstance3D \
+		if sample else null
+	var dome_material := dome_instance.mesh.material as StandardMaterial3D \
+		if dome_instance and dome_instance.mesh else null
+	var dome_mesh := dome_instance.mesh as SphereMesh if dome_instance else null
+	var frosted_ok := dome_material != null \
+		and dome_material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA \
+		and dome_material.albedo_color.a > 0.35 and dome_material.albedo_color.a < 0.65 \
+		and dome_material.roughness >= 0.85
+	var dome_size_ok := dome_mesh != null and is_equal_approx(dome_mesh.radius * 2.0, 3.92) \
+		and is_equal_approx(dome_mesh.height * dome_instance.scale.y, 1.6856)
+	_report("9番の外観部品", parts_ok,
+		"半透明ドーム・内側パッド・リム・4個の留め具・4本のバネ")
+	_report("ドームのマット透明表現", frosted_ok,
+		"透明度 %.2f / 粗さ %.2f" % [dome_material.albedo_color.a, dome_material.roughness]
+		if dome_material else "マテリアルなし")
+	_report("ドームの大きさ", dome_size_ok,
+		"幅 %.2f / 高さ %.2f" % [dome_mesh.radius * 2.0,
+			dome_mesh.height * dome_instance.scale.y] if dome_mesh else "メッシュなし")
+	_report("反発判定サイズ", collision_ok,
+		"半径 %.2f / 高さ %.2f" % [hit.radius, hit.height] if hit else "判定なし")
+	await get_tree().process_frame
+	var bounce_visual := sample.get_node_or_null("Visual/BounceVisual") as Node3D if sample else null
+	if hit_area:
+		hit_area.call("_squash")
+	_report("潰し演出の対象取得", hit_area != null and hit_area.get("_mesh") == bounce_visual,
+		"BounceVisualを参照")
+	var compressed_scale := bounce_visual.scale if bounce_visual else Vector3.ZERO
+	var compressed := (bounce_visual != null and bounce_visual.scale.x > 1.05
+		and bounce_visual.scale.y < 0.95)
+	await get_tree().create_timer(0.45).timeout
+	var restored_scale := bounce_visual.scale if bounce_visual else Vector3.ZERO
+	var restored := bounce_visual != null and bounce_visual.scale.is_equal_approx(Vector3.ONE)
+	_report("潰れて戻る演出", compressed and restored,
+		"圧縮 %s / 復元 %s" % [compressed_scale, restored_scale])
+	root.queue_free()
 
 
 func _run_cases(bumper: Area3D, body: CharacterBody3D) -> void:

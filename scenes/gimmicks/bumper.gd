@@ -20,10 +20,12 @@ const HOLD_TIME := 0.25
 ## これで届く場所が増えることはない（登坂ルートの設計は変わらない）
 const LIFT := 4.0
 
-@onready var _mesh: MeshInstance3D = get_parent().get_node_or_null("Mesh")
+var _mesh: Node3D
+var _squash_tween: Tween
 
 
 func _ready() -> void:
+	_mesh = get_parent().get_node_or_null("Visual/BounceVisual")
 	body_entered.connect(_on_body_entered)
 
 
@@ -46,9 +48,15 @@ func _on_body_entered(body: Node3D) -> void:
 
 
 func _squash() -> void:
+	# 動的生成直後は親の複合外観が _ready より後に揃う場合がある。
+	# 接触時にも再取得して、生成順に左右されず必ず演出できるようにする。
+	if _mesh == null and get_parent():
+		_mesh = get_parent().get_node_or_null("Visual/BounceVisual")
 	if _mesh == null:
 		return
-	var t := create_tween()
-	t.tween_property(_mesh, "scale", Vector3(1.25, 0.8, 1.25), 0.06)
-	t.tween_property(_mesh, "scale", Vector3.ONE, 0.4) \
+	if _squash_tween:
+		_squash_tween.kill()
+	_mesh.scale = Vector3(1.25, 0.8, 1.25)
+	_squash_tween = create_tween()
+	_squash_tween.tween_property(_mesh, "scale", Vector3.ONE, 0.4) \
 		.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)

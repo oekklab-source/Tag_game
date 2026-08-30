@@ -232,6 +232,7 @@ const QUADRANTS: Array[Vector2] = [
 const BUMPER_D := 4.4  # 差し渡し
 const BUMPER_H := 2.2
 const BUMPER_PAD := 0.5  # 弾き返す Area を幾何より外へ張り出す量
+const BUMPER_VISUAL_STYLE := 9  # 7: リングクッション / 9: 半透明ドーム
 
 
 const SPRING_SCENE := preload("res://scenes/gimmicks/spring_pad.tscn")
@@ -968,7 +969,9 @@ static func _build_bumpers(root: Node3D, mats: Array[StandardMaterial3D],
 				break
 
 
-## 潰した球と、それを一回り覆う判定 Area。
+## 選択中の案を複合メッシュで組み立てる。
+## 見た目だけを替え、従来の潰した球コリジョンと
+## それを一回り覆う反発 Area はそのまま残す。
 ## 天面を塞ぐ Area（_top_guard）は付けない。上に乗ってもこの Area の中なので、
 ## 弾き返しがそのまま「上に立てない」を兼ねる
 static func _bumper(root: Node3D, node_name: String, pos: Vector3, mat: Material) -> void:
@@ -978,6 +981,13 @@ static func _bumper(root: Node3D, node_name: String, pos: Vector3, mat: Material
 		Vector3(BUMPER_D, BUMPER_H, BUMPER_D), mat, Shape.SPHERE, Vector3.ZERO, 8,
 		false, false)
 	body.add_to_group("cpu_bumpers")
+	# _solid が作るメッシュはコリジョン生成の基準として残し、表示だけ隠す。
+	# これにより外観を替えても物理形状は以前と完全に同じになる。
+	var collision_guide := body.get_node_or_null("Mesh") as MeshInstance3D
+	if collision_guide:
+		collision_guide.visible = false
+		collision_guide.name = "CollisionGuide"
+	_add_bumper_visual(body)
 	var area := Area3D.new()
 	area.name = "Hit"
 	area.collision_layer = 0
@@ -990,6 +1000,204 @@ static func _bumper(root: Node3D, node_name: String, pos: Vector3, mat: Material
 	col.shape = shape
 	area.add_child(col)
 	body.add_child(area)
+
+
+static func _add_bumper_visual(body: StaticBody3D) -> void:
+	if BUMPER_VISUAL_STYLE == 7:
+		_add_bumper_visual_7(body)
+	else:
+		_add_bumper_visual_9(body)
+
+
+static func _add_bumper_visual_7(body: StaticBody3D) -> void:
+	var visual := Node3D.new()
+	visual.name = "Visual"
+	body.add_child(visual)
+
+	var lavender := soft_material(Color(0.72, 0.52, 0.82))
+	var lavender_dark := soft_material(Color(0.54, 0.39, 0.66))
+	var butter := soft_material(Color(0.95, 0.80, 0.40))
+	var mint := soft_material(Color(0.40, 0.72, 0.65))
+	var dark := soft_material(Color(0.31, 0.28, 0.38))
+
+	var base_mesh := CylinderMesh.new()
+	base_mesh.top_radius = 2.2
+	base_mesh.bottom_radius = 2.2
+	base_mesh.height = 0.28
+	base_mesh.radial_segments = 16
+	_add_bumper_mesh(visual, "Base", base_mesh, Vector3(0, -0.94, 0), mint)
+
+	# 接触時に潰れる部分。ベースと支柱を動かさず、クッション・バンド・バネをまとめる。
+	var bounce_visual := Node3D.new()
+	bounce_visual.name = "BounceVisual"
+	visual.add_child(bounce_visual)
+
+	# ベースとクッションの間に、低いバネと支柱を見せる。
+	for i in 4:
+		var angle := i * TAU / 4.0
+		var spring_pos := Vector3(cos(angle) * 1.55, 0, sin(angle) * 1.55)
+		for ring_i in 3:
+			var spring := TorusMesh.new()
+			spring.inner_radius = 0.12
+			spring.outer_radius = 0.28
+			spring.rings = 8
+			spring.ring_segments = 5
+			_add_bumper_mesh(bounce_visual, "Spring%d_%d" % [i, ring_i], spring,
+				spring_pos + Vector3(0, -0.75 + ring_i * 0.13, 0), dark)
+		var support_angle := angle + TAU / 8.0
+		var support := CylinderMesh.new()
+		support.top_radius = 0.13
+		support.bottom_radius = 0.13
+		support.height = 0.48
+		support.radial_segments = 8
+		_add_bumper_mesh(visual, "Support%d" % i, support,
+			Vector3(cos(support_angle) * 1.72, -0.60, sin(support_angle) * 1.72), dark)
+
+	var cushion := TorusMesh.new()
+	cushion.inner_radius = 0.70
+	cushion.outer_radius = 2.10
+	cushion.rings = 16
+	cushion.ring_segments = 8
+	_add_bumper_mesh(bounce_visual, "Cushion", cushion, Vector3(0, 0.30, 0), lavender)
+
+	# 中央は貫通穴にせず、少し低い柔らかなパッドで塞ぐ。
+	var center := CylinderMesh.new()
+	center.top_radius = 0.76
+	center.bottom_radius = 0.76
+	center.height = 0.22
+	center.radial_segments = 16
+	_add_bumper_mesh(bounce_visual, "CenterPad", center, Vector3(0, 0.34, 0), lavender_dark)
+
+	# 4方向の縦長カプセルをリングへ沿わせ、7番案の補強バンドを表現する。
+	var band_positions := [
+		[Vector3(1.63, 0.20, 0), Vector3(0, 0, deg_to_rad(25.0))],
+		[Vector3(-1.63, 0.20, 0), Vector3(0, 0, deg_to_rad(-25.0))],
+		[Vector3(0, 0.20, 1.63), Vector3(deg_to_rad(-25.0), 0, 0)],
+		[Vector3(0, 0.20, -1.63), Vector3(deg_to_rad(25.0), 0, 0)],
+	]
+	for i in band_positions.size():
+		var band := CapsuleMesh.new()
+		band.radius = 0.16
+		band.height = 1.25
+		band.radial_segments = 8
+		band.rings = 4
+		_add_bumper_mesh(bounce_visual, "Band%d" % i, band,
+			band_positions[i][0], butter, band_positions[i][1])
+
+
+## 9番案の、柔らかな透明ドームをバネで支えるバンパー。
+## 半透明部分の内側にもパッドを置き、どの角度から見ても反発装置だと分かるようにする。
+static func _add_bumper_visual_9(body: StaticBody3D) -> void:
+	var visual := Node3D.new()
+	visual.name = "Visual"
+	body.add_child(visual)
+
+	var lavender_glass := _bumper_frosted_material(Color(0.76, 0.61, 0.88, 0.48))
+	var coral := soft_material(Color(0.90, 0.46, 0.50))
+	var coral_dark := soft_material(Color(0.73, 0.34, 0.43))
+	var butter := soft_material(Color(0.96, 0.82, 0.48))
+	var mint := soft_material(Color(0.45, 0.76, 0.66))
+	var dark := soft_material(Color(0.31, 0.28, 0.38))
+
+	var base_mesh := CylinderMesh.new()
+	base_mesh.top_radius = 2.2
+	base_mesh.bottom_radius = 2.2
+	base_mesh.height = 0.28
+	base_mesh.radial_segments = 16
+	_add_bumper_mesh(visual, "Base", base_mesh, Vector3(0, -0.94, 0), coral)
+
+	var base_trim := TorusMesh.new()
+	base_trim.inner_radius = 1.72
+	base_trim.outer_radius = 2.16
+	base_trim.rings = 16
+	base_trim.ring_segments = 6
+	_add_bumper_mesh(visual, "BaseTrim", base_trim, Vector3(0, -0.79, 0), coral_dark)
+
+	# ドーム・内側のパッド・バネをまとめて潰し、固定ベースは動かさない。
+	var bounce_visual := Node3D.new()
+	bounce_visual.name = "BounceVisual"
+	visual.add_child(bounce_visual)
+
+	for i in 4:
+		var angle := i * TAU / 4.0
+		var spring_pos := Vector3(cos(angle) * 1.48, 0, sin(angle) * 1.48)
+		for ring_i in 3:
+			var spring := TorusMesh.new()
+			spring.inner_radius = 0.12
+			spring.outer_radius = 0.28
+			spring.rings = 8
+			spring.ring_segments = 5
+			_add_bumper_mesh(bounce_visual, "Spring%d_%d" % [i, ring_i], spring,
+				spring_pos + Vector3(0, -0.75 + ring_i * 0.13, 0), dark)
+
+		var support_angle := angle + TAU / 8.0
+		var support := CylinderMesh.new()
+		support.top_radius = 0.13
+		support.bottom_radius = 0.13
+		support.height = 0.48
+		support.radial_segments = 8
+		_add_bumper_mesh(visual, "Support%d" % i, support,
+			Vector3(cos(support_angle) * 1.70, -0.60, sin(support_angle) * 1.70), dark)
+
+	var inner_pad := CylinderMesh.new()
+	inner_pad.top_radius = 1.42
+	inner_pad.bottom_radius = 1.55
+	inner_pad.height = 0.28
+	inner_pad.radial_segments = 16
+	_add_bumper_mesh(bounce_visual, "InnerPad", inner_pad, Vector3(0, -0.48, 0), mint)
+
+	var dome := SphereMesh.new()
+	dome.radius = 1.96
+	dome.height = 3.92
+	dome.radial_segments = 20
+	dome.rings = 10
+	_add_bumper_mesh(bounce_visual, "Dome", dome, Vector3(0, 0.14, 0), lavender_glass,
+		Vector3.ZERO, Vector3(1.0, 0.43, 1.0))
+
+	var rim := TorusMesh.new()
+	rim.inner_radius = 1.66
+	rim.outer_radius = 2.08
+	rim.rings = 16
+	rim.ring_segments = 6
+	_add_bumper_mesh(bounce_visual, "Rim", rim, Vector3(0, -0.47, 0), coral)
+
+	# クリーム色の留め具を四方に置き、透明ドームと土台の接続を見せる。
+	for i in 4:
+		var angle := i * TAU / 4.0
+		var clip := CapsuleMesh.new()
+		clip.radius = 0.18
+		clip.height = 0.62
+		clip.radial_segments = 8
+		clip.rings = 4
+		var clip_pos := Vector3(cos(angle) * 1.83, -0.37, sin(angle) * 1.83)
+		var clip_rot := Vector3(0, 0, deg_to_rad(90.0))
+		if i % 2 == 1:
+			clip_rot = Vector3(deg_to_rad(90.0), 0, 0)
+		_add_bumper_mesh(bounce_visual, "Clip%d" % i, clip, clip_pos, butter, clip_rot)
+
+
+static func _bumper_frosted_material(color: Color) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.roughness = 0.90
+	material.metallic = 0.0
+	material.metallic_specular = 0.12
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return material
+
+
+static func _add_bumper_mesh(parent: Node3D, node_name: String, mesh: PrimitiveMesh,
+		pos: Vector3, material: Material, rot := Vector3.ZERO,
+		scale := Vector3.ONE) -> void:
+	mesh.material = material
+	var instance := MeshInstance3D.new()
+	instance.name = node_name
+	instance.mesh = mesh
+	instance.position = pos
+	instance.rotation = rot
+	instance.scale = scale
+	parent.add_child(instance)
 
 
 ## 視線を切る構造物。ゾーンごとに4象限へ配り、種類はそのゾーンのテーマから引く。
