@@ -15,6 +15,11 @@ const SPRING_AIRBORNE_HEIGHT := 2.0
 const BOOST_SEEK_RANGE := 12.0
 const BOOST_SEEK_DOT := 0.64      # パネルの向きと目的地方向の一致（約50°）
 const BOOST_SEEK_WEIGHT := 1.2
+## ？ブロックへ寄り道する条件。ダッシュパネル（BOOST_SEEK_*）と同じ形で、
+## 「進路のついで」の範囲でしか曲げない。逃走者が手ぶらのときだけ使う
+const ITEM_SEEK_RANGE := 16.0
+const ITEM_SEEK_DOT := 0.35       # 進行方向とのなす角（約70°）以内の箱だけ
+const ITEM_SEEK_WEIGHT := 1.0
 const BUMPER_AVOID_LOOKAHEAD := 7.0
 const BUMPER_AVOID_RADIUS := 4.5
 const BUMPER_AVOID_WEIGHT := 1.5
@@ -161,4 +166,33 @@ static func avoid_bumpers(pos: Vector3, dir: Vector3, tree: SceneTree) -> Vector
 		var strength := (1.0 - side_dist / BUMPER_AVOID_RADIUS) \
 			* (1.0 - ahead / BUMPER_AVOID_LOOKAHEAD) * BUMPER_AVOID_WEIGHT
 		steer += away * strength
+	return steer.normalized() if steer.length_squared() > 0.01 else forward
+
+
+## 進路の近くにある？ブロックへ寄り道する。boost_assist と同じく**ナビ目標は
+## 差し替えず、進む向きに上乗せするだけ**にする（目標を書き換えると経路探索が壊れる）。
+##
+## シーンではなく WorldData.QUESTION_BLOCKS を直接見る。取られている間（12秒）は
+## そこに箱が無いが、寄り道は元々「進路のついで」の範囲しか曲げないので損は小さい。
+## 呼ぶ側の責任で「安全な時（ROAM）かつ手ぶら」に限ること
+static func item_assist(pos: Vector3, dir: Vector3, goal: Vector3) -> Vector3:
+	dir.y = 0.0
+	if dir.length_squared() < 0.01:
+		return dir
+	var forward := dir.normalized()
+	var to_goal := goal - pos
+	to_goal.y = 0.0
+	if to_goal.length_squared() < 1.0:
+		return forward
+	var steer := forward
+	for e in WorldData.QUESTION_BLOCKS:
+		var box := WorldData.zone_point(e[0], e[1], e[2])
+		var to_box := box - pos
+		to_box.y = 0.0
+		var box_dist := to_box.length()
+		if box_dist > ITEM_SEEK_RANGE or box_dist < 0.5:
+			continue
+		if to_box.normalized().dot(forward) < ITEM_SEEK_DOT:
+			continue  # 後ろや真横の箱のために引き返さない
+		steer += to_box.normalized() * ((1.0 - box_dist / ITEM_SEEK_RANGE) * ITEM_SEEK_WEIGHT)
 	return steer.normalized() if steer.length_squared() > 0.01 else forward
