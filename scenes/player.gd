@@ -63,7 +63,11 @@ const STAMINA_RECOVER := 30.0 # 枯渇後、この値まで回復するとダッ
 const ROCKET_FORWARD := 12.0
 const ROCKET_UP := 9.0
 const BANANA_BEHIND := 3.0    # 足元の後ろこの距離に置く
-const BLOCK_BEHIND := 5.0     # カメラの SpringArm(4m) に干渉しにくい背後距離
+const BLOCK_BEHIND := 3.0     # バナナと同じ距離。カメラ干渉は壁側を除外して防ぐ
+const BANANA_THROW_SPAWN := 1.2
+const BANANA_THROW_FORWARD := 8.55  # 以前の5.7m/sの1.5倍
+const BANANA_THROW_UP := 7.47       # 投げバナナ用重力と合わせて最高点を約4mにする
+const BANANA_CARRY_RATIO := 0.5     # 投げた瞬間の自キャラ速度を全方向とも半分加える
 ## 取得直後のルーレット時間。この間は中身が確定しておらず使えない（HUD が回して見せる）
 const ITEM_ROULETTE := 1.2
 
@@ -129,6 +133,7 @@ var _stuck_kick_left := 0.0
 @export var sync_nickname := ""
 
 var _current_color := Color.TRANSPARENT
+var _camera_block_rids := {}
 
 @onready var spring_arm: SpringArm3D = $SpringArm3D
 @onready var camera: Camera3D = $SpringArm3D/Camera3D
@@ -167,6 +172,8 @@ func _process(delta: float) -> void:
 		return
 	if not is_multiplayer_authority():
 		_follow_sync(delta)
+	else:
+		_update_placed_block_camera()
 	humanoid.set_diving(diving)
 	humanoid.update_motion(sync_speed, not sync_air, delta)
 	# ダイブ中は前へ倒れ込む。diving はレプリケートされるので他ピアからも見える
@@ -424,9 +431,17 @@ func _use_item() -> void:
 			launch(Vector3(fwd.x, 0.0, fwd.z).normalized() * ROCKET_FORWARD
 				+ Vector3(0, ROCKET_UP, 0))
 		Item.BANANA:
-			var back := global_transform.basis.z
-			_request_drop(Item.BANANA,
-				global_position + Vector3(back.x, 0.0, back.z).normalized() * BANANA_BEHIND)
+			if _is_hunter_for_items():
+				var fwd := -global_transform.basis.z
+				fwd = Vector3(fwd.x, 0.0, fwd.z).normalized()
+				_request_drop(Item.BANANA,
+					global_position + fwd * BANANA_THROW_SPAWN + Vector3.UP,
+					fwd * BANANA_THROW_FORWARD + Vector3.UP * BANANA_THROW_UP
+						+ velocity * BANANA_CARRY_RATIO)
+			else:
+				var back := global_transform.basis.z
+				_request_drop(Item.BANANA,
+					global_position + Vector3(back.x, 0.0, back.z).normalized() * BANANA_BEHIND)
 		Item.BLOCK:
 			var back := global_transform.basis.z
 			_request_drop(Item.BLOCK,
@@ -440,11 +455,53 @@ func _use_item() -> void:
 ## 置き物の生成はサーバに一任する。クライアントが自前で生成しても
 ## MultiplayerSpawner を通らず他ピアへ同期されないため。
 ## 自分がサーバなら rpc_id(1) のセルフ配信に頼らず直接呼ぶ
-func _request_drop(kind: int, pos: Vector3) -> void:
+func _request_drop(kind: int, pos: Vector3, launch_velocity := Vector3.ZERO) -> void:
 	if multiplayer.is_server():
-		GameManager.request_drop(kind, pos, rotation.y)
+		GameManager.request_drop(kind, pos, rotation.y, launch_velocity)
 	else:
-		GameManager.request_drop.rpc_id(1, kind, pos, rotation.y)
+		GameManager.request_drop.rpc_id(1, kind, pos, rotation.y, launch_velocity)
+
+
+func _is_hunter_for_items() -> bool:
+	var my_id := String(name).to_int()
+	if GameManager.state == GameManager.State.WAITING:
+		return my_id != GameManager.wanted_runner
+	return my_id != GameManager.runner_id
+
+
+## 置き壁は通行と視線判定には残し、ローカルの三人称カメラだけ通過させる。
+## 壁自身がカメラと注視点の間にあるかを判定し、必要な間だけ半透明にする。
+func _update_placed_block_camera() -> void:
+	var live := {}
+	for node in get_tree().get_nodes_in_group("placed_blocks"):
+		if not node is CollisionObject3D:
+			continue
+		var block := node as CollisionObject3D
+		var id := block.get_instance_id()
+		live[id] = true
+		register_placed_block_camera(block)
+
+	for id in _camera_block_rids.keys():
+		if not live.has(id):
+			spring_arm.remove_excluded_object(_camera_block_rids[id])
+			_camera_block_rids.erase(id)
+
+
+func register_placed_block_camera(block: CollisionObject3D) -> void:
+	if not is_multiplayer_authority():
+		return
+	var id := block.get_instance_id()
+	if not _camera_block_rids.has(id):
+		var rid := block.get_rid()
+		spring_arm.add_excluded_object(rid)
+		_camera_block_rids[id] = rid
+	if block.has_method("update_camera_obscured"):
+		# Camera3D の位置は SpringArm の内部更新より前だと前フレームの値になる。
+		# アームの向きから本来の4m位置を直接作り、更新順に依存させない。
+		var target := spring_arm.global_position
+		var desired_camera := target \
+			+ spring_arm.global_transform.basis.z.normalized() * spring_arm.spring_length
+		block.update_camera_obscured(target, desired_camera)
 
 
 ## --- ギミックから呼ばれる API ------------------------------------------

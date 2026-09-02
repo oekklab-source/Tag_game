@@ -120,13 +120,17 @@ func _is_clear(p: Vector3) -> bool:
 
 
 ## プレイヤーの置きアイテム。GameManager.request_drop（ホスト）から呼ばれる
-func spawn_dropped_item(kind: int, pos: Vector3, yaw: float) -> void:
+func spawn_dropped_item(kind: int, pos: Vector3, yaw: float,
+		launch_velocity := Vector3.ZERO, thrower_id := -1) -> void:
 	_drop_counter += 1
 	var scene := BANANA_SCENE if kind == Player.Item.BANANA else BLOCK_SCENE
 	var n: Node3D = scene.instantiate()
 	n.name = "Drop%d" % _drop_counter
 	n.position = pos
 	n.rotation.y = yaw
+	if kind == Player.Item.BANANA:
+		n.launch_velocity = launch_velocity
+		n.thrower_peer_id = thrower_id if launch_velocity.length_squared() > 0.01 else -1
 	items.add_child(n)
 
 
