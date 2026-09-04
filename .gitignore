@@ -17,3 +17,7 @@ export/
 
 # Blender の自動バックアップ
 *.blend1
+
+# EOS (Epic Online Services) の実クレデンシャル。Client Secret を含むため平文コミット禁止。
+# テンプレートは eos_credentials.cfg.example を参照。
+eos_credentials.cfg

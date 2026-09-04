@@ -25,6 +25,16 @@ GameManager="*res://autoload/game_manager.gd"
 PurchaseManager="*res://autoload/purchase_manager.gd"
 FriendManager="*res://autoload/friend_manager.gd"
 GiftManager="*res://autoload/gift_manager.gd"
+EOSGRuntime="*res://addons/epic-online-services-godot/runtime.gd"
+HPlatform="*res://addons/epic-online-services-godot/heos/hplatform.gd"
+HAuth="*res://addons/epic-online-services-godot/heos/hauth.gd"
+HAchievements="*res://addons/epic-online-services-godot/heos/hachievements.gd"
+HFriends="*res://addons/epic-online-services-godot/heos/hfriends.gd"
+HStats="*res://addons/epic-online-services-godot/heos/hstats.gd"
+HLeaderboards="*res://addons/epic-online-services-godot/heos/hleaderboards.gd"
+HLobbies="*res://addons/epic-online-services-godot/heos/hlobbies.gd"
+HP2P="*res://addons/epic-online-services-godot/heos/hp2p.gd"
+HSessions="*res://addons/epic-online-services-godot/heos/hsessions.gd"
 
 [display]
 
@@ -90,6 +100,10 @@ cycle_runner={
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194306,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
 ]
 }
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/epic-online-services-godot/plugin.cfg")
 
 [layer_names]
 
