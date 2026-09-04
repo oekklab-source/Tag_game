@@ -1,7 +1,7 @@
 extends Control
 
 ## ランキング（Leaderboard）ダイアログ。
-## Steam Leaderboards からのグローバルランキング、自身の現在順位、レート情報を表示。
+## EOS Leaderboards からのグローバルランキング、自身の現在順位、レート情報を表示。
 
 signal closed
 
@@ -17,7 +17,7 @@ signal closed
 func _ready() -> void:
 	refresh_btn.pressed.connect(refresh)
 	close_btn.pressed.connect(_on_close_pressed)
-	SteamManager.leaderboard_loaded.connect(_on_leaderboard_loaded)
+	EosManager.leaderboard_loaded.connect(_on_leaderboard_loaded)
 
 
 func open() -> void:
@@ -30,7 +30,7 @@ func refresh() -> void:
 	my_name_val.text = ProfileManager.player_name
 	my_rating_val.text = "%s %d" % [RankingManager.tier_name(ProfileManager.rating), ProfileManager.rating]
 	my_rank_val.text = "-"
-	SteamManager.request_leaderboard()
+	EosManager.request_leaderboard()
 
 
 func _on_leaderboard_loaded(entries: Array) -> void:

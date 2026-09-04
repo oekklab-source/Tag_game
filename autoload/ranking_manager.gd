@@ -273,8 +273,8 @@ func apply_match_end(
 	ProfileManager.apply_match_result(delta, is_winner, is_runner)
 	var new_r := ProfileManager.rating
 	
-	# Steam Leaderboard にも更新を送信
-	SteamManager.upload_rating(new_r)
+	# EOS Leaderboard にも更新を送信
+	EosManager.upload_rating(new_r)
 	
 	rating_changed.emit(old_r, new_r, delta)
 	return delta

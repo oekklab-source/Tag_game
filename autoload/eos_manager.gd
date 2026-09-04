@@ -239,13 +239,51 @@ func _on_public_address_ready(addr: String) -> void:
 			print("[EosManager] Failed to update host_addr attribute.")
 
 
-# --- TODO(Phase 3): リーダーボード ---
-# EOS Stats & Leaderboards Interface(HLeaderboards)で実装する。
-# 表示名はスコア送信時に書き込む方式に変更する(匿名Connect認証では逆引き手段が無いため)。
+# --- リーダーボード(Phase 3) ---
+# EOS Stats & Leaderboards Interface(HStats/HLeaderboards)で実装。
+# 表示名はEOS Connect匿名ログイン時(_init_eos内のlogin_anonymous_async)に渡した
+# display_nameがバックエンド側に保持され、get_leaderboard_records_asyncの
+# user_display_nameへそのまま反映される想定(Steamのような逆引きは不要)。
+# ただしログイン後にプロフィール名を変更しても次回ログインまでは反映されない。
+
+const LEADERBOARD_STAT_NAME := "PlayerRating"
+
+var _leaderboard_id_cache: String = ""
+
+
+## stat_nameからLeaderboard IDを動的に解決する(ポータルのIDをコードに転記しない方針)。
+## 見つからない場合は空文字(Developer PortalでStat/Leaderboard定義が未作成、または取得失敗)
+func _resolve_leaderboard_id() -> String:
+	if not _leaderboard_id_cache.is_empty():
+		return _leaderboard_id_cache
+	var defs = await HLeaderboards.get_leaderboard_definitions_async()
+	if defs == null:
+		return ""
+	for d in defs:
+		if d.get("stat_name") == LEADERBOARD_STAT_NAME:
+			_leaderboard_id_cache = d.get("leaderboard_id", "")
+			break
+	return _leaderboard_id_cache
+
 
 func request_leaderboard(_start_rank: int = 1, _end_rank: int = 20) -> void:
 	if is_eos_available:
-		pass # TODO(Phase 3): HLeaderboards.get_leaderboard_records_async()でランキング取得
+		var leaderboard_id := await _resolve_leaderboard_id()
+		if leaderboard_id.is_empty():
+			print("[EosManager] Leaderboard定義が見つかりません(stat_name=%s)。Developer Portal側の設定を確認してください。" % LEADERBOARD_STAT_NAME)
+			leaderboard_loaded.emit([])
+			return
+		var records = await HLeaderboards.get_leaderboard_records_async(leaderboard_id)
+		if records == null:
+			leaderboard_loaded.emit([])
+			return
+		var entries: Array = []
+		for r in records:
+			var name_val: String = r.get("user_display_name", "")
+			if name_val.is_empty():
+				name_val = "Player"
+			entries.append({"rank": r.get("rank", 0), "name": name_val, "score": r.get("score", 0)})
+		leaderboard_loaded.emit(entries)
 	else:
 		var mock_entries = [
 			{"rank": 1, "name": "SpeedMaster", "score": 2150},
@@ -259,7 +297,8 @@ func request_leaderboard(_start_rank: int = 1, _end_rank: int = 20) -> void:
 
 func upload_rating(new_rating: int) -> void:
 	if is_eos_available:
-		pass # TODO(Phase 3): HStats/HLeaderboardsでスコア送信
+		var result = await HStats.ingest_stat_async(LEADERBOARD_STAT_NAME, new_rating)
+		leaderboard_score_uploaded.emit(EOS.is_success(result), new_rating)
 	else:
 		leaderboard_score_uploaded.emit(true, new_rating)
 
