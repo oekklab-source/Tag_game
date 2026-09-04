@@ -8,17 +8,15 @@ extends Node
 ##
 ## ロビー/リーダーボード/クラウドセーブ等の各メソッドは、呼び出し元(steam_manager.gd利用箇所)を
 ## 機械的に切り替えられるよう、シグナル形状だけ steam_manager.gd に揃えてある。
-## 実際の EOS SDK 呼び出しは Phase 2 以降で実装するため、ここでは TODO のみ。
+## ロビー/マッチメイキング(Phase 2)は EOS Lobbies Interface(HLobbies/HLobby)で実装済み。
+## リーダーボード(Phase 3)・クラウドセーブ(Phase 4)はまだ TODO のスタブ。
 ##
-## この段階ではまだ project.godot の [autoload] に登録していない
-## (Phase 2 でロビー機能と一緒に登録する。EOSG アドオン自体が公開する
-## HPlatform/HAuth 等のシングルトンは、アドオンを動かすために必要な技術的前提として
-## 別途 [autoload] に登録済み)。
+## project.godot の [autoload] に登録済み(scenes/room_match_dialog.gd から利用)。
 
 signal eos_initialized(success: bool)
-signal lobby_created(connect_status: int, lobby_id: int)
+signal lobby_created(connect_status: int, lobby_id: String)
 signal lobby_match_list(lobbies: Array)
-signal lobby_joined(lobby_id: int, permissions: int, locked: bool, response: int)
+signal lobby_joined(lobby_id: String, permissions: int, locked: bool, response: int)
 signal lobby_chat_update(lobby_id: int, change_id: int, making_change_id: int, chat_state: int)
 signal leaderboard_loaded(entries: Array)
 signal leaderboard_score_uploaded(success: bool, score: int)
@@ -27,8 +25,11 @@ const CREDENTIALS_PATH := "res://eos_credentials.cfg"
 
 var is_eos_available: bool = false
 var product_user_id: String = ""
-var current_lobby_id: int = 0
+var current_lobby_id: String = ""
 var is_host: bool = false
+
+var _current_lobby: HLobby = null
+var _search_results: Dictionary = {}  # String lobby_id -> HLobby
 
 
 func _ready() -> void:
@@ -101,41 +102,98 @@ func _load_credentials() -> HCredentials:
 	return credentials
 
 
-# --- TODO(Phase 2): ロビー/マッチメイキング ---
-# EOS Lobbies Interface(HLobbies)で実装する。steam_manager.gdのcreate_lobby/
-# request_lobby_list/join_lobby/leave_lobby等と同じシグナル形状を維持している。
-# is_eos_availableは現時点で常にfalseのため、以下のis_eos_available分岐は
-# Phase 2実装までは到達しない(モック分岐のみが動く)。
+# --- ロビー/マッチメイキング(Phase 2) ---
+# EOS Lobbies Interface(HLobbies/HLobby、addons/epic-online-services-godot/heos/)で実装。
+# steam_manager.gdと同じシグナル形状を維持しているが、ロビーIDはEOSではStringのため
+# current_lobby_id/lobby_created/lobby_joinedの型はintからStringに変更済み。
 
 func create_lobby(lobby_type: int = 0, max_members: int = 8, lobby_name: String = "") -> void:
 	if lobby_name.is_empty():
 		lobby_name = "%s's Room" % ProfileManager.player_name
 	if is_eos_available:
-		pass # TODO(Phase 2): HLobbiesでロビー作成し、host_addr等のロビー属性を書き込む
+		var opts := EOS.Lobby.CreateLobbyOptions.new()
+		opts.local_user_id = HAuth.product_user_id
+		opts.max_lobby_members = max_members
+		opts.permission_level = EOS.Lobby.LobbyPermissionLevel.PublicAdvertised
+		opts.presence_enabled = HLobbies.presence_enabled
+		var lobby: HLobby = await HLobbies.create_lobby_async(opts)
+		if lobby == null:
+			lobby_created.emit(0, "")
+			return
+		_current_lobby = lobby
+		current_lobby_id = lobby.lobby_id
+		is_host = true
+		lobby.add_attribute("game", "Tag_Game")
+		lobby.add_attribute("name", lobby_name)
+		lobby.add_attribute("version", str(GameManager.PROTOCOL_VERSION))
+		lobby.add_attribute("host_rating", str(ProfileManager.rating))
+		lobby.add_attribute("tier", String(RankingManager.tier_id(ProfileManager.rating)))
+		lobby.add_attribute("tier_lock", "1" if GameManager.tier_lock_enabled else "0")
+		lobby.add_attribute("host_addr", NetworkManager.public_address)
+		if not await lobby.update_async():
+			print("[EosManager] Failed to write initial lobby attributes.")
+		if not NetworkManager.public_address_ready.is_connected(_on_public_address_ready):
+			NetworkManager.public_address_ready.connect(_on_public_address_ready)
+		lobby_created.emit(1, current_lobby_id)
 	else:
-		current_lobby_id = 12345678
+		current_lobby_id = "mock-12345678"
 		is_host = true
 		lobby_created.emit(1, current_lobby_id)
 
 
 func request_lobby_list() -> void:
 	if is_eos_available:
-		pass # TODO(Phase 2): HLobbiesでロビー検索
+		var results = await HLobbies.search_by_attribute_async([
+			{"key": "game", "value": "Tag_Game", "comparison": EOS.ComparisonOp.Equal},
+			{"key": "version", "value": str(GameManager.PROTOCOL_VERSION), "comparison": EOS.ComparisonOp.Equal},
+		])
+		_search_results.clear()
+		if results == null:
+			lobby_match_list.emit([])
+			return
+		var lobbies: Array = []
+		for lobby: HLobby in results:
+			_search_results[lobby.lobby_id] = lobby
+			var name_val: String = String(lobby.get_attribute("name").get("value", "Room #%s" % lobby.lobby_id))
+			var host_rating: int = int(lobby.get_attribute("host_rating").get("value", 1500))
+			var tier_val: String = String(lobby.get_attribute("tier").get("value", String(RankingManager.tier_id(host_rating))))
+			var tier_lock_val: bool = String(lobby.get_attribute("tier_lock").get("value", "0")) == "1"
+			lobbies.append({
+				"id": lobby.lobby_id,
+				"name": name_val,
+				"members": lobby.members.size(),
+				"max_members": lobby.max_members,
+				"host_rating": host_rating,
+				"tier": tier_val,
+				"tier_lock": tier_lock_val,
+			})
+		lobby_match_list.emit(lobbies)
 	else:
 		var mock_lobbies = [
-			{"id": 1001, "name": "初心者歓迎！タグゲーム", "members": 2, "max_members": 6,
+			{"id": "mock-1001", "name": "初心者歓迎！タグゲーム", "members": 2, "max_members": 6,
 				"host_rating": 1250, "tier": "silver", "tier_lock": false},
-			{"id": 1002, "name": "ガチ勢レート戦部屋", "members": 4, "max_members": 8,
+			{"id": "mock-1002", "name": "ガチ勢レート戦部屋", "members": 4, "max_members": 8,
 				"host_rating": 1950, "tier": "diamond", "tier_lock": true},
-			{"id": 1003, "name": "まったり部屋", "members": 1, "max_members": 8,
+			{"id": "mock-1003", "name": "まったり部屋", "members": 1, "max_members": 8,
 				"host_rating": 1500, "tier": "gold", "tier_lock": false},
 		]
 		lobby_match_list.emit(mock_lobbies)
 
 
-func join_lobby(lobby_id: int) -> void:
+func join_lobby(lobby_id: String) -> void:
 	if is_eos_available:
-		pass # TODO(Phase 2): HLobbiesでロビー参加
+		var lobby: HLobby
+		if _search_results.has(lobby_id):
+			lobby = await HLobbies.join_async(_search_results[lobby_id])
+		else:
+			lobby = await HLobbies.join_by_id_async(lobby_id)
+		if lobby == null:
+			lobby_joined.emit(lobby_id, 0, false, 0)
+			return
+		_current_lobby = lobby
+		current_lobby_id = lobby.lobby_id
+		is_host = false
+		lobby_joined.emit(current_lobby_id, 0, false, 1)
 	else:
 		current_lobby_id = lobby_id
 		is_host = false
@@ -143,22 +201,42 @@ func join_lobby(lobby_id: int) -> void:
 
 
 func leave_lobby() -> void:
-	if is_eos_available and current_lobby_id != 0:
-		pass # TODO(Phase 2): HLobbiesでロビー退出
-	current_lobby_id = 0
+	if is_eos_available and _current_lobby != null:
+		if not await _current_lobby.leave_async():
+			print("[EosManager] Failed to leave lobby cleanly.")
+	_current_lobby = null
+	current_lobby_id = ""
 	is_host = false
 
 
 ## ロビーのカスタムデータを読む(EOS無効時は常に空文字)
-func get_lobby_data(_lobby_id: int, _key: String) -> String:
-	# TODO(Phase 2): HLobbiesでロビー属性を読む
-	return ""
+func get_lobby_data(lobby_id: String, key: String) -> String:
+	var lobby: HLobby = null
+	if _current_lobby != null and _current_lobby.lobby_id == lobby_id:
+		lobby = _current_lobby
+	elif _search_results.has(lobby_id):
+		lobby = _search_results[lobby_id]
+	if lobby == null:
+		return ""
+	return String(lobby.get_attribute(key).get("value", ""))
 
 
 ## 参加者が実際に繋げるアドレスを待つ(EOS無効時は常に空文字)
-func await_host_addr(_lobby_id: int, _retries: int = 5, _interval: float = 0.4) -> String:
-	# TODO(Phase 2): HLobbiesでhost_addr属性を待つ(steam_manager.gdのawait_host_addrと同じ用途)
+func await_host_addr(lobby_id: String, retries: int = 5, interval: float = 0.4) -> String:
+	for i in retries:
+		var addr := get_lobby_data(lobby_id, "host_addr")
+		if not addr.is_empty():
+			return addr
+		await get_tree().create_timer(interval).timeout
 	return ""
+
+
+## Cloudflare Tunnelのホスト名が解決した後、ロビーのhost_addr属性を更新する
+func _on_public_address_ready(addr: String) -> void:
+	if is_eos_available and is_host and _current_lobby != null:
+		_current_lobby.add_attribute("host_addr", addr)
+		if not await _current_lobby.update_async():
+			print("[EosManager] Failed to update host_addr attribute.")
 
 
 # --- TODO(Phase 3): リーダーボード ---

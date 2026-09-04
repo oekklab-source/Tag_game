@@ -1,7 +1,7 @@
 extends Control
 
-## Steam P2P ルームマッチダイアログ。
-## Steam ロビーの作成、検索（②レート帯フィルタ・おまかせマッチ）、参加
+## オンラインルームマッチダイアログ(EOS Lobbies)。
+## ロビーの作成、検索（②レート帯フィルタ・おまかせマッチ）、参加
 ## および WebSocket 直結（従来のトンネル/LAN接続）をサポート。
 
 signal closed
@@ -47,18 +47,18 @@ func _ready() -> void:
 	for label in FILTER_LABELS:
 		tier_filter.add_item(label)
 
-	SteamManager.lobby_match_list.connect(_on_lobbies_received)
-	SteamManager.lobby_created.connect(_on_lobby_created)
-	SteamManager.lobby_joined.connect(_on_lobby_joined)
+	EosManager.lobby_match_list.connect(_on_lobbies_received)
+	EosManager.lobby_created.connect(_on_lobby_created)
+	EosManager.lobby_joined.connect(_on_lobby_joined)
 
-	# ③SteamworksはブラウザのWASMサンドボックス上では動作しない（恒久的な制約）。
+	# ③EOSGはブラウザのWASMサンドボックス上では動作しない（恒久的な制約）。
 	# Web版では「ルームマッチ」タブを操作できないようにし、代わりに従来通り機能する
 	# DirectConnectタブを既定にして、空のタブに取り残されないようにする
 	if OS.has_feature("web"):
 		quick_match_btn.disabled = true
 		refresh_btn.disabled = true
 		create_open_btn.disabled = true
-		status_label.text = "Web版では Steam マッチメイキングは利用できません。「DirectConnect」タブをご利用ください。"
+		status_label.text = "Web版ではオンラインマッチメイキングは利用できません。「DirectConnect」タブをご利用ください。"
 		tabs.current_tab = 2
 
 
@@ -73,7 +73,7 @@ func open() -> void:
 
 func _on_refresh_pressed() -> void:
 	status_label.text = "ロビーを検索中..."
-	SteamManager.request_lobby_list()
+	EosManager.request_lobby_list()
 
 
 func _on_lobbies_received(lobbies: Array) -> void:
@@ -141,10 +141,10 @@ func _build_lobby_row(lobby: Dictionary, my_rating: int) -> Control:
 
 	var join_btn := Button.new()
 	join_btn.text = "参加"
-	var lobby_id := int(lobby.get("id", 0))
+	var lobby_id := String(lobby.get("id", ""))
 	join_btn.pressed.connect(func():
 		status_label.text = "ロビーに参加中..."
-		SteamManager.join_lobby(lobby_id)
+		EosManager.join_lobby(lobby_id)
 	)
 
 	row.add_child(tier_lbl)
@@ -172,11 +172,11 @@ func _on_quick_match_pressed() -> void:
 			best = lobby
 	if best != null:
 		status_label.text = "近いレート帯の部屋に参加中..."
-		SteamManager.join_lobby(int(best.get("id", 0)))
+		EosManager.join_lobby(String(best.get("id", "")))
 	else:
 		status_label.text = "空いている部屋が無いので新規作成します..."
 		GameManager.tier_lock_enabled = false
-		SteamManager.create_lobby(2, 8, "%sの部屋(%s)" % [ProfileManager.player_name, RankingManager.tier_name(my_rating)])
+		EosManager.create_lobby(2, 8, "%sの部屋(%s)" % [ProfileManager.player_name, RankingManager.tier_name(my_rating)])
 
 
 func _on_do_create_pressed() -> void:
@@ -184,10 +184,10 @@ func _on_do_create_pressed() -> void:
 	var max_m := int(max_members_spin.value)
 	status_label.text = "ロビーを作成中..."
 	GameManager.tier_lock_enabled = tier_lock_check.button_pressed
-	SteamManager.create_lobby(2, max_m, r_name) # 2 = Public
+	EosManager.create_lobby(2, max_m, r_name) # lobby_typeはEOS版では無視される(常にPublicAdvertised)
 
 
-func _on_lobby_created(connect_status: int, _lobby_id: int) -> void:
+func _on_lobby_created(connect_status: int, _lobby_id: String) -> void:
 	if connect_status == 1:
 		status_label.text = "ロビーを作成しました！ゲームを開始します。"
 		NetworkManager.start_host(true)
@@ -195,23 +195,23 @@ func _on_lobby_created(connect_status: int, _lobby_id: int) -> void:
 		status_label.text = "ロビーの作成に失敗しました。"
 
 
-func _on_lobby_joined(lobby_id: int, _permissions: int, _locked: bool, response: int) -> void:
-	# ホストがロビーを作成した際にも Steam から lobby_joined が発火するため、ホストは無視する
-	if SteamManager.is_host:
+func _on_lobby_joined(lobby_id: String, _permissions: int, _locked: bool, response: int) -> void:
+	# ホストがロビーを作成した際にも EOS から lobby_joined が発火するため、ホストは無視する
+	if EosManager.is_host:
 		return
 	if response != 1:
 		status_label.text = "ロビーへの参加に失敗しました。"
 		return
 	status_label.text = "ロビーに参加しました！ゲームへ接続中..."
-	if SteamManager.is_steam_available:
-		var addr := await SteamManager.await_host_addr(lobby_id)
+	if EosManager.is_eos_available:
+		var addr := await EosManager.await_host_addr(lobby_id)
 		if addr.is_empty():
 			status_label.text = "ホストの準備が完了していません。少し待ってから再度お試しください。"
 			return
 		NetworkManager.start_client(addr)
 	else:
-		# オフラインモック（Steam無効時）。同一マシンでのUI動作確認用に127.0.0.1へ接続する
-		var addr := SteamManager.get_lobby_data(lobby_id, "host_addr")
+		# オフラインモック（EOS無効時）。同一マシンでのUI動作確認用に127.0.0.1へ接続する
+		var addr := EosManager.get_lobby_data(lobby_id, "host_addr")
 		NetworkManager.start_client(addr if not addr.is_empty() else "127.0.0.1")
 
 
