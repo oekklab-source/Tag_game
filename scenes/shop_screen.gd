@@ -28,9 +28,9 @@ const RARITY_COLORS := {
 ## 未知の識別子(purchase_item系が返す既存の生の日本語メッセージ等)はそのまま表示する
 const FAILURE_MESSAGES := {
 	"unknown_pack": "不明な通貨パックです",
-	"steam_unavailable": "Steamに接続されていないため購入できません",
 	"network_error": "通信エラーが発生しました。時間をおいて再度お試しください",
 	"user_cancelled": "購入がキャンセルされました",
+	"purchase_timeout": "決済の確認がタイムアウトしました。次回起動時に自動的に再確認されます。",
 }
 
 var _pending_gift_kind: StringName = &""
@@ -90,19 +90,28 @@ func _setup_pack_row() -> void:
 		pack_row.add_child(box)
 
 
-## ⑥実課金プロバイダはSteamオーバーレイ+Webサービスとの非同期往復を伴うため、
-## 処理中はボタンを無効化して連打・二重購入を防ぐ
+## ⑥実課金プロバイダはブラウザでのStripe決済を挟むため、処理中(最大約31分)は
+## 二重購入防止のため元のボタンを一時的にキャンセルボタンへ差し替える
+## (無効化するだけだと、長い待ち時間の間ユーザーが購入を諦める手段が無くなるため)
 func _on_buy_pack_pressed(pack_id: StringName, btn: Button) -> void:
 	var original_text := btn.text
-	btn.disabled = true
-	btn.text = "処理中..."
+	var buy_callable := _on_buy_pack_pressed.bind(pack_id, btn)
+	var cancel_callable := _on_cancel_pack_pressed.bind(btn)
+	btn.pressed.disconnect(buy_callable)
+	btn.pressed.connect(cancel_callable)
+	btn.text = "処理中...(キャンセル)"
 	var ok: bool = await PurchaseManager.buy_currency_pack(pack_id)
 	if is_instance_valid(btn):
-		btn.disabled = false
+		btn.pressed.disconnect(cancel_callable)
+		btn.pressed.connect(buy_callable)
 		btn.text = original_text
 	if ok:
 		var def := CurrencyPackCatalog.get_def(pack_id)
 		status_label.text = "💎%d を獲得しました！" % int(def.get("gems", 0))
+
+
+func _on_cancel_pack_pressed(_btn: Button) -> void:
+	PurchaseManager.cancel_pending_purchase()
 
 
 func _setup_item_grid() -> void:

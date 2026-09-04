@@ -219,10 +219,10 @@ func _test_cloud_merge_logic() -> void:
 ## 破壊的変更に対する回帰防止(全呼び出し元がこの形状の更新に追従できているか)
 func _test_purchase_provider_selection() -> void:
 	print("\n--- [6] PurchaseManager プロバイダ選択・戻り値形状 検証 ---")
-	if SteamManager.is_steam_available:
-		_assert(PurchaseManager._provider is SteamPurchaseProvider, "Steam利用可能時はSteamPurchaseProviderが選択される")
+	if PurchaseManager.USE_LIVE_PURCHASES:
+		_assert(PurchaseManager._provider is StripePurchaseProvider, "USE_LIVE_PURCHASES=true時はStripePurchaseProviderが選択される")
 	else:
-		_assert(PurchaseManager._provider is MockPurchaseProvider, "Steam無効時はMockPurchaseProviderが選択される")
+		_assert(PurchaseManager._provider is MockPurchaseProvider, "USE_LIVE_PURCHASES=false時はMockPurchaseProviderが選択される")
 
 	var mock := MockPurchaseProvider.new()
 	var result: Dictionary = await mock.buy_pack(&"small")

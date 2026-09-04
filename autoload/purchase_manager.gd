@@ -11,22 +11,35 @@ signal purchase_failed(reason: String)
 
 ## ⑥購入失敗理由の識別子。UI側で文言を出し分けられるよう定数化する
 const REASON_UNKNOWN_PACK := "unknown_pack"
-const REASON_STEAM_UNAVAILABLE := "steam_unavailable"
 const REASON_NETWORK := "network_error"
 const REASON_CANCELLED := "user_cancelled"
+const REASON_PURCHASE_TIMEOUT := "purchase_timeout"
+
+## service/commerce-api/ のデプロイ・動作確認が完了するまでは false のままにする。
+## Stripeにはローカルで起動時判定できるSDKが無いため、Steam版のような
+## is_steam_available相当の自動判定ではなく、明示フラグでプロバイダを切り替える
+const USE_LIVE_PURCHASES := false
 
 var _provider: PurchaseProvider
 
 
 func _ready() -> void:
-	# ⑥SteamManagerはPurchaseManagerよりautoload順で先に初期化されるため、
-	# is_steam_availableをここで安全に参照できる
-	_provider = SteamPurchaseProvider.new(self) if SteamManager.is_steam_available else MockPurchaseProvider.new()
+	_provider = StripePurchaseProvider.new(self) if USE_LIVE_PURCHASES else MockPurchaseProvider.new()
+	if USE_LIVE_PURCHASES and _provider is StripePurchaseProvider:
+		var recon: Dictionary = await _provider.reconcile_pending()
+		if recon.get("found", false) and recon.get("ok", false):
+			ProfileManager.add_currency(int(recon.get("granted_gems", 0)))
+			currency_changed.emit()
+
+
+## 進行中の購入をキャンセルする(ブラウザ決済待ち中のキャンセルボタン用)
+func cancel_pending_purchase() -> void:
+	_provider.cancel()
 
 
 ## ②通貨パックを購入し、成功したらジェムを付与する。ジェム付与量はプロバイダの
 ## 戻り値(result.granted_gems)からのみ取り、CurrencyPackCatalogの値を信用しない
-## (SteamPurchaseProvider経由の場合、これはサーバー確定値になる)
+## (StripePurchaseProvider経由の場合、これはサーバー確定値になる)
 func buy_currency_pack(pack_id: StringName) -> bool:
 	if not CurrencyPackCatalog.has(pack_id):
 		purchase_failed.emit(REASON_UNKNOWN_PACK)

@@ -1,0 +1,14 @@
+name = "tag-game-commerce-api"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# KVは Stripe Checkout SessionのID -> {pack_id, granted_gems, status} の
+# 冪等性ストアとして使う。status は Stripe Webhook が唯一の更新経路。
+# `wrangler kv namespace create COMMERCE_TXNS` で作成し、id をここに設定する
+[[kv_namespaces]]
+binding = "COMMERCE_TXNS"
+id = "REPLACE_WITH_REAL_KV_NAMESPACE_ID"
+
+# 機密値はリポジトリに置かず、以下のコマンドで設定する:
+#   wrangler secret put STRIPE_SECRET_KEY      (Stripeのsecret key。まずテストモードのsk_test_...)
+#   wrangler secret put STRIPE_WEBHOOK_SECRET  (Stripe DashboardでWebhookエンドポイント登録後に発行されるwhsec_...)

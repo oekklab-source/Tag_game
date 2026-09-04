@@ -2,8 +2,8 @@ class_name PurchaseProvider
 extends RefCounted
 
 ## ②課金コンテンツの決済処理を差し替え可能にするための基底クラス。
-## MockPurchaseProvider（即時成功）と SteamPurchaseProvider（Steamworks
-## Microtransactions）の2実装がある。本決済プロバイダは await を含む
+## MockPurchaseProvider（即時成功）と StripePurchaseProvider（Stripe
+## Checkout）の2実装がある。本決済プロバイダは await を含む
 ## コルーチンとして buy_pack() をオーバーライドすること（PurchaseManager 側の
 ## 呼び出しコードは変更不要、必ず await で呼び出す）。
 
@@ -15,3 +15,9 @@ extends RefCounted
 func buy_pack(_pack_id: StringName) -> Dictionary:
 	assert(false, "PurchaseProvider.buy_pack() はサブクラスで実装してください")
 	return {"ok": false, "granted_gems": 0, "reason": "not_implemented"}
+
+
+## 進行中の buy_pack() を外部からキャンセルする。ブラウザ決済のように
+## 長時間かかりうるプロバイダのみ意味を持つため、既定では何もしない
+func cancel() -> void:
+	pass
