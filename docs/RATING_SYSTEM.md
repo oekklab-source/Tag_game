@@ -147,6 +147,6 @@ $N=4, K_R=32.0, K_H=8.0, E_R=0.5, E_H=0.5$
 - **コア実装**: [autoload/ranking_manager.gd](file:///c:/sandbox/Tag_Game/autoload/ranking_manager.gd)
   - `calculate_all_rating_changes(...)`: 全員分のレート変動を一括算出（`apply_bonus`で2.6節のボーナス有無を切替）
   - `calculate_rating_delta(...)`: 単一プレイヤー用のラッパー
-  - `apply_match_end(...)`: 試合終了時に ProfileManager / SteamManager へ自動反映
+  - `apply_match_end(...)`: 試合終了時に ProfileManager / EosManager へ自動反映
   - `tier_index(...)` / `tier_id(...)` / `tier_name(...)` / `tier_color(...)` / `is_rating_compatible(...)`: レート帯（ティア）判定
 - **検証テスト**: [tests/rating_model.gd](file:///c:/sandbox/Tag_Game/tests/rating_model.gd)

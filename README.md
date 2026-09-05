@@ -568,19 +568,19 @@ python -m http.server 8123 --directory export/web
   身内で遊ぶ前提の設計
 - ホストPCを落とすとゲームも終わる（専用サーバではない）
 
-## Steam ロビーによる自動マッチメイキング（見知らぬ相手と）
+## EOS ロビーによる自動マッチメイキング（見知らぬ相手と）
 
 上の「インターネット越しに遊ぶ」は**リンクを知り合いに手動で送る**方式。
 それとは別に、[scenes/room_match_dialog.gd](scenes/room_match_dialog.gd) と
-[autoload/steam_manager.gd](autoload/steam_manager.gd) には、**Steam のロビー機能を
-使って見知らぬプレイヤー同士を自動で組み合わせる「クイックマッチ」が実装済み**。
-自分のレート帯に近い空きロビーへ自動参加し、無ければ自分のレート帯で新規ロビーを
-作って待つ。実際のゲーム通信は上記と同じ WebSocket + Cloudflare Tunnel のままで、
-**Steam はロビーの一覧・検索（マッチング）にだけ使う**（無料、Steamworks の
+[autoload/eos_manager.gd](autoload/eos_manager.gd) には、**Epic Online Services (EOS)
+のロビー機能を使って見知らぬプレイヤー同士を自動で組み合わせる「クイックマッチ」が
+実装済み**。自分のレート帯に近い空きロビーへ自動参加し、無ければ自分のレート帯で
+新規ロビーを作って待つ。実際のゲーム通信は上記と同じ WebSocket + Cloudflare Tunnel
+のままで、**EOS はロビーの一覧・検索（マッチング）にだけ使う**（無料、EOS 自体に
 サーバー費用は発生しない）。
 
 ```text
-[Steam ロビー]  … 見知らぬ相手を探す・レート帯でフィルタする（Steamが無料で提供）
+[EOS ロビー]  … 見知らぬ相手を探す・レート帯でフィルタする（EOSが無料で提供）
       |
       `--- host_addr（LAN IP or トンネルのホスト名）をロビーのデータに書き込む
               |
@@ -589,44 +589,38 @@ python -m http.server 8123 --directory export/web
 
 ### 使うために必要な準備
 
-GodotSteam という GDExtension プラグイン本体（バイナリ）は `addons/godotsteam/`
-以下に**同梱済み**（Windows / Linux / macOS / Android 向けバイナリと `.gdextension`
-ファイルを含む）なので、追加のダウンロード・配置作業は不要。プロジェクトを開いた
-時点で Godot 4 が `.gdextension` を自動検出する。実際に動かすには次を用意する。
+EOSG という GDExtension プラグイン本体（バイナリ）は
+`addons/epic-online-services-godot/` 以下に**同梱済み**（Windows / Linux / macOS /
+Android 向けバイナリと `.gdextension` ファイルを含む）なので、追加のダウンロード・
+配置作業は不要。プロジェクトを開いた時点で Godot 4 が `.gdextension` を自動検出する。
+実際に動かすには次を用意する。
 
-1. Steam クライアントを、検証に使う全PCにインストールし、実アカウントで
-   ログインした状態で起動しておく
-2. （任意・将来必須）[partner.steamgames.com](https://partner.steamgames.com/) で
-   無料の Steamworks アカウントを作る。今すぐは不要だが、将来 Steam で実配布・
-   販売する場合は独自 AppID の登録（Steam Direct 費用、現在1本100ドルの
-   一時費用・返金あり）が必要になる
-3. [steam_appid.txt](steam_appid.txt)（内容 `480`、Steamクライアント経由でなく
-   直接起動された場合に `steamInit` を通すためのファイル。既にリポジトリに
-   含まれている）がプロジェクトルートにあることを確認する
-4. Steam クライアントが起動・ログインしていない状態（またはこのリポジトリの
-   `.gdextension` がまだ一度も読み込まれていない状態）で Godot エディタを開いた
-   場合は、一度**再起動**する（GDExtension はエンジン起動時に読み込まれる）
+1. Epic Developer Portal で Product / Sandbox / Deployment / Client Policy / Client を
+   作成し、Product ID・Sandbox ID・Deployment ID・Client ID・Client Secret を取得する
+2. `eos_credentials.cfg.example` をコピーして `eos_credentials.cfg`（gitignore対象）を
+   作成し、上記の値と暗号化キー（Player Data Storage 用、`.example` 内の説明を参照）を
+   書き込む
+3. EOS の認証は**匿名ログイン（Connect / Device ID）**のため、Steamのようなクライアント
+   常駐ログインは不要。`eos_credentials.cfg` が正しく設定されていればそのままゲームを
+   起動するだけで自動的にログインする
 
 ### 動作確認
 
-Steam を起動・ログインした状態でエディタから実行（F5）し、**出力パネル**を見る。
+エディタから実行（F5）し、**出力パネル**を見る。
 
-- 成功: `[SteamManager] Steam initialized successfully. User: <名前> (ID: <ID>)`
-- 失敗: `[SteamManager] Steam init failed ...` / `Running in Offline / Fallback mode` →
-  手順1・4・5を再確認（多い原因は Steam クライアント未起動、`.gdextension` 未読み込み）
+- 成功: `[EosManager] EOS initialized successfully. product_user_id=<PUID>`
+- 失敗: `eos_credentials.cfg not configured yet. Running in Offline / Fallback mode.` →
+  手順1・2を再確認（多い原因は Client Policy の機能未有効化、認証情報の入力ミス）
 
 2台（または2インスタンス）で、片方が「クイックマッチ」または部屋作成、もう片方が
 「ルームマッチ」タブから参加して、ロビー参加だけでなく実際にゲームが繋がる
 （トンネル経由の接続まで通る）ことを確認する。
 
-### 既知の制約（Steamマッチメイキング）
+### 既知の制約（EOSマッチメイキング）
 
-- **Web（ブラウザ）版では使えない**。Steamworks はブラウザの WASM サンドボックス上では
+- **Web（ブラウザ）版では使えない**。EOSG はブラウザの WASM サンドボックス上では
   動作しないため（恒久的な制約）、Web ビルドでは「ルームマッチ」タブが自動的に無効化され、
   代わりに「DirectConnect」タブが既定で開く
-- `steam_appid.txt` の `480` は Valve の**公開テスト用 AppID（Spacewar）**。多数の
-  開発者が共用する共有プールのため、ロビー検索結果はこのゲーム専用ではない。
-  開発・検証段階では問題ないが、実際に一般公開する前には独自 AppID への切り替えが必要
 
 ## 衝突レイヤー
 
@@ -674,7 +668,7 @@ Steam を起動・ログインした状態でエディタから実行（F5）し
 autoload/network_manager.gd   WebSocket 接続・切断・シーン遷移・アドレス解決（ws / wss）
 autoload/game_manager.gd      役割抽選・速度補正・タイマー・タッチ判定・視界判定と情報共有・共有時計
 autoload/ranking_manager.gd   非対称 Elo レーティング計算・ランキング管理
-autoload/profile_manager.gd   プレイヤー名・カスタムカラー・戦績・レートのローカル/Steam管理
+autoload/profile_manager.gd   プレイヤー名・カスタムカラー・戦績・レートのローカル/EOS管理
 scenes/main.tscn(.gd)         ロビー（HOST / JOIN）
 scenes/world.tscn(.gd)        シーンの骨組み（空・光・ナビ領域・スポーン管理）
 scenes/world_data.gd          マップとギミック配置の唯一の定義（定数テーブル）

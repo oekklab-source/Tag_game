@@ -4,12 +4,12 @@ extends Node
 ## EOSG(epic-online-services-godot)アドオンが利用可能、かつ eos_credentials.cfg が
 ## 設定済みの場合に EOS Platform を初期化し、EOS Connect（匿名 Device ID 認証）を行う。
 ## それ以外(アドオン未導入 / クレデンシャル未設定)ではモック動作してクラッシュを防ぐ
-## ——steam_manager.gd と同じ設計思想。
+## ——旧Steam実装(steam_manager.gd、Phase 7で削除済み)と同じ設計思想。
 ##
-## ロビー/リーダーボード/クラウドセーブ等の各メソッドは、呼び出し元(steam_manager.gd利用箇所)を
-## 機械的に切り替えられるよう、シグナル形状だけ steam_manager.gd に揃えてある。
+## ロビー/リーダーボード/クラウドセーブ等の各メソッドは、旧Steam実装からの移行時に
+## 機械的に切り替えられるよう、シグナル形状を旧実装に揃えて作られている。
 ## ロビー/マッチメイキング(Phase 2)は EOS Lobbies Interface(HLobbies/HLobby)で実装済み。
-## リーダーボード(Phase 3)・クラウドセーブ(Phase 4)はまだ TODO のスタブ。
+## リーダーボード(Phase 3)・クラウドセーブ(Phase 4)も実装済み。
 ##
 ## project.godot の [autoload] に登録済み(scenes/room_match_dialog.gd から利用)。
 
@@ -38,7 +38,7 @@ func _ready() -> void:
 
 ## EOS Platform の初期化 + EOS Connect(匿名 Device ID 認証)
 func _init_eos() -> void:
-	# EOSGのネイティブGDExtensionシングルトンの存在確認。steam_manager.gdの
+	# EOSGのネイティブGDExtensionシングルトンの存在確認。旧Steam実装の
 	# Engine.has_singleton("Steam")と同じ検出パターン(DLL読み込み失敗時にクラッシュしない)。
 	# 実クレデンシャルでの実機テストが行えるようになった際、この検出方法が実態と
 	# 合っているか(Godotエディタの「ヘルプ検索」等で)再確認すること
@@ -110,7 +110,7 @@ func _load_credentials() -> HCredentials:
 
 # --- ロビー/マッチメイキング(Phase 2) ---
 # EOS Lobbies Interface(HLobbies/HLobby、addons/epic-online-services-godot/heos/)で実装。
-# steam_manager.gdと同じシグナル形状を維持しているが、ロビーIDはEOSではStringのため
+# 旧Steam実装と同じシグナル形状を維持しているが、ロビーIDはEOSではStringのため
 # current_lobby_id/lobby_created/lobby_joinedの型はintからStringに変更済み。
 
 func create_lobby(lobby_type: int = 0, max_members: int = 8, lobby_name: String = "") -> void:
@@ -249,7 +249,7 @@ func _on_public_address_ready(addr: String) -> void:
 # EOS Stats & Leaderboards Interface(HStats/HLeaderboards)で実装。
 # 表示名はEOS Connect匿名ログイン時(_init_eos内のlogin_anonymous_async)に渡した
 # display_nameがバックエンド側に保持され、get_leaderboard_records_asyncの
-# user_display_nameへそのまま反映される想定(Steamのような逆引きは不要)。
+# user_display_nameへそのまま反映される想定(旧Steam実装のような逆引きは不要)。
 # ただしログイン後にプロフィール名を変更しても次回ログインまでは反映されない。
 
 const LEADERBOARD_STAT_NAME := "PlayerRating"
@@ -311,7 +311,7 @@ func upload_rating(new_rating: int) -> void:
 
 # --- クラウドセーブ(Phase 4) ---
 # EOS Player Data Storage Interface(HPlayerDataStorage、アドオン本体には未バンドルのため
-# Phase 4で新規作成)で実装。merge-then-republishの方針はsteam_manager.gdの
+# Phase 4で新規作成)で実装。merge-then-republishの方針は旧Steam実装の
 # sync_profile_with_cloud()と同一(バックエンドが変わってもProfileManager側の契約は不変)。
 
 const CLOUD_PROFILE_FILENAME := "profile.json"

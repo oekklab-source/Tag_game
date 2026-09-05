@@ -120,7 +120,7 @@ layout_mode = 2
 [node name="PlayButton" type="Button" parent="CenterMenu/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
-text = "オンラインプレイ (Steam P2P)"
+text = "オンラインプレイ (EOS P2P)"
 
 [node name="SoloButton" type="Button" parent="CenterMenu/VBox"]
 layout_mode = 2

@@ -8,7 +8,7 @@ extends Node
 ## ため。代わりにサーバー側生成の不透明なフレンドコードで1:1追加する方式にし、
 ## PUID自体は列挙・検索できないようにしてある(詳細はfriend-api/README.md)。
 ##
-## EosManager/steam_manager.gdと同じ方針(バックエンド無効時はモックデータで
+## EosManagerと同じ方針(バックエンド無効時はモックデータで
 ## フォールバックし、クラッシュを防ぐ)に倣う。USE_LIVE_FRIEND_BACKENDは
 ## PurchaseManager.USE_LIVE_PURCHASESと同じ「デプロイ・動作確認が済むまでfalse」
 ## のロールアウト規約。
@@ -102,7 +102,7 @@ func invite_to_lobby() -> bool:
 	return true
 
 
-## Steam無効時、⑤のUIをオフラインでも確認できるようにするモックフレンド一覧
+## バックエンド無効時、⑤のUIをオフラインでも確認できるようにするモックフレンド一覧
 func _mock_friends() -> Array[Dictionary]:
 	return [
 		{"id": "mock-puid-1", "name": "SpeedMaster", "online": true},

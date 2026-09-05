@@ -26,7 +26,7 @@
     Godot ホストが待ち受けているポート（network_manager.gd の PORT と合わせる）。
 
 .PARAMETER HostAddrFile
-    ②Steamロビー経由の参加者へホスト名を伝えるため、確立したトンネルの
+    ②EOSロビー経由の参加者へホスト名を伝えるため、確立したトンネルの
     ホスト名をこのファイルへ書き出す。Godot 側（network_manager.gd の
     _launch_tunnel）が渡す。手動実行時は省略してよい。
 
@@ -86,7 +86,7 @@ $tunnelHost = $null
         Write-Host '  このウィンドウを閉じる / Ctrl+C でトンネルが切れる。' -ForegroundColor Yellow
         Write-Host ''
 
-        # ②Steamロビー経由の参加者が実際のホストへ繋げるよう、Godot 側に
+        # ②EOSロビー経由の参加者が実際のホストへ繋げるよう、Godot 側に
         # ホスト名を渡す（network_manager.gd がこのファイルをポーリングしている）
         if ($HostAddrFile) {
             try { Set-Content -Path $HostAddrFile -Value $tunnelHost -NoNewline -Encoding utf8 }

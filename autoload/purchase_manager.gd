@@ -16,8 +16,8 @@ const REASON_CANCELLED := "user_cancelled"
 const REASON_PURCHASE_TIMEOUT := "purchase_timeout"
 
 ## service/commerce-api/ のデプロイ・動作確認が完了するまでは false のままにする。
-## Stripeにはローカルで起動時判定できるSDKが無いため、Steam版のような
-## is_steam_available相当の自動判定ではなく、明示フラグでプロバイダを切り替える
+## Stripeにはローカルで起動時判定できるSDKが無いため、is_eos_available相当の
+## 自動判定ではなく、明示フラグでプロバイダを切り替える
 const USE_LIVE_PURCHASES := false
 
 var _provider: PurchaseProvider

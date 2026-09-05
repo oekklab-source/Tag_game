@@ -246,7 +246,7 @@ func calculate_rating_delta(
 		return int(round(h_deltas[0]))
 
 
-## 試合終了時に呼び出し、ProfileManager および SteamManager に反映する
+## 試合終了時に呼び出し、ProfileManager および EosManager に反映する
 func apply_match_end(
 	is_runner: bool,
 	is_winner: bool,

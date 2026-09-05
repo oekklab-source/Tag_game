@@ -48,7 +48,7 @@ func _ready() -> void:
 
 ## EosManagerのcloud_*系はEOS実装がawaitを含むため、GDScriptの仕様上
 ## オフライン分岐(is_eos_available==false)でも常にコルーチン扱いになる。
-## steam_manager.gd版(同期関数)と違い、呼び出し側は必ずawaitすること。
+## (旧Steam実装の同期関数版と違い)呼び出し側は必ずawaitすること。
 func _test_cloud_sync_fallback() -> void:
 	print("\n--- [1] EOS Cloud Save Offline/Fallback 動作 ---")
 	_assert(EosManager.has_method("sync_profile_with_cloud"), "sync_profile_with_cloud() が実装されている")

@@ -24,7 +24,7 @@ var mode := Mode.NONE
 var session_kind := SessionKind.SOLO
 var join_address := "127.0.0.1"
 var last_error := ""
-## ②Steamロビー参加者が実際に接続すべきアドレス（LAN IP、後にトンネルのホスト名で
+## ②EOSロビー参加者が実際に接続すべきアドレス（LAN IP、後にトンネルのホスト名で
 ## 上書きされることがある）。host_addr としてロビーデータに載せる
 var public_address := ""
 signal public_address_ready(addr: String)
@@ -78,7 +78,7 @@ func start_host(is_online: bool = false) -> bool:
 		return false
 	mode = Mode.HOST
 	session_kind = SessionKind.ONLINE if is_online else SessionKind.SOLO
-	# ②Steamロビー経由の参加者が実際に接続できるよう、LAN IPを即座に解決しておく。
+	# ②EOSロビー経由の参加者が実際に接続できるよう、LAN IPを即座に解決しておく。
 	# トンネル（インターネット越し）を使う場合は _launch_tunnel() 側で後から上書きする
 	public_address = _resolve_lan_address()
 	if not public_address.is_empty():

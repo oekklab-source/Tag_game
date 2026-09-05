@@ -13,7 +13,7 @@ extends Node
 ## multiplayer_peerには絶対に代入しない（NetworkManagerのWebSocketMultiplayerPeerが
 ## 実際のゲームプレイ通信で既にそこを占有しているため）。EosManager.eos_initialized(true)を
 ## 合図に生成し、以降は_process()で手動poll/get_packet/put_packetする、
-## Steam実装と同じ「常時ポーリング」方式を踏襲する。
+## 「常時ポーリング」方式を踏襲する(旧Steam実装からの設計を引き継いだもの)。
 
 signal gift_received(kind: StringName, id: StringName, from_name: String)
 

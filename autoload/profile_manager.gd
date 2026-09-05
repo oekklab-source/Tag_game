@@ -1,7 +1,7 @@
 extends Node
 
 ## プレイヤーのプロフィール情報（名前、カスタムカラー、戦績、レート等）を管理・保存する Autoload。
-## user://profile.json にローカル保存し、Steam が利用可能な場合は初期値を Steam から取得する。
+## user://profile.json にローカル保存し、EOS が利用可能な場合は初期値を EOS から取得する。
 
 signal profile_updated
 
@@ -36,7 +36,7 @@ var highest_rating: int = 1500
 ## ①VS CPU戦（練習モード）の対戦回数。レート・勝敗数（matches_played等）には含めない
 var casual_matches_played: int = 0
 
-## ⑥Steamworks Cloud同期用の最終更新時刻(UNIX秒)。save_profile() の度に更新され、
+## ⑥クラウド同期用の最終更新時刻(UNIX秒)。save_profile() の度に更新され、
 ## merge_server_inventory() でのLWW判定・クラウドとの新旧比較に使う
 var last_modified_unix: int = 0
 
@@ -56,7 +56,7 @@ func load_profile() -> void:
 				_apply_data(json.data)
 				return
 
-	# 初回起動時: Steam があれば Steam 名を取得、無ければランダム名を生成
+	# 初回起動時: EOS があれば EOS 名を取得、無ければランダム名を生成
 	_init_default_name()
 	save_profile()
 
@@ -152,7 +152,7 @@ func _init_default_name() -> void:
 
 
 ## 現在のプロフィール状態を保存用Dictionaryに変換する(ファイルI/Oを含まない)。
-## save_profile()のローカル書き込みと、SteamManagerのCloud書き込みの両方で
+## save_profile()のローカル書き込みと、EosManagerのCloud書き込みの両方で
 ## 同じ表現を使うため、ここに一本化する
 func to_save_dict() -> Dictionary:
 	return {
@@ -220,7 +220,7 @@ func set_costume(id: StringName, colors: PackedColorArray) -> void:
 	save_profile()
 
 
-## ⑥Steamworks Cloudから取得した相手側(別端末)のプロフィールをローカルへマージする。
+## ⑥EOS Player Data Storageから取得した相手側(別端末)のプロフィールをローカルへマージする。
 ## 単純な上書きではなく、以下のルールでマージする:
 ##   - 所持品(owned_costumes/owned_hats): 和集合。縮小させない(課金済みアイテムを消さない)
 ##   - 通貨・見た目等の単純フィールド: last_modified_unix によるLWW(新しい方を採用)

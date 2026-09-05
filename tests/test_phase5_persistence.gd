@@ -22,8 +22,6 @@ func _ready() -> void:
 
 	await _test_profile_save_load()
 	await _test_profile_corrupted_fallback()
-	await _test_steam_fallback()
-	await _test_cloud_sync_fallback()
 	await _test_cloud_merge_logic()
 	await _test_purchase_provider_selection()
 
@@ -85,36 +83,12 @@ func _test_profile_corrupted_fallback() -> void:
 	_assert(ProfileManager.owned_costumes.has("default"), "所持リストに default が必ず含まれる")
 
 
-## 3. SteamManager のフォールバック動作
-func _test_steam_fallback() -> void:
-	print("\n--- [3] SteamManager Offline/Fallback 動作 ---")
-	_assert(SteamManager != null, "SteamManager Autoload が正常にロードされている")
-	_assert(SteamManager.is_steam_available == false or SteamManager.is_steam_available == true, "Steam状態判定がクラッシュせず正常に応答")
-	var steam_name: String = SteamManager.steam_username
-	_assert(typeof(steam_name) == TYPE_STRING, "Steamユーザー名取得がフォールバック文字列を返す")
-
-
-## 4. Steam Cloud 同期のフォールバック動作(Steam無効環境=CI/開発機の実態に即した検証)
-func _test_cloud_sync_fallback() -> void:
-	print("\n--- [4] Steam Cloud 同期 Offline/Fallback 動作 ---")
-	_assert(SteamManager.has_method("sync_profile_with_cloud"), "sync_profile_with_cloud() が実装されている")
-	if SteamManager.is_steam_available:
-		print("   (Steam利用可能環境のため、Fallback専用の以下の検証はスキップ)")
-		return
-	_assert(SteamManager.cloud_save_profile("{}") == false, "Steam無効時 cloud_save_profile() は false を返す")
-	_assert(SteamManager.cloud_load_profile() == "", "Steam無効時 cloud_load_profile() は空文字を返す")
-	_assert(SteamManager.cloud_file_timestamp() == 0, "Steam無効時 cloud_file_timestamp() は 0 を返す")
-	# Steam無効時は何もせず安全に抜けること(クラッシュしないこと)を確認
-	SteamManager.sync_profile_with_cloud()
-	_assert(true, "Steam無効時 sync_profile_with_cloud() がクラッシュせず即座に抜ける")
-
-
-## 5. merge_server_inventory() のマージロジック検証。
+## 3. merge_server_inventory() のマージロジック検証。
 ## この関数は変更があると内部で save_profile() を呼ぶ(=ディスク書き込みを伴う)ため、
 ## costume_model.gd のような「ファイルI/Oなしの純粋テスト」には置けない。
 ## _test_profile_save_load() と同じく、実データを退避してから検証し、最後に復元する
 func _test_cloud_merge_logic() -> void:
-	print("\n--- [5] merge_server_inventory() マージロジック検証 ---")
+	print("\n--- [3] merge_server_inventory() マージロジック検証 ---")
 	var orig := {
 		"player_name": ProfileManager.player_name,
 		"premium_currency": ProfileManager.premium_currency,
@@ -214,11 +188,11 @@ func _test_cloud_merge_logic() -> void:
 	ProfileManager.save_profile()
 
 
-## 6. PurchaseManagerのプロバイダ選択、およびMockPurchaseProviderの戻り値形状の検証。
+## 4. PurchaseManagerのプロバイダ選択、およびMockPurchaseProviderの戻り値形状の検証。
 ## buy_pack()がbool単体からDictionary({"ok","granted_gems","reason"})に変わった
 ## 破壊的変更に対する回帰防止(全呼び出し元がこの形状の更新に追従できているか)
 func _test_purchase_provider_selection() -> void:
-	print("\n--- [6] PurchaseManager プロバイダ選択・戻り値形状 検証 ---")
+	print("\n--- [4] PurchaseManager プロバイダ選択・戻り値形状 検証 ---")
 	if PurchaseManager.USE_LIVE_PURCHASES:
 		_assert(PurchaseManager._provider is StripePurchaseProvider, "USE_LIVE_PURCHASES=true時はStripePurchaseProviderが選択される")
 	else:

@@ -18,7 +18,6 @@ config/icon="res://icon.svg"
 [autoload]
 
 ProfileManager="*res://autoload/profile_manager.gd"
-SteamManager="*res://autoload/steam_manager.gd"
 RankingManager="*res://autoload/ranking_manager.gd"
 NetworkManager="*res://autoload/network_manager.gd"
 GameManager="*res://autoload/game_manager.gd"
