@@ -59,8 +59,12 @@ func _ready() -> void:
 		var img := get_viewport().get_texture().get_image()
 		var path: String = "%s/%s.png" % [out, shot[0]]
 		img.save_png(path)
-		print("saved %s  draw calls %d" % [path,
-			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)])
+		# 三角形数も出す。メッシュの分割を上げてもドローコールは増えない
+		# （集約先が MultiMesh のまま変わらない）ので、増えたぶんが
+		# 頂点だけに乗っているかはこの2つを並べないと分からない
+		print("saved %s  draw calls %d  primitives %d" % [path,
+			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+			Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)])
 	print("materials %d  objects %d" % [
 		Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),
 		Performance.get_monitor(Performance.OBJECT_NODE_COUNT)])

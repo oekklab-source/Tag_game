@@ -1,33 +1,19 @@
 """ジャンプ台（バネ式打ち上げ台）を一から組み立てて glTF に書き出すビルドスクリプト。
 
-    blender -b -P tools/blender/build_spring_pad.py
+    blender -b -P tools/blender/build_spring_pad.py -- [--render <出力ディレクトリ>]
 
 出力:
     tools/blender/spring_pad.blend   編集元（.gdignore で Godot のインポート対象外）
     assets/gimmicks/spring_pad.glb   Godot が読むモデル
 
-旧モデルは Godot 側で組んだ CylinderMesh + TorusMesh 一色（鮮やかな黄色）で、
-SPRING VALLEY ゾーンの床色（world_data.gd の ZONE_COLORS[6]、ほぼ同じ黄色）
-に同化していた。SPRING_PADS は床色がバラバラな9ゾーンに置かれるため、
-一色を塗り替えるだけでは別のゾーンで再び同化しかねない。
-
-build_manhole.py と同じ考え方（本体は周囲のパステルに対して締まる
-「暗色ニュートラル」、装飾だけを鮮やかなアクセント色にする）を踏襲し、
-どの床色に対しても明度差で輪郭が立つようにする。着地面の橙は
-WorldData.ZONE_ACCENTS[6]（「構造物はゾーンのアクセント色」という既存の
-配色ルール）をベースに、薄く見えないよう明度・彩度を落として濃くしてある。
-
-アニメーションは書き出さない。踏んだときの伸縮演出は spring_pad.gd の
-Tween が引き続き担当する（build_manhole.py のフタ開閉と同じ方針）。
-そのため Base とバネ本体（Coil+Pad）は親を分けて書き出す。バネ本体だけを
-まとめる "Spring" 空オブジェクトを z=0（台座の上面）に置くのが要点で、
-Godot 側は Spring の scale.y を伸ばすだけで「台座は動かず、バネだけが
-びよーんと伸びる」動きになる（コイルの根元がちょうど z=0 にあるため、
-Y方向のスケールはそこを支点に上だけが伸びる）。
+地面に埋まらず、地面（z=0）の上に台座が堂々と乗る構造にする。
+台座の上にバネの支点（Spring ノード）を置き、踏んだときの伸縮アニメーションが
+台座の上で自然に伸び縮みするようにする。
 """
 
 import math
 import os
+import sys
 
 import bmesh
 import bpy
@@ -46,12 +32,15 @@ COLORS = {
 EMISSION = {"BaseDark": 0.0, "Coil": 0.0, "PadOrange": 0.2, "PadRim": 0.0}
 METALLIC = {"BaseDark": 0.0, "Coil": 0.6, "PadOrange": 0.0, "PadRim": 0.0}
 
+BASE_HEIGHT = 0.22  # 台座の上面の高さ（地面 z=0 から上）
+
 
 # =====================================================================
-# 汎用ヘルパ（build_manhole.py と同じ形）
+# 汎用ヘルパ
 # =====================================================================
 
 def make_mat(name):
+    """マテリアルを作成または取得して設定する。"""
     mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     mat.use_nodes = True
     rgb = COLORS[name]
@@ -66,13 +55,14 @@ def make_mat(name):
 
 
 def paint(obj, name):
+    """オブジェクトにマテリアルを適用する。"""
     obj.data.materials.clear()
     obj.data.materials.append(make_mat(name))
     return obj
 
 
 def lathe(name, profile, segments=24, smooth=True):
-    """(高さ, 半径) の並びを Z 軸まわりの回転体にする。半径0の点は極として1頂点に潰す。"""
+    """(高さ, 半径) の並びを Z 軸まわりの回転体にする。"""
     bm = bmesh.new()
     rings = []
     for h, r in profile:
@@ -102,7 +92,7 @@ def lathe(name, profile, segments=24, smooth=True):
 
 
 def torus(name, z, major, minor, segments=28, rings=12):
-    """Z 軸まわりのトーラス。断面の円を閉じた輪として渡す。"""
+    """Z 軸まわりのトーラス。"""
     profile = [(z + math.sin(2.0 * math.pi * i / rings) * minor,
                 major + math.cos(2.0 * math.pi * i / rings) * minor)
                for i in range(rings)]
@@ -111,7 +101,8 @@ def torus(name, z, major, minor, segments=28, rings=12):
 
 
 def join_into(target, others):
-    bpy.ops.object.select_all(action="DESELECT")
+    """複数オブジェクトをターゲットに結合する。"""
+    bpy.ops.object.select_all(action='DESELECT')
     for obj in others:
         obj.select_set(True)
     target.select_set(True)
@@ -121,7 +112,7 @@ def join_into(target, others):
 
 
 def cleanup(obj):
-    """結合で出た重複頂点・不正な面を掃除する（glTF の検証警告対策）。"""
+    """重複頂点と法線を整理する。"""
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
@@ -138,25 +129,20 @@ def cleanup(obj):
 # =====================================================================
 
 def build_base():
-    """地面に薄く埋まる台座。中心から半径を出し縁を丸めて上面を閉じた円盤にする。"""
+    """地面の上に堂々と載る厚みのある台座。底面を z=0.0 にして地面の上に置く。"""
     profile = [
-        (-0.30, 0.0),
-        (-0.30, 1.55),
-        (-0.24, 1.60),
-        (0.00, 1.60),
-        (0.05, 1.45),
-        (0.05, 0.0),
+        (0.00, 0.0),
+        (0.00, 1.55),
+        (0.04, 1.60),
+        (0.16, 1.60),
+        (BASE_HEIGHT, 1.48),
+        (BASE_HEIGHT, 0.0),
     ]
     return paint(cleanup(lathe("Base", profile, 28, smooth=False)), "BaseDark")
 
 
 def build_coils(root):
-    """バネのコイル。トーラスを3段重ねて上にすぼめ、一目でバネと分かる形にする。
-
-    旧モデルは平たいリング1枚だけで「バネ」に見えなかった反省を踏まえ、
-    段を追うごとに半径を細くして先細りのコイルらしいシルエットにする。
-    根元（1段目）が z=0 に来るようにし、root の原点を伸縮の支点にする。
-    """
+    """バネのコイル。ローカル z=0（台座上面）から立ち上げる。"""
     rings = [
         torus("Coil1", 0.14, 1.05, 0.14),
         torus("Coil2", 0.32, 0.95, 0.13),
@@ -168,7 +154,7 @@ def build_coils(root):
 
 
 def build_pad(root):
-    """着地面。わずかにドーム状にして「弾む場所」の丸みを出す。縁に暗い橙のリムを足す。"""
+    """着地面。ドーム状の丸みを持ち、縁に暗い橙のリムを足す。"""
     profile = [
         (0.58, 0.0),
         (0.58, 1.30),
@@ -200,10 +186,9 @@ def build():
     base = build_base()
     base.parent = root
 
-    # Coil/Pad をまとめる空オブジェクト。z=0（台座の上面）に置くことで、
-    # Godot 側がこのノードの scale.y を動かすだけで「根元は動かず上だけ伸びる」
-    # バネの動きになる。
+    # Coil/Pad をまとめる空オブジェクト。台座上面（z=BASE_HEIGHT）に置く
     spring = bpy.data.objects.new("Spring", None)
+    spring.location = (0.0, 0.0, BASE_HEIGHT)
     bpy.context.collection.objects.link(spring)
     spring.parent = root
     build_coils(spring)
@@ -211,7 +196,7 @@ def build():
 
     for obj in bpy.data.objects:
         verts = len(obj.data.vertices) if obj.data else 0
-        print("object :", obj.name, "verts", verts)
+        print("object :", obj.name, "verts", verts, "loc", tuple(round(v, 3) for v in obj.location))
 
 
 def export():
@@ -227,9 +212,43 @@ def export():
     print("export :", GLB_PATH, os.path.getsize(GLB_PATH), "bytes")
 
 
+def render_previews(out_dir):
+    """形の確認用プレビュー。"""
+    import mathutils
+    os.makedirs(out_dir, exist_ok=True)
+    scene = bpy.context.scene
+    scene.render.engine = 'BLENDER_WORKBENCH'
+    scene.display.shading.light = 'STUDIO'
+    scene.display.shading.color_type = 'MATERIAL'
+    scene.display.render_aa = '8'
+    scene.render.resolution_x, scene.render.resolution_y = 640, 640
+    scene.render.film_transparent = False
+
+    cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+    bpy.context.collection.objects.link(cam)
+    cam.data.lens = 50
+    scene.camera = cam
+    shots = [
+        ("three_quarter", (70, 0, -40), 0.5, 4.2),
+        ("side", (90, 0, 90), 0.5, 4.0),
+        ("top", (30, 0, 0), 0.5, 4.0),
+    ]
+    for name, deg, target_z, dist in shots:
+        euler = mathutils.Euler([math.radians(a) for a in deg], 'XYZ')
+        cam.rotation_euler = euler
+        cam.location = mathutils.Vector((0.0, 0.0, target_z)) + \
+            euler.to_quaternion() @ mathutils.Vector((0.0, 0.0, dist))
+        scene.render.filepath = os.path.join(out_dir, "spring_pad_%s.png" % name)
+        bpy.ops.render.render(write_still=True)
+        print("render :", scene.render.filepath)
+
+
 def main():
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     build()
     export()
+    if "--render" in argv:
+        render_previews(argv[argv.index("--render") + 1])
 
 
 main()

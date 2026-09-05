@@ -13,6 +13,11 @@ enum Effect { BOOST, WARP, STUN }
 ## 持ち物アイテム（question_block.gd / hud.gd と共有）。1個だけ持てる
 enum Item { NONE, ROCKET, BANANA, BLOCK }
 
+## エモート（hud.gd / humanoid.gd と共有）。文言は固定で、状況で自動的に決まる。
+## humanoid.gd の EMOTE_ANIM がこの数値をクリップ名に対応させているので、
+## 値を並べ替えたら向こうも直すこと
+enum Emote { NONE, NICE, COME }
+
 signal effect_gained(effect: int)
 signal item_changed(held: int)
 
@@ -37,6 +42,8 @@ const DIVE_PITCH := -1.2
 ## ロケットの着地で得た勢いが「着地の1フレームで消える」のを防ぐ
 const GROUND_DRAG := 10.0
 const STEER_WHILE_FAST := 3.0 # 通常速度超過中の向き変更の効き
+## 転倒中の減速 /秒。通常速度 7.0 m/s なら約0.8秒・約2.7m 尻で滑ってから止まる
+const SLIP_DRAG := 9.0
 
 ## --- 滑り台 -------------------------------------------------------------
 const SLIDE_STEER := 9.0      # 滑走中の左右の寄せ
@@ -70,6 +77,20 @@ const BANANA_THROW_UP := 7.47       # 投げバナナ用重力と合わせて最
 const BANANA_CARRY_RATIO := 0.5     # 投げた瞬間の自キャラ速度を全方向とも半分加える
 ## 取得直後のルーレット時間。この間は中身が確定しておらず使えない（HUD が回して見せる）
 const ITEM_ROULETTE := 1.2
+
+## --- エモート -----------------------------------------------------------
+## 唯一の意思疎通の手段。文言は固定で、待機中は「ナイス！」、ラウンド中は「カモン！」に
+## 自動で決まるので操作は F の1キーだけ。移動は止めない（凍結中の鬼も出せる）
+const EMOTE_TIME := 2.4      # 吹き出し・モーション・マップの光が出ている長さ
+const EMOTE_COOLDOWN := 3.0  # 連打で撒き散らせないようにする
+const EMOTE_TEXT := {
+	Emote.NICE: "ナイス！",
+	Emote.COME: "カモン！",
+}
+const EMOTE_COLOR := {
+	Emote.NICE: Color(0.45, 1.0, 0.65),
+	Emote.COME: Color(1.0, 0.85, 0.3),
+}
 
 const COLOR_WAITING := Color(0.62, 0.66, 0.72)
 const COLOR_RUNNER := Color(0.2, 1.0, 0.45)
@@ -105,6 +126,11 @@ var warp_grace := 0.0               # ワープ直後、is_on_floor() の古い�
 var item: int = Item.NONE
 var item_lock := 0.0                # >0 の間はルーレット中で、まだ使えない
 var stun_left := 0.0                # バナナを踏んだ時の操作不能時間
+## 転んでいる最中か。見た目の Slip モーションに使うのでレプリケートする
+## （stun_left は権威ピアしか持っていないので、そのままでは他ピアで棒立ちになる）
+var stunned := false
+var emote_left := 0.0               # 権威ピアのみ。0 になったら sync_emote を戻す
+var emote_cooldown := 0.0           # 権威ピアのみ
 
 ## 壁の角に押し付けられて動けなくなった時の検知・脱出用。
 ## cpu_hunter.gd / cpu_runner.gd と同じ stuck_escape.gd を共有する
@@ -131,6 +157,9 @@ var _stuck_kick_left := 0.0
 @export var sync_air := false
 ## 味方ハンターの頭上ラベルに使うニックネーム。権威ピアが PlayerPrefs から一度だけ書く
 @export var sync_nickname := ""
+## 出しているエモート（Emote の値）。0 = 出していない。
+## 終わるたび必ず 0 を挟むので、同じエモートを繰り返しても ON_CHANGE の同期が発火する
+@export var sync_emote: int = Emote.NONE
 
 var _current_color := Color.TRANSPARENT
 var _camera_block_rids := {}
@@ -139,6 +168,7 @@ var _camera_block_rids := {}
 @onready var camera: Camera3D = $SpringArm3D/Camera3D
 @onready var humanoid: Node3D = $Humanoid
 @onready var name_label: Label3D = $NameLabel
+@onready var emote_label: Label3D = $EmoteLabel
 
 
 func _enter_tree() -> void:
@@ -175,6 +205,8 @@ func _process(delta: float) -> void:
 	else:
 		_update_placed_block_camera()
 	humanoid.set_diving(diving)
+	humanoid.set_stunned(stunned)
+	humanoid.set_emote(sync_emote)
 	humanoid.update_motion(sync_speed, not sync_air, delta)
 	# ダイブ中は前へ倒れ込む。diving はレプリケートされるので他ピアからも見える
 	humanoid.rotation.x = lerpf(humanoid.rotation.x,
@@ -211,12 +243,21 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	_update_role_visuals()
 	_update_name_label()
+	_update_emote_label()
 	if not is_multiplayer_authority():
 		return
 
+	# エモートは frozen の判定より前。凍っている鬼も、転んでいる最中も出せる。
+	# dive / use_item と同じく _unhandled_input ではなくここで拾うのは、
+	# 「押しっぱなしの間だけ有効」ではないものを物理フレームの粒度で揃えるため
+	_tick_emote(delta)
+	if Input.is_action_just_pressed("emote"):
+		_start_emote()
 	buffs.tick(delta)
 	warp_lock = maxf(warp_lock - delta, 0.0)
 	stun_left = maxf(stun_left - delta, 0.0)
+	# 終わるたび必ず false を挟むので、続けて2回転んでも ON_CHANGE の同期が発火する
+	stunned = stun_left > 0.0
 	dive_cooldown = maxf(dive_cooldown - delta, 0.0)
 	item_lock = maxf(item_lock - delta, 0.0)
 	_tick_dive(delta)
@@ -272,6 +313,13 @@ func _physics_process(delta: float) -> void:
 		if direction != Vector3.ZERO:
 			velocity.x = move_toward(velocity.x, target.x, AIR_ACCEL * delta)
 			velocity.z = move_toward(velocity.z, target.y, AIR_ACCEL * delta)
+	elif stun_left > 0.0 and grounded:
+		# 転倒中は入力が無いので、通常の接地処理だと目標速度ゼロで即座に止まる。
+		# 摩擦だけで落として「足をすくわれて尻で滑る」勢いを残す
+		floor_snap_length = 0.1
+		var slip := Vector2(velocity.x, velocity.z).move_toward(Vector2.ZERO, SLIP_DRAG * delta)
+		velocity.x = slip.x
+		velocity.z = slip.y
 	elif grounded:
 		floor_snap_length = 0.1
 		var hv := Vector2(velocity.x, velocity.z)
@@ -335,6 +383,53 @@ func _start_dive() -> void:
 	diving = true
 	dive_recover = 0.0
 	dive_cooldown = DIVE_COOLDOWN
+
+
+## --- エモート -----------------------------------------------------------
+
+## F キー。文言は状況で決まるので選ぶ操作は無い。
+## 出している最中とクールダウン中は受け付けない
+func _start_emote() -> void:
+	if emote_left > 0.0 or emote_cooldown > 0.0:
+		return
+	sync_emote = _emote_for_state()
+	emote_left = EMOTE_TIME
+	emote_cooldown = EMOTE_COOLDOWN
+
+
+## ラウンド中は仲間を呼ぶ「カモン」、それ以外（待機中・リザルト）は「ナイス」
+func _emote_for_state() -> int:
+	return Emote.COME if GameManager.state == GameManager.State.PLAYING else Emote.NICE
+
+
+func _tick_emote(delta: float) -> void:
+	emote_cooldown = maxf(emote_cooldown - delta, 0.0)
+	if emote_left <= 0.0:
+		return
+	emote_left = maxf(emote_left - delta, 0.0)
+	if emote_left <= 0.0:
+		sync_emote = Emote.NONE
+
+
+## 頭上の吹き出し（全ピアで実行）。
+##
+## ラウンド中は**見る側と出す側が同じ側のときだけ**表示する。
+## ここを緩めると逃走者のエモートが鬼の画面に出て、視認していないのに位置が割れる。
+## 待機中とリザルト中はまだ／もう陣営が無いので全員に見せる
+func _update_emote_label() -> void:
+	if sync_emote == Emote.NONE:
+		emote_label.visible = false
+		return
+	var visible_to_me := true
+	if GameManager.state == GameManager.State.PLAYING:
+		var my_id := String(name).to_int()
+		var local_id := multiplayer.get_unique_id()
+		visible_to_me = (my_id != GameManager.runner_id) == (local_id != GameManager.runner_id)
+	emote_label.visible = visible_to_me
+	if not visible_to_me:
+		return
+	emote_label.text = EMOTE_TEXT[sync_emote]
+	emote_label.modulate = EMOTE_COLOR[sync_emote]
 
 
 ## 壁の角に押し付けられて move_and_slide() が動けなくなった時の脱出。
@@ -402,9 +497,13 @@ func teleport(pos: Vector3) -> void:
 	dive_recover = 0.0
 	dive_cooldown = 0.0
 	stun_left = 0.0
+	stunned = false
 	item = Item.NONE
 	item_lock = 0.0
 	item_changed.emit(item)
+	sync_emote = Emote.NONE  # ラウンドをまたいで吹き出しを残さない
+	emote_left = 0.0
+	emote_cooldown = 0.0
 	_stuck_from = global_position
 	_stuck_kick_left = 0.0
 
@@ -575,8 +674,8 @@ func apply_stun(seconds: float) -> void:
 	if not is_multiplayer_authority():
 		return
 	stun_left = maxf(stun_left, seconds)
-	velocity.x = 0.0
-	velocity.z = 0.0
+	stunned = true
+	# 水平速度はここで殺さない。走っていた勢いのまま尻で滑らせる（SLIP_DRAG で減速する）
 	effect_gained.emit(Effect.STUN)
 
 

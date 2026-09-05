@@ -173,6 +173,8 @@ class Batch:
 			total += (_groups[key][1] as Array).size()
 		return "%d個 -> %d本" % [total, _groups.size()]
 
+	## 内部クラスからは外側の static func を呼べないので、ここだけは
+	## _set_subdiv() を使わず直接代入する（定数は外側から引ける）
 	static func _unit_mesh(kind: int, mat: Material) -> Mesh:
 		var mesh: Mesh
 		match kind:
@@ -193,24 +195,47 @@ class Batch:
 			Shape.PRISM:
 				var p := PrismMesh.new()
 				p.size = Vector3.ONE
+				p.subdivide_width = BATCH_BOX_SUBDIV
+				p.subdivide_height = BATCH_BOX_SUBDIV
+				p.subdivide_depth = BATCH_BOX_SUBDIV
 				mesh = p
 			_:
 				var b := BoxMesh.new()
 				b.size = Vector3.ONE
+				b.subdivide_width = BATCH_BOX_SUBDIV
+				b.subdivide_height = BATCH_BOX_SUBDIV
+				b.subdivide_depth = BATCH_BOX_SUBDIV
 				mesh = b
 		mesh.surface_set_material(0, mat)
 		return mesh
 
-## 丸物の分割数。Web 書き出しの予算があるので上げない
-const ROUND_SEGMENTS := 12
-const ROUND_RINGS := 6
+## 丸物の分割数。塔と配管の胴は MultiMesh へ集約済み、円錐の笠と球は
+## 個数が知れているので、頂点が増えてもドローコールは1本も増えない
+const ROUND_SEGMENTS := 20
+## リングだけ控えめなのは、潰した球（バンパー）が専用シェイプを持てず
+## create_convex_shape() で凸包を起こすため。頂点数が当たり判定のコストへ直結する。
+## シルエットの滑らかさは radial_segments がほぼ全部決めるので実害は無い
+const ROUND_RINGS := 8
+## 平らな面をこの長さごとに分割する。
+## gl_compatibility はフォグを頂点シェーダで計算するので、55m 四方の床を
+## 2枚の三角形で貼ると距離が対角線に沿って線形補間され、対角線の折れ目と
+## 段になった帯がそのまま画面に出る（旧 tests/shots/ground.png の赤い床）。
+##
+## 誤差は区間長の2乗で効くので、55m を 9m に割るだけで約37分の1になる。
+## 4.5m まで詰めた版と撮り比べたが画素の差はほぼ無く、三角形だけが
+## 1万5千本増えた。見た目が同じなら軽い方を採る。
+## 重いと感じたら上げるだけで全体の分割が一段荒くなる（レバーはこの1定数）
+const MESH_SEGMENT_M := 9.0
+## 1辺あたりの分割上限。外周壁(162m)でも 24 で頭打ちにする
+const MESH_SEGMENT_MAX := 24
+## MultiMesh の単位メッシュは 1x1x1 をインスタンス側で拡大するので実寸が無い。
+## 集約するプロップは 6〜9m しかないので固定値で足りる
+const BATCH_BOX_SUBDIV := 2
 const GUARD_THICK := 3.0  # 天面ガードの厚み。飛び乗った瞬間に必ず入る高さ
 ## 丸いプロップの直径は「壁の長さ」をそのまま使うと太すぎるので縮める
 const ROUND_PROP_SCALE := 0.55
 const CRATE_DEPTH := 3.4  # コンテナの奥行き。壁(1.2)より厚く、通路を潰さない程度
-const PATTERN_RES := 4        # 床の模様のピクセル数（4x4）
-const PATTERN_CONTRAST := 0.93  # 濃い側の明度。低くすると市松が強く出すぎる
-const NEON_ZONE := 5  # BOOST CIRCUIT。ネオンを使うのはここだけに絞る
+
 
 ## --- バンパー -----------------------------------------------------------
 ## 以前ここには当たり判定の無い緑のドームを飾りとして撒いていたが、
@@ -248,39 +273,30 @@ const FLOAT_SHADER := preload("res://scenes/decor_float.gdshader")
 
 
 static func build(map_root: Node3D, gimmick_root: Node3D, decor_root: Node3D) -> void:
-	var checker := _checker_texture()
 	var zone_mats: Array[StandardMaterial3D] = []
 	for idx in WorldData.ZONE_COUNT:
-		var m := pop_material(WorldData.ZONE_COLORS[idx])
-		_apply_checker(m, _zone_pattern(idx))
-		zone_mats.append(m)
+		zone_mats.append(pop_material(WorldData.ZONE_COLORS[idx]))
 	_build_slabs(map_root, zone_mats)
-	# スロープは「道」として床から浮き立つ暖色に（白系だと光を受けて飛んでしまう）
-	var ramp_mat := pop_material(Color(0.86, 0.5, 0.24))
-	_apply_checker(ramp_mat, checker)
-	_build_ramps(map_root, ramp_mat)
-	var wall_mat := pop_material(Color(0.32, 0.26, 0.48))
+	# スロープは設置されている各ゾーンのテーマ色で生成
+	_build_ramps(map_root, zone_mats)
+	var wall_mat := pop_material(Color(0.24, 0.18, 0.38))
 	_build_walls(map_root, wall_mat)
 	_build_wall_corners(map_root, wall_mat)
-	_build_parapets(map_root, pop_material(Color(0.94, 0.72, 0.32)))
+	_build_parapets(map_root, zone_mats)
 	# 後から置く物が先に置いた物へ重ならないよう、確定した位置を順に積み上げていく
-	var occupied := _build_gimmicks(gimmick_root)
+	var occupied := _build_gimmicks(gimmick_root, zone_mats)
 	# 滑り台の走路は「面」なので点列では守れない。矩形のキープアウトとして
 	# 後続の配置へ渡す（詳細は _slide_rects）
 	var slide_paths := _build_slides(map_root, gimmick_root)
 	var keepout := _slide_rects(slide_paths)
 	keepout.append_array(_landmark_rects())
 	_build_nav_links(gimmick_root, slide_paths)
-	occupied.append_array(
-		_build_cover(map_root, pop_material(Color(0.82, 0.62, 0.3)), occupied, keepout))
-	# 構造物はゾーンごとのアクセント色で建てる。
-	# 床（ZONE_COLORS）と分離した色にしないと、地形と一体化して形が読めない
+	# 構造物・遮蔽ブロック・バンパーは各ゾーンのテーマ色で統一して建てる
 	var accent_mats: Array[StandardMaterial3D] = []
 	for idx in WorldData.ZONE_COUNT:
-		# BOOST CIRCUIT だけネオンにして「サーキット」の性格を出す。
-		# ネオンは glow の閾値を超えて滲むので、広げると画面全体がボケる
-		accent_mats.append(neon_material(WorldData.ZONE_ACCENTS[idx]) if idx == NEON_ZONE
-			else soft_material(WorldData.ZONE_ACCENTS[idx]))
+		accent_mats.append(soft_material(WorldData.ZONE_COLORS[idx]))
+	occupied.append_array(
+		_build_cover(map_root, accent_mats, occupied, keepout))
 	# バンパーはプロップより先に建てて、自分の矩形を keepout へ積む。
 	# こうしないと後から建つ壁がバンパーにめり込む
 	_build_bumpers(map_root, accent_mats, occupied, keepout)
@@ -292,62 +308,20 @@ static func build(map_root: Node3D, gimmick_root: Node3D, decor_root: Node3D) ->
 	_build_decor(decor_root)
 
 
-## 床の模様。ワールド空間トライプラナーで貼るので UV 作成が不要になり、
-## 全てのスラブとスロープで模様が途切れずに繋がる。
-##
-## ゾーンごとに柄を変えて場所の見分けをつける。テクスチャは 4x4 ピクセルなので
-## 9枚あってもメモリは無視できるし、マテリアル数も増えない
-## （もともとゾーンごとに1個作っている）。
-## コントラストを弱くしてあるのは、市松が強いと「ふわふわ」を壊すため
-static func _zone_pattern(idx: int) -> ImageTexture:
-	var img := Image.create(PATTERN_RES, PATTERN_RES, false, Image.FORMAT_RGB8)
-	img.fill(Color.WHITE)
-	var dark := Color(PATTERN_CONTRAST, PATTERN_CONTRAST, PATTERN_CONTRAST)
-	for y in PATTERN_RES:
-		for x in PATTERN_RES:
-			var on := false
-			match idx:
-				0:  # CLOUD DECK    無地（雲の上なので柄なし）
-					on = false
-				1, 7:  # PIPE YARD / LIFT HARBOR  縦ストライプ
-					on = x % 2 == 0
-				3, 6:  # GARDEN GREEN / SPRING VALLEY  水玉
-					on = (x % 2 == 1) and (y % 2 == 1)
-				5:  # BOOST CIRCUIT  斜めストライプ（速度感）
-					on = (x + y) % 2 == 0
-				8:  # SKY STEPS      同心円の近似
-					on = maxi(absi(x - 1), absi(y - 1)) % 2 == 0
-				_:  # BLOCK PLAZA / CASTLE COURT  市松（基準）
-					on = ((x / 2) + (y / 2)) % 2 == 0
-			if on:
-				img.set_pixel(x, y, dark)
-	return ImageTexture.create_from_image(img)
-
-
-## 市松のみの汎用版。スロープと滑り台に使う
-static func _checker_texture() -> ImageTexture:
-	return _zone_pattern(4)
-
-
-static func _apply_checker(m: StandardMaterial3D, tex: Texture2D) -> void:
-	m.albedo_texture = tex
-	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	m.uv1_triplanar = true
-	m.uv1_world_triplanar = true
-	# 4x4 のテクスチャが 16m ごとに繰り返す = 1マス4m（従来と同じ大きさ）
-	m.uv1_scale = Vector3(0.0625, 0.0625, 0.0625)
-
-
 ## ノード名は明示的に振る。？ブロックの RPC はノードパスで解決されるため、
 ## 全ピアで名前が一致していることが前提になる（自動採番に任せない）。
-static func _build_gimmicks(root: Node3D) -> Array[Vector3]:
+static func _build_gimmicks(root: Node3D, mats: Array[StandardMaterial3D] = []) -> Array[Vector3]:
 	var occupied: Array[Vector3] = []
 	for i in WorldData.SPRING_PADS.size():
 		var e: Array = WorldData.SPRING_PADS[i]
-		occupied.append(_place(root, SPRING_SCENE, "SpringPad%d" % i, e))
+		var pos := _place(root, SPRING_SCENE, "SpringPad%d" % i, e)
+		_assert_clear_of_ramps(e[0], pos, "SpringPad%d" % i)
+		occupied.append(pos)
 	for i in WorldData.BOOST_PANELS.size():
 		var e: Array = WorldData.BOOST_PANELS[i]
-		occupied.append(_place(root, BOOST_SCENE, "BoostPanel%d" % i, e, e[3]))
+		var pos := _place(root, BOOST_SCENE, "BoostPanel%d" % i, e, e[3])
+		_assert_clear_of_ramps(e[0], pos, "BoostPanel%d" % i)
+		occupied.append(pos)
 	for i in WorldData.QUESTION_BLOCKS.size():
 		var e: Array = WorldData.QUESTION_BLOCKS[i]
 		occupied.append(_place(root, QBLOCK_SCENE, "QuestionBlock%d" % i, e))
@@ -356,7 +330,7 @@ static func _build_gimmicks(root: Node3D) -> Array[Vector3]:
 	for i in WorldData.MANHOLES.size():
 		var e: Array = WorldData.MANHOLES[i]
 		var pos := _place(root, MANHOLE_SCENE, "Manhole%d" % i, e)
-		_assert_manhole_flat(e[0], pos, "Manhole%d" % i)
+		_assert_clear_of_ramps(e[0], pos, "Manhole%d" % i)
 		occupied.append(pos)
 		manholes.append(root.get_node("Manhole%d" % i))
 	for i in range(0, manholes.size() - 1, 2):
@@ -370,6 +344,10 @@ static func _build_gimmicks(root: Node3D) -> Array[Vector3]:
 		n.position = WorldData.zone_point(e[0], e[1], e[3]) + Vector3(0, e[2], 0)
 		n.travel = Vector3(e[4], e[5], e[6])
 		n.period = e[7]
+		if not mats.is_empty() and e[0] < mats.size():
+			var mesh_inst := n.get_node_or_null("Mesh") as MeshInstance3D
+			if mesh_inst != null:
+				mesh_inst.material_override = mats[e[0]]
 		root.add_child(n)
 		# 開始位置だけでなく通り道の終端も押さえる。
 		# でないとリフトが往復する先に壁や遮蔽ブロックが建ってしまう
@@ -381,6 +359,10 @@ static func _build_gimmicks(root: Node3D) -> Array[Vector3]:
 		n.name = "RotatingPlatform%d" % i
 		n.position = WorldData.zone_point(e[0], e[1], e[3]) + Vector3(0, e[2], 0)
 		n.spin = e[4]
+		if not mats.is_empty() and e[0] < mats.size():
+			var mesh_inst := n.get_node_or_null("Mesh") as MeshInstance3D
+			if mesh_inst != null:
+				mesh_inst.material_override = mats[e[0]]
 		root.add_child(n)
 		occupied.append(n.position)
 	return occupied
@@ -452,18 +434,18 @@ static func pop_material(c: Color) -> StandardMaterial3D:
 	return m
 
 
-## ふわふわの基調材。白を混ぜて彩度を落とし、粗さを上げる。
-## 影側が沈まないよう、発光はアルベドより「明るい」色にする。
+## ふわふわの基調材。彩度を保ちつつ適度な粗さを設定。
+## 影側が沈まないよう、発光はアルベドよりわずかに明るい色にする。
 ## rim_enabled は Compatibility での挙動が不確実なので使わず、これで縁の明るさを作る
 static func soft_material(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
-	m.albedo_color = c.lerp(Color.WHITE, 0.08)
+	m.albedo_color = c.lerp(Color.WHITE, 0.02)
 	m.roughness = 0.95
 	m.metallic = 0.0
 	m.metallic_specular = 0.15
 	m.emission_enabled = true
-	m.emission = c.lerp(Color.WHITE, 0.3)
-	m.emission_energy_multiplier = 0.16
+	m.emission = c.lerp(Color.WHITE, 0.12)
+	m.emission_energy_multiplier = 0.14
 	return m
 
 
@@ -484,17 +466,21 @@ static func _build_slabs(root: Node3D, mats: Array[StandardMaterial3D]) -> void:
 		var ext := WorldData.zone_extent(idx)
 		var col: int = WorldData.ZONE_COL[idx]
 		var row: int = WorldData.ZONE_ROW[idx]
+		var ground_y: float = WorldData.ZONE_GROUND[idx]
 		var x0 := center.x - ext.x * 0.5
 		var x1 := center.x + ext.x * 0.5
 		var z0 := center.z - ext.y * 0.5
 		var z1 := center.z + ext.y * 0.5
-		if col > 0:
+		# 隣接ゾーンと同じ高さ（段差なし）の場合は、同一平面でのポリゴン重複による
+		# Z-fighting（点滅・ガビガビ）を防ぐため重ねしろをつけず突き合わせにする。
+		# 段差がある場合（崖）は隙間落下防止のため従来どおり重ねしろを設ける。
+		if col > 0 and absf(ground_y - WorldData.ZONE_GROUND[idx - 1]) >= 0.05:
 			x0 -= SEAM_OVERLAP
-		if col < 2:
+		if col < 2 and absf(ground_y - WorldData.ZONE_GROUND[idx + 1]) >= 0.05:
 			x1 += SEAM_OVERLAP
-		if row > 0:
+		if row > 0 and absf(ground_y - WorldData.ZONE_GROUND[idx - 3]) >= 0.05:
 			z0 -= SEAM_OVERLAP
-		if row < 2:
+		if row < 2 and absf(ground_y - WorldData.ZONE_GROUND[idx + 3]) >= 0.05:
 			z1 += SEAM_OVERLAP
 		var h: float = center.y - WorldData.SLAB_BOTTOM
 		_box(root, "Zone%d" % idx,
@@ -504,13 +490,13 @@ static func _build_slabs(root: Node3D, mats: Array[StandardMaterial3D]) -> void:
 
 ## 滑り台を架けた境界にはスロープを作らない。
 ## 歩いて降りられてしまうと滑り台を使う理由が無くなるため
-static func _build_ramps(root: Node3D, mat: Material) -> void:
+static func _build_ramps(root: Node3D, mats: Array[StandardMaterial3D]) -> void:
 	for pair in WorldData.RAMP_PAIRS_X:
 		if not _has_slide(pair[0], pair[1]):
-			_ramp(root, pair[0], pair[1], mat, true)
+			_ramp(root, pair[0], pair[1], mats, true)
 	for pair in WorldData.RAMP_PAIRS_Z:
 		if not _has_slide(pair[0], pair[1]):
-			_ramp(root, pair[0], pair[1], mat, false)
+			_ramp(root, pair[0], pair[1], mats, false)
 
 
 ## 順序を問わずこのゾーン対に滑り台があるか
@@ -524,12 +510,14 @@ static func _has_slide(a: int, b: int) -> bool:
 ## a は西/北側、b は東/南側のゾーン。
 ## スロープは境界から「低い側のゾーン」へ向かって伸ばすので、
 ## 高い側の崖のふちにぴたりと接続され、低い側の床に滑らかに着地する。
-static func _ramp(root: Node3D, a: int, b: int, mat: Material, along_x: bool) -> void:
+static func _ramp(root: Node3D, a: int, b: int, mats: Array[StandardMaterial3D], along_x: bool) -> void:
 	var ya: float = WorldData.ZONE_GROUND[a]
 	var yb: float = WorldData.ZONE_GROUND[b]
 	var rise := absf(yb - ya)
 	if rise < 0.05:
 		return  # 段差なし。床同士が直接つながっている
+	var lo := a if ya < yb else b
+	var mat: Material = mats[lo] if lo < mats.size() else null
 	var run := maxf(RAMP_MIN_RUN, rise * RAMP_RUN_PER_RISE)
 	var hyp := sqrt(run * run + rise * rise)
 	var angle := atan2(rise, run)
@@ -558,9 +546,9 @@ static func _low_side_index(a: int, along_x: bool) -> int:
 
 
 ## テーブルを編集して不変条件を破ったら、その場で落として気づけるようにする
-## (_assert_slide_fits と同じ方針)。マンホールはフタが地面と面一なので、
-## 傾斜の途中に置くと片側が浮く/めり込む見た目になる
-static func _assert_manhole_flat(idx: int, pos: Vector3, node_name: String) -> void:
+## (_assert_slide_fits と同じ方針)。マンホールやジャンプ台などのギミックは
+## 地面と面一に置かれる前提のため、傾斜の途中に置くとめり込みや動作不良の原因になる
+static func _assert_clear_of_ramps(idx: int, pos: Vector3, node_name: String) -> void:
 	for pair in WorldData.RAMP_PAIRS_X:
 		_assert_clear_of_ramp(idx, pos, pair[0], pair[1], true, node_name)
 	for pair in WorldData.RAMP_PAIRS_Z:
@@ -605,21 +593,22 @@ static func _assert_clear_of_ramp(idx: int, pos: Vector3, a: int, b: int,
 ##
 ## 柵は高い側の床に立てるので、低い側から見ると崖の上の手すりになる。
 ## 高さ 2.5m はジャンプ(1.38m)では越えられず、視線を切る 6m 級でもない
-static func _build_parapets(root: Node3D, mat: Material) -> void:
+static func _build_parapets(root: Node3D, mats: Array[StandardMaterial3D]) -> void:
 	for pair in WorldData.RAMP_PAIRS_X:
-		_parapet(root, pair[0], pair[1], mat, true)
+		_parapet(root, pair[0], pair[1], mats, true)
 	for pair in WorldData.RAMP_PAIRS_Z:
-		_parapet(root, pair[0], pair[1], mat, false)
+		_parapet(root, pair[0], pair[1], mats, false)
 
 
 ## a は西/北側、b は東/南側のゾーン。
 ## 境界の座標に沿って柵を伸ばし、通してよい場所だけ開口を残す
-static func _parapet(root: Node3D, a: int, b: int, mat: Material, along_x: bool) -> void:
+static func _parapet(root: Node3D, a: int, b: int, mats: Array[StandardMaterial3D], along_x: bool) -> void:
 	var ya: float = WorldData.ZONE_GROUND[a]
 	var yb: float = WorldData.ZONE_GROUND[b]
 	if absf(ya - yb) < PARAPET_MIN_DROP:
 		return  # 1〜2m の段差は普通に飛び降りてよい
 	var hi := a if ya > yb else b
+	var mat: Material = mats[hi] if hi < mats.size() else null
 	var boundary := -WorldData.BAND if _low_side_index(a, along_x) == 0 else WorldData.BAND
 	# 柵の長さ方向は高い側のゾーンの幅いっぱい
 	var perp_idx: int = WorldData.ZONE_ROW[hi] if along_x else WorldData.ZONE_COL[hi]
@@ -689,8 +678,8 @@ static func _parapet_span(root: Node3D, tag: String, n: int, along_x: bool, boun
 ## 連結は滑り台なしで成立している必要がある（_assert_slide_fits を参照）。
 static func _build_slides(map_root: Node3D, gimmick_root: Node3D) -> Array:
 	var paths: Array = []
-	var deck_mat := pop_material(Color(0.62, 0.88, 1.0))
-	var rail_mat := pop_material(Color(1.0, 0.62, 0.86))
+	var deck_mat := pop_material(Color(0.30, 0.74, 0.98))
+	var rail_mat := pop_material(Color(0.98, 0.34, 0.70))
 	for i in WorldData.SLIDES.size():
 		var pts := _slide_path(WorldData.SLIDES[i])
 		_slide_body(map_root, i, pts, deck_mat, rail_mat)
@@ -898,7 +887,7 @@ static func _build_wall_corners(root: Node3D, mat: Material) -> void:
 
 ## 遮蔽ブロック。配置は固定シードの乱数なので全ピアで同一になる。
 ## 実際に置けた位置を返し、壁がその上に重ならないようにする
-static func _build_cover(root: Node3D, mat: Material, occupied: Array[Vector3],
+static func _build_cover(root: Node3D, mats: Array[StandardMaterial3D], occupied: Array[Vector3],
 		keepout: Array) -> Array[Vector3]:
 	var placed: Array[Vector3] = []
 	var rng := RandomNumberGenerator.new()
@@ -906,6 +895,7 @@ static func _build_cover(root: Node3D, mat: Material, occupied: Array[Vector3],
 	for idx in WorldData.ZONE_COUNT:
 		var center := WorldData.zone_center(idx)
 		var ext := WorldData.zone_extent(idx)
+		var mat: Material = mats[idx] if idx < mats.size() else null
 		# スロープの取り付け部にかからないよう内側にマージンを取る
 		var mx := ext.x * 0.5 - 13.0
 		var mz := ext.y * 0.5 - 13.0
@@ -1380,6 +1370,7 @@ static func _wall_cap(body: StaticBody3D, wall_len: float, along_x: bool,
 	var size := Vector3(thick, WALL_CAP_HEIGHT, wall_len)
 	var prism := PrismMesh.new()
 	prism.size = size
+	_set_subdiv(prism, _subdiv(size.x), _subdiv(size.y), _subdiv(size.z))
 	prism.material = mat
 	var col := CollisionShape3D.new()
 	# メッシュから凸形状を起こすので、見た目と当たり判定が必ず一致する
@@ -1533,8 +1524,8 @@ static func _sphere(c: Color, emission := 0.6) -> Mesh:
 	var m := SphereMesh.new()
 	m.radius = 1.0
 	m.height = 2.0
-	m.radial_segments = 10
-	m.rings = 5
+	m.radial_segments = 16
+	m.rings = 8
 	var mat := pop_material(c)
 	mat.emission_energy_multiplier = emission
 	m.material = mat
@@ -1650,6 +1641,7 @@ static func _solid(root: Node3D, node_name: String, pos: Vector3, size: Vector3,
 		_:
 			var b := BoxMesh.new()
 			b.size = size
+			_set_subdiv(b, _subdiv(size.x), _subdiv(size.y), _subdiv(size.z))
 			mesh = b
 			var s := BoxShape3D.new()
 			s.size = size
@@ -1681,6 +1673,25 @@ static func _solid(root: Node3D, node_name: String, pos: Vector3, size: Vector3,
 	return body
 
 
+## 一辺の長さから分割数を決める。BoxMesh / PrismMesh の subdivide_* は
+## 「追加の切れ目の数」なので、n を返すと1辺あたり n+1 枚のクアッドになる。
+##
+## 分割が効くのはメッシュだけで、当たり判定とナビメッシュは動かない。
+## コリジョンは _solid() / _box() が同じ size から BoxShape3D を直接作るし、
+## ナビメッシュは静的コライダだけを見る（world.tscn の
+## geometry_parsed_geometry_type = 1）。だから通行・視線・CPU の経路は変わらない
+static func _subdiv(length: float) -> int:
+	return clampi(int(absf(length) / MESH_SEGMENT_M), 0, MESH_SEGMENT_MAX)
+
+
+## BoxMesh と PrismMesh は同じ3つのプロパティを持つが、共通の基底クラスが
+## PrimitiveMesh までしか無いので名前で代入する
+static func _set_subdiv(mesh: PrimitiveMesh, w: int, h: int, d: int) -> void:
+	mesh.set("subdivide_width", w)
+	mesh.set("subdivide_height", h)
+	mesh.set("subdivide_depth", d)
+
+
 ## 従来の呼び出し口。既存のコードは全てこちらを通る
 static func _box(root: Node3D, node_name: String, pos: Vector3, size: Vector3,
 		mat: Material, rot := Vector3.ZERO) -> StaticBody3D:
@@ -1691,6 +1702,7 @@ static func _box(root: Node3D, node_name: String, pos: Vector3, size: Vector3,
 	var mesh := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = size
+	_set_subdiv(box, _subdiv(size.x), _subdiv(size.y), _subdiv(size.z))
 	box.material = mat
 	mesh.mesh = box
 	body.add_child(mesh)

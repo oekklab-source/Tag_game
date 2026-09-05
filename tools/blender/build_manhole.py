@@ -1,4 +1,4 @@
-"""ワープ地点の光の柱（ビーコン・回転リング・舞う結晶）を一から組み立てて glTF に書き出すビルドスクリプト。
+"""ワープ地点の光の柱（ビーコン・舞う結晶）を一から組み立てて glTF に書き出すビルドスクリプト。
 
     blender -b -P tools/blender/build_manhole.py -- [--render <出力ディレクトリ>]
 
@@ -6,7 +6,7 @@
     tools/blender/manhole.blend       編集元（.gdignore で Godot のインポート対象外）
     assets/props/manhole.glb          Godot が読むモデル
 
-マンホール（枠・フタ・穴）を無くし、天へ伸びる光柱・回転リング・舞う結晶のみで構成する。
+マンホール（枠・フタ・穴）や足元のリングを無くし、天へ伸びる光柱・舞う結晶のみで構成する。
 フタが無く地面から光が立ち昇るため、ナビメッシュに穴を空けず、遠くからでも目立つ。
 """
 
@@ -27,11 +27,9 @@ SHARD_COUNT = 12
 
 # ---- 配色 ----
 COLORS = {
-    "HoloGold": (0.98, 0.72, 0.16),     # 回転リング
     "HoloCyan": (0.62, 0.92, 1.00),     # 光柱・結晶
 }
-# 金は「albedo * 光 + emission」の和が glow_hdr_threshold(1.0) を超えないところまで抑える
-EMISSION = {"HoloGold": 0.25, "HoloCyan": 2.6}
+EMISSION = {"HoloCyan": 2.6}
 
 
 # =====================================================================
@@ -127,25 +125,9 @@ def cleanup(obj):
     return obj
 
 
-def torus(name, z, major, minor, segments=32, rings=12):
-    """Z 軸まわりのトーラス。断面の円を閉じた輪として渡す。"""
-    profile = [(z + math.sin(2.0 * math.pi * i / rings) * minor,
-                major + math.cos(2.0 * math.pi * i / rings) * minor)
-               for i in range(rings)]
-    profile.append(profile[0])
-    return lathe(name, profile, segments)
-
-
 # =====================================================================
 # パーツ
 # =====================================================================
-
-def build_halo():
-    """足元に浮かぶ二重の回転リング。Godot 側で rotate_y する。"""
-    outer = torus("Halo", 0.15, 1.40, 0.045)
-    inner = torus("HaloInner", 0.35, 1.15, 0.035)
-    return paint(cleanup(join_into(outer, [inner])), "HoloGold")
-
 
 def build_beacon():
     """天へ伸びる光柱。上下のフタを付けない開いた筒にして、加算合成で溶かす。
@@ -189,7 +171,6 @@ def clear_scene():
 
 def build():
     clear_scene()
-    build_halo()
     build_beacon()
     build_shards()
     for obj in bpy.data.objects:

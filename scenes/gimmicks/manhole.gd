@@ -4,7 +4,7 @@ extends Area3D
 ##
 ## 地面にマンホール等の物理的な障害物や静的コリジョンを持たず、
 ## ナビメッシュに穴を空けないため、CPU もプレイヤーも普通に通過・利用できる。
-## 遠くからでも見つけられるよう、天へ伸びる光柱・回転リング・舞う結晶で構成されている。
+## 遠くからでも見つけられるよう、天へ伸びる光柱・舞う結晶で構成されている。
 ##
 ## 効果の適用は「そのボディの権威ピア」に限定する。ワープ後の位置は
 ## 既存の位置レプリケーションで他ピアへ伝わるため RPC は不要。
@@ -23,7 +23,7 @@ const CPU_EXIT_OFFSET := 4.0
 ## 位置を知らないはずの CPU が逃走者に引き寄せられる（全知の抜け道になる）
 const CPU_SHORTCUT_MIN := 15.0
 
-const HALO_SPIN := 0.8  # 回転リングの角速度(rad/s)
+const SHARDS_SPIN := 0.44  # 舞う結晶の角速度(rad/s)
 const BEACON_ENERGY_DEFAULT := 1.3
 const BEACON_ENERGY_BURST := 3.8
 
@@ -34,7 +34,6 @@ const GLOW_COLOR := Color(0.38, 0.80, 1.0)
 var pair: Node3D  # 対になるワープポータル（WorldBuilder が生成時に相互設定する）
 
 var _beacon: GeometryInstance3D
-var _halo: Node3D
 var _shards: Node3D
 var _beacon_mat: ShaderMaterial
 var _burst_tween: Tween
@@ -42,7 +41,6 @@ var _burst_tween: Tween
 
 func _ready() -> void:
 	var model: Node3D = $Model
-	_halo = model.find_child("Halo", true, false)
 	_shards = model.find_child("Shards", true, false)
 	_beacon = model.find_child("Beacon", true, false)
 	# glb のマテリアルは Principled BSDF 由来の不透明材なので、加算合成の自発光シェーダへ差し替える
@@ -51,18 +49,14 @@ func _ready() -> void:
 		_beacon_mat = _glow(_beacon, BEACON_ENERGY_DEFAULT, 14.0, 0.0, 0.35)
 	if _shards is GeometryInstance3D:
 		_glow(_shards as GeometryInstance3D, 1.0, 0.0, 0.25, 0.0)
-	if _halo is GeometryInstance3D:
-		(_halo as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	body_entered.connect(_on_body_entered)
 
 
 func _process(delta: float) -> void:
 	# 目印をゆっくり回して「生きている」と分からせる。当たり判定が無いので
 	# 全ピアで揃える必要がなく、各ピアの delta のままでよい
-	if _halo != null:
-		_halo.rotate_y(delta * HALO_SPIN)
 	if _shards != null:
-		_shards.rotate_y(delta * -HALO_SPIN * 0.55)
+		_shards.rotate_y(delta * -SHARDS_SPIN)
 
 
 ## 自発光シェーダマテリアルを生成して適用する
@@ -123,10 +117,10 @@ func _burst() -> void:
 			BEACON_ENERGY_BURST, BEACON_ENERGY_DEFAULT, 0.45
 		).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
-	# 足元の回転リングをポンと一瞬拡大して波紋のようなパルスを起こす
-	if _halo != null:
-		_halo.scale = Vector3.ONE * 1.35
-		_burst_tween.parallel().tween_property(_halo, "scale", Vector3.ONE, 0.45) \
+	# 舞う結晶を一瞬ふわっと広げて余韻を残すパルス演出
+	if _shards != null:
+		_shards.scale = Vector3.ONE * 1.25
+		_burst_tween.parallel().tween_property(_shards, "scale", Vector3.ONE, 0.45) \
 			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 

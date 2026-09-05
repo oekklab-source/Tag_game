@@ -27,6 +27,9 @@ properties/3/replication_mode = 1
 properties/4/path = NodePath(".:sync_air")
 properties/4/spawn = true
 properties/4/replication_mode = 2
+properties/5/path = NodePath(".:stunned")
+properties/5/spawn = true
+properties/5/replication_mode = 2
 
 [node name="CPURunner" type="CharacterBody3D"]
 collision_layer = 2
@@ -48,9 +51,13 @@ shape = SubResource("tag_shape")
 ; モデルが実寸（全高1.74m）なので拡大は不要
 [node name="Humanoid" parent="." instance=ExtResource("2_humanoid")]
 
+; 経路点の「到達した」判定は 3D 距離で行われるが、焼かれたナビメッシュは床より
+; 約1m 高い所にある。0.6 のままだと水平にどれだけ寄っても到達扱いにならず、
+; 経路点が進まないまま同じ場所で前後に振動する（ダッシュ時に顕著）。
+; 逃走者は鬼より速い局面が多いので、ここは広めに取る
 [node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
-path_desired_distance = 0.6
-target_desired_distance = 0.8
+path_desired_distance = 1.5
+target_desired_distance = 1.5
 
 [node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
 root_path = NodePath("..")

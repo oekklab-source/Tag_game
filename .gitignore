@@ -21,3 +21,4 @@ export/
 # 確認用に生成される PNG（tests/screenshot.tscn --shots、build_*.py --render の出力）
 tests/shots/
 tools/blender/renders/
+tools/blender/preview/
