@@ -22,6 +22,7 @@ signal leaderboard_loaded(entries: Array)
 signal leaderboard_score_uploaded(success: bool, score: int)
 
 const CREDENTIALS_PATH := "res://eos_credentials.cfg"
+const SYNC_PROFILE_TIMEOUT_SEC := 8.0
 
 var is_eos_available: bool = false
 var product_user_id: String = ""
@@ -72,7 +73,7 @@ func _init_eos() -> void:
 	# EOS Player Data Storageとのプロフィール同期。ProfileManagerは既にローカルの
 	# load_profile()を終えているので(autoload順で先に_ready()が走る)、
 	# ここではローカル読み込み後の状態を前提にクラウドとマージ/初回アップロードする
-	await sync_profile_with_cloud()
+	await _sync_profile_with_cloud_bounded()
 
 	eos_initialized.emit(true)
 
@@ -337,6 +338,26 @@ func cloud_file_timestamp() -> int:
 	if not is_eos_available:
 		return 0
 	return await HPlayerDataStorage.get_file_timestamp_async(CLOUD_PROFILE_FILENAME)
+
+
+## sync_profile_with_cloud()をタイムアウト付きで実行する。
+## 実機検証でPDS書き込み/読み込みが応答なくハングする既知の問題を確認済みのため
+## (Client PolicyでPDS機能が未有効な場合など)、eos_initialized発火が
+## 永久にブロックされないようにする。ハングした場合、同期処理はバックグラウンドで
+## 動き続けるが(いつか完了すればProfileManager側に反映される)、
+## 起動フローはそれを待たずに先へ進む。
+func _sync_profile_with_cloud_bounded() -> void:
+	var state := {"done": false}
+	var run := func() -> void:
+		await sync_profile_with_cloud()
+		state["done"] = true
+	run.call()
+	var elapsed := 0.0
+	while not state["done"] and elapsed < SYNC_PROFILE_TIMEOUT_SEC:
+		await get_tree().create_timer(0.5).timeout
+		elapsed += 0.5
+	if not state["done"]:
+		print("[EosManager] sync_profile_with_cloud() timed out after %.1fs (PDS may be unresponsive). Continuing without waiting." % SYNC_PROFILE_TIMEOUT_SEC)
 
 
 ## ProfileManagerのローカル状態とEOS Player Data Storageを同期する。
