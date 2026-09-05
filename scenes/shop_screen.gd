@@ -203,11 +203,14 @@ func _open_gift_picker(kind: StringName, id: StringName) -> void:
 	for child in gift_friend_list.get_children():
 		child.queue_free()
 
-	var friends := FriendManager.get_friends()
+	var friends := FriendManager.get_steam_friends_for_gifting()
 	var online_friends := friends.filter(func(f): return f.get("online", false))
 	if online_friends.is_empty():
 		var empty_lbl := Label.new()
-		empty_lbl.text = "オンラインのフレンドがいません。プレゼントは両者オンライン中のみ贈れます。"
+		if not SteamManager.is_steam_available:
+			empty_lbl.text = "フレンドへの直接プレゼント配信は現在Steam接続時のみ対応しています。"
+		else:
+			empty_lbl.text = "オンラインのフレンドがいません。プレゼントは両者オンライン中のみ贈れます。"
 		empty_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 		gift_friend_list.add_child(empty_lbl)
 	else:

@@ -1,30 +1,130 @@
 extends Node
 
-## ④Steam Friends API のラッパー Autoload。SteamManager と同じ方針
-## （Steam無効時はモックデータでフォールバックし、クラッシュを防ぐ）に倣う。
+## ⑤フレンド機能 Autoload。EOS Product User ID(PUID)をキーにした自前の
+## フレンドリストシステム(service/friend-api/、Cloudflare Workers)を使う。
 ##
-## 実装注意: 以下で使う Steam.* API 名（getFriendCount / getFriendByIndex /
-## getFriendPersonaName / getFriendPersonaState / inviteUserToLobby）は
-## GodotSteam の一般的なバインディング名。addons/godotsteam はコンパイル済み
-## GDExtensionのためテキスト検索で事前確認できておらず、導入バージョン(4.22)の
-## 実際のメソッド一覧をGodotエディタのオートコンプリートで確認し、名称が異なる
-## 場合はここだけ調整すること。
+## EOS純正のFriends APIは使わない: Epic Account Services(EAS)ログインが必須で、
+## Steam/itch.io経由でプレイする大多数のプレイヤーはEpicアカウントを持っていない
+## ため。代わりにサーバー側生成の不透明なフレンドコードで1:1追加する方式にし、
+## PUID自体は列挙・検索できないようにしてある(詳細はfriend-api/README.md)。
+##
+## EosManager/steam_manager.gdと同じ方針(バックエンド無効時はモックデータで
+## フォールバックし、クラッシュを防ぐ)に倣う。USE_LIVE_FRIEND_BACKENDは
+## PurchaseManager.USE_LIVE_PURCHASESと同じ「デプロイ・動作確認が済むまでfalse」
+## のロールアウト規約。
 
-## GodotSteam の EFriendFlags 相当。フレンドのみを列挙する（k_EFriendFlagImmediate）
+const USE_LIVE_FRIEND_BACKEND := false
+
+## GodotSteam の EFriendFlags 相当。フレンドのみを列挙する（k_EFriendFlagImmediate）。
+## get_steam_friends_for_gifting() 専用（下記参照）
 const FRIEND_FLAG_IMMEDIATE := 4
 
 ## EPersonaState 相当。0=Offline
 const PERSONA_STATE_OFFLINE := 0
 
 
-## ④フレンド一覧を返す。各要素: {steam_id, name, online, state}
+## ⑤自分のフレンドコードを取得/生成する。フレンド画面が開いた際に呼ぶ。
+## 失敗時は空文字列を返す(クラッシュしない)
+func sync_with_backend() -> String:
+	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
+		var res := await FriendBackendClient.sync(self, EosManager.product_user_id, ProfileManager.player_name)
+		if not res.get("api_ok", false):
+			return ""
+		return String(res.get("friend_code", ""))
+	return "DEV12345"
+
+
+## ⑤フレンド一覧を返す。各要素: {id: String(PUID), name, online}
+## online は現時点では常にfalse(v1では在席状況を追跡しない、friend-api/README.md参照)
 func get_friends() -> Array[Dictionary]:
-	if SteamManager.is_steam_available and Engine.has_singleton("Steam"):
-		return _get_friends_from_steam()
+	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
+		var res := await FriendBackendClient.list_friends(self, EosManager.product_user_id)
+		if not res.get("api_ok", false):
+			return []
+		var out: Array[Dictionary] = []
+		for f in res.get("friends", []):
+			out.append({"id": String(f.get("puid", "")), "name": String(f.get("name", "Friend")), "online": false})
+		return out
 	return _mock_friends()
 
 
-func _get_friends_from_steam() -> Array[Dictionary]:
+## ⑤自分に届いている保留中のフレンドリクエスト一覧
+func get_pending_requests() -> Array[Dictionary]:
+	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
+		var res := await FriendBackendClient.list_requests(self, EosManager.product_user_id)
+		if not res.get("api_ok", false):
+			return []
+		var out: Array[Dictionary] = []
+		for r in res.get("requests", []):
+			out.append({
+				"request_id": String(r.get("request_id", "")),
+				"from_puid": String(r.get("from_puid", "")),
+				"from_name": String(r.get("from_name", "Friend")),
+			})
+		return out
+	return [{"request_id": "mock-request-1", "from_puid": "mock-puid-9", "from_name": "MockRequester"}]
+
+
+## ⑤フレンドコードを使ってリクエストを送る。戻り値: {ok, target_name, reason}
+func send_friend_request(code: String) -> Dictionary:
+	if code.is_empty():
+		return {"ok": false, "target_name": "", "reason": "invalid_code"}
+	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
+		var res := await FriendBackendClient.send_request(self, EosManager.product_user_id, code)
+		if not res.get("api_ok", false):
+			return {"ok": false, "target_name": "", "reason": String(res.get("reason", "network_error"))}
+		return {"ok": true, "target_name": String(res.get("target_name", "")), "reason": ""}
+	return {"ok": true, "target_name": "MockFriend", "reason": ""}
+
+
+## ⑤フレンドリクエストに応答する(承諾/拒否)
+func respond_to_request(request_id: String, accept: bool) -> bool:
+	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
+		var res := await FriendBackendClient.respond_request(self, EosManager.product_user_id, request_id, accept)
+		return res.get("api_ok", false) and res.get("ok", false)
+	return true
+
+
+## ⑤フレンドを解除する(双方向)
+func remove_friend(friend_puid: String) -> bool:
+	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
+		var res := await FriendBackendClient.remove_friend(self, EosManager.product_user_id, friend_puid)
+		return res.get("api_ok", false) and res.get("ok", false)
+	return true
+
+
+## ⑤自分がロビー中の場合のみ、接続先アドレスをクリップボードにコピーする。
+## EOS Lobbiesにはpushでの招待APIが無いため、既存のDirectConnect導線に
+## 相手が貼り付けられるようにする代替手段(配信確認はできない)
+func invite_to_lobby() -> bool:
+	if EosManager.current_lobby_id.is_empty():
+		return false
+	if EosManager.is_eos_available:
+		var addr := await EosManager.await_host_addr(EosManager.current_lobby_id)
+		if addr.is_empty():
+			return false
+		DisplayServer.clipboard_set(addr)
+		return true
+	DisplayServer.clipboard_set("127.0.0.1")
+	return true
+
+
+## Steam無効時、⑤のUIをオフラインでも確認できるようにするモックフレンド一覧
+func _mock_friends() -> Array[Dictionary]:
+	return [
+		{"id": "mock-puid-1", "name": "SpeedMaster", "online": true},
+		{"id": "mock-puid-2", "name": "Ninja_Shadow", "online": false},
+		{"id": "mock-puid-3", "name": "ChillRunner", "online": true},
+	]
+
+
+## ③プレゼント配送専用のフレンド取得経路。GiftManager.send_gift()はSteamの
+## 生P2Pパケット送信(Steamネイティブint id前提)のままEOS P2Pへは未移行のため、
+## PUIDベースの新フレンドAPI(get_friends()、id:String)とは完全に別系統として
+## 隔離する。Steam無効時は[]を返し、呼び出し側(shop_screen.gd)がその旨を表示する
+func get_steam_friends_for_gifting() -> Array[Dictionary]:
+	if not (SteamManager.is_steam_available and Engine.has_singleton("Steam")):
+		return []
 	var steam = Engine.get_singleton("Steam")
 	var out: Array[Dictionary] = []
 	var count: int = steam.getFriendCount(FRIEND_FLAG_IMMEDIATE)
@@ -35,7 +135,6 @@ func _get_friends_from_steam() -> Array[Dictionary]:
 			"steam_id": friend_id,
 			"name": steam.getFriendPersonaName(friend_id),
 			"online": state != PERSONA_STATE_OFFLINE,
-			"state": state,
 		})
 	out.sort_custom(func(a, b):
 		if a.online != b.online:
@@ -43,23 +142,3 @@ func _get_friends_from_steam() -> Array[Dictionary]:
 		return String(a.name) < String(b.name)
 	)
 	return out
-
-
-## Steam無効時、④のUIをオフラインでも確認できるようにするモックフレンド一覧
-func _mock_friends() -> Array[Dictionary]:
-	return [
-		{"steam_id": 900001, "name": "SpeedMaster", "online": true, "state": 1},
-		{"steam_id": 900002, "name": "Ninja_Shadow", "online": false, "state": 0},
-		{"steam_id": 900003, "name": "ChillRunner", "online": true, "state": 1},
-	]
-
-
-## ④自分がロビー中の場合のみ、フレンドをロビーに招待する
-func invite_to_lobby(friend_steam_id: int) -> bool:
-	if SteamManager.current_lobby_id == 0:
-		return false
-	if SteamManager.is_steam_available and Engine.has_singleton("Steam"):
-		var steam = Engine.get_singleton("Steam")
-		return steam.inviteUserToLobby(SteamManager.current_lobby_id, friend_steam_id)
-	# オフラインモック: 招待自体は成功したことにする（UI確認用）
-	return true

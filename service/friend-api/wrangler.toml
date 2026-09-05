@@ -1,0 +1,16 @@
+name = "tag-game-friend-api"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# KVスキーマ:
+#   puid:<puid>      -> {display_name, code}                         (/sync)
+#   code:<code>      -> <puid>                                       (/sync, フレンドコードからの逆引き専用)
+#   requests:<puid>  -> [{request_id, from_puid, from_name, created_at}]  (/send-request, /respond-request)
+#   friends:<puid>   -> [{puid, name}]                                (/respond-request accept, /remove-friend)
+#   rl:<ip>:<date>   -> カウント文字列(TTL2日)                        (/send-requestのレート制限)
+# `wrangler kv namespace create FRIEND_KV` で作成し、id をここに設定する
+[[kv_namespaces]]
+binding = "FRIEND_KV"
+id = "REPLACE_WITH_REAL_KV_NAMESPACE_ID"
+
+# secretsは不要(v1: 外部API呼び出し・Webhook署名検証がないため)

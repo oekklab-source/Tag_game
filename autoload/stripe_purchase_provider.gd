@@ -122,32 +122,6 @@ func _clear_pending() -> void:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(PENDING_PURCHASE_PATH))
 
 
-## service/commerce-api/ の1エンドポイントをPOSTで呼ぶ。ネットワーク層が成功し
-## JSONとして解釈できた場合のみ api_ok=true を含めてレスポンスをそのまま返す
+## service/commerce-api/ の1エンドポイントをPOSTで呼ぶ
 func _call_api(endpoint: String, body: Dictionary) -> Dictionary:
-	var http := HTTPRequest.new()
-	_host.add_child(http)
-	var err := http.request(
-		COMMERCE_API_BASE_URL + endpoint,
-		["Content-Type: application/json"],
-		HTTPClient.METHOD_POST,
-		JSON.stringify(body)
-	)
-	if err != OK:
-		http.queue_free()
-		return {"api_ok": false, "reason": "network_error"}
-
-	var args: Array = await http.request_completed
-	http.queue_free()
-	var result_code: int = args[0]
-	var response_code: int = args[1]
-	var response_body: PackedByteArray = args[3]
-	if result_code != HTTPRequest.RESULT_SUCCESS or response_code != 200:
-		return {"api_ok": false, "reason": "network_error"}
-
-	var json := JSON.new()
-	if json.parse(response_body.get_string_from_utf8()) != OK or typeof(json.data) != TYPE_DICTIONARY:
-		return {"api_ok": false, "reason": "network_error"}
-	var data: Dictionary = json.data
-	data["api_ok"] = true
-	return data
+	return await HttpJsonClient.post_json(_host, COMMERCE_API_BASE_URL + endpoint, body)
