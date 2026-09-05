@@ -193,7 +193,7 @@ func _on_purchase_failed(reason: String) -> void:
 	status_label.text = FAILURE_MESSAGES.get(reason, reason)
 
 
-## ③プレゼント相手選択ピッカーを開く（オンラインのフレンドのみ表示）
+## ③プレゼント相手選択ピッカーを開く（登録済みフレンド全員を表示、送信結果で成否を判定する）
 func _open_gift_picker(kind: StringName, id: StringName) -> void:
 	_pending_gift_kind = kind
 	_pending_gift_id = id
@@ -203,18 +203,14 @@ func _open_gift_picker(kind: StringName, id: StringName) -> void:
 	for child in gift_friend_list.get_children():
 		child.queue_free()
 
-	var friends := FriendManager.get_steam_friends_for_gifting()
-	var online_friends := friends.filter(func(f): return f.get("online", false))
-	if online_friends.is_empty():
+	var friends := await FriendManager.get_friends()
+	if friends.is_empty():
 		var empty_lbl := Label.new()
-		if not SteamManager.is_steam_available:
-			empty_lbl.text = "フレンドへの直接プレゼント配信は現在Steam接続時のみ対応しています。"
-		else:
-			empty_lbl.text = "オンラインのフレンドがいません。プレゼントは両者オンライン中のみ贈れます。"
+		empty_lbl.text = "フレンドがいません。プレゼントを贈るにはまずフレンド登録してください。"
 		empty_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 		gift_friend_list.add_child(empty_lbl)
 	else:
-		for f in online_friends:
+		for f in friends:
 			var row := HBoxContainer.new()
 			row.add_theme_constant_override("separation", 12)
 
@@ -225,7 +221,7 @@ func _open_gift_picker(kind: StringName, id: StringName) -> void:
 
 			var send_btn := Button.new()
 			send_btn.text = "贈る"
-			send_btn.pressed.connect(_on_send_gift_pressed.bind(int(f.get("steam_id", 0)), String(f.get("name", "Friend"))))
+			send_btn.pressed.connect(_on_send_gift_pressed.bind(String(f.get("id", "")), String(f.get("name", "Friend"))))
 			row.add_child(send_btn)
 
 			gift_friend_list.add_child(row)
@@ -237,7 +233,7 @@ func _close_gift_picker() -> void:
 	gift_overlay.hide()
 
 
-func _on_send_gift_pressed(friend_steam_id: int, friend_name: String) -> void:
+func _on_send_gift_pressed(friend_puid: String, friend_name: String) -> void:
 	var kind := _pending_gift_kind
 	var id := _pending_gift_id
 	_close_gift_picker()
@@ -247,12 +243,12 @@ func _on_send_gift_pressed(friend_steam_id: int, friend_name: String) -> void:
 		return
 
 	status_label.text = "%s さんに送信中..." % friend_name
-	var ok: bool = await GiftManager.send_gift(friend_steam_id, kind, id)
+	var ok: bool = await GiftManager.send_gift(friend_puid, kind, id)
 	if ok:
 		status_label.text = "%s さんにプレゼントを贈りました！" % friend_name
 	else:
 		PurchaseManager.refund_gift(kind, id)
-		status_label.text = "%s さんに届けられませんでした（オフラインの可能性があります）。ジェムは返金されました。" % friend_name
+		status_label.text = "%s さんに届けられませんでした（相手が起動していないか接続できませんでした）。ジェムは返金されました。" % friend_name
 
 
 func _on_gift_received(kind: StringName, id: StringName, from_name: String) -> void:

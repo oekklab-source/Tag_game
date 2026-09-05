@@ -15,13 +15,6 @@ extends Node
 
 const USE_LIVE_FRIEND_BACKEND := false
 
-## GodotSteam の EFriendFlags 相当。フレンドのみを列挙する（k_EFriendFlagImmediate）。
-## get_steam_friends_for_gifting() 専用（下記参照）
-const FRIEND_FLAG_IMMEDIATE := 4
-
-## EPersonaState 相当。0=Offline
-const PERSONA_STATE_OFFLINE := 0
-
 
 ## ⑤自分のフレンドコードを取得/生成する。フレンド画面が開いた際に呼ぶ。
 ## 失敗時は空文字列を返す(クラッシュしない)
@@ -116,29 +109,3 @@ func _mock_friends() -> Array[Dictionary]:
 		{"id": "mock-puid-2", "name": "Ninja_Shadow", "online": false},
 		{"id": "mock-puid-3", "name": "ChillRunner", "online": true},
 	]
-
-
-## ③プレゼント配送専用のフレンド取得経路。GiftManager.send_gift()はSteamの
-## 生P2Pパケット送信(Steamネイティブint id前提)のままEOS P2Pへは未移行のため、
-## PUIDベースの新フレンドAPI(get_friends()、id:String)とは完全に別系統として
-## 隔離する。Steam無効時は[]を返し、呼び出し側(shop_screen.gd)がその旨を表示する
-func get_steam_friends_for_gifting() -> Array[Dictionary]:
-	if not (SteamManager.is_steam_available and Engine.has_singleton("Steam")):
-		return []
-	var steam = Engine.get_singleton("Steam")
-	var out: Array[Dictionary] = []
-	var count: int = steam.getFriendCount(FRIEND_FLAG_IMMEDIATE)
-	for i in range(count):
-		var friend_id: int = steam.getFriendByIndex(i, FRIEND_FLAG_IMMEDIATE)
-		var state: int = steam.getFriendPersonaState(friend_id)
-		out.append({
-			"steam_id": friend_id,
-			"name": steam.getFriendPersonaName(friend_id),
-			"online": state != PERSONA_STATE_OFFLINE,
-		})
-	out.sort_custom(func(a, b):
-		if a.online != b.online:
-			return a.online
-		return String(a.name) < String(b.name)
-	)
-	return out

@@ -1,6 +1,6 @@
 extends Node
 
-## ③プレゼント機能。Steamの P2P Networking(SteamNetworking) を使い、
+## ③プレゼント機能。EOS P2P(EOSGMultiplayerPeer, meshモード)を使い、
 ## 送受信とも「相手がオンラインでその場にいる」場合のみ配信する（非同期メールボックスは
 ## サーバーが無いため今回は実装しない）。
 ##
@@ -8,55 +8,66 @@ extends Node
 ## 将来サーバーを導入して非同期化する際も同じ形をそのままメールボックスの1レコードとして
 ## 転用できるようにしてある。
 ##
-## 実装注意: sendP2PPacket / readP2PPacket / getAvailableP2PPacketSize /
-## acceptP2PSessionWithUser / p2p_session_request は GodotSteam の一般的な
-## バインディング名。addons/godotsteam はコンパイル済みGDExtensionのため事前の
-## テキスト検索では確認できておらず、導入バージョン(4.22)の実際のメソッド一覧を
-## Godotエディタのオートコンプリートで確認し、名称が異なる場合はここだけ調整すること。
+## 実装注意: _gift_peer(EOSGMultiplayerPeer)は「gift」ソケットのmeshピアとして
+## GiftManagerだけが所有・ポーリングする専用インスタンス。get_tree().get_multiplayer()の
+## multiplayer_peerには絶対に代入しない（NetworkManagerのWebSocketMultiplayerPeerが
+## 実際のゲームプレイ通信で既にそこを占有しているため）。EosManager.eos_initialized(true)を
+## 合図に生成し、以降は_process()で手動poll/get_packet/put_packetする、
+## Steam実装と同じ「常時ポーリング」方式を踏襲する。
 
 signal gift_received(kind: StringName, id: StringName, from_name: String)
 
-const GIFT_CHANNEL := 0
+const GIFT_SOCKET_ID := "gift"
 const ACK_TIMEOUT := 5.0
 const ACK_POLL_INTERVAL := 0.25
 
-# Steamworks EP2PSend 相当（k_EP2PSendReliable）
-const P2P_SEND_RELIABLE := 2
-
+var _gift_peer: EOSGMultiplayerPeer = null
 var _pending_acks: Dictionary = {} # nonce(String) -> bool(受信済みか)
 
 
 func _ready() -> void:
-	if Engine.has_singleton("Steam"):
-		var steam = Engine.get_singleton("Steam")
-		if steam.has_signal("p2p_session_request"):
-			steam.p2p_session_request.connect(_on_p2p_session_request)
+	EosManager.eos_initialized.connect(_on_eos_initialized)
+	if EosManager.is_eos_available:
+		_on_eos_initialized(true)
+
+
+func _on_eos_initialized(success: bool) -> void:
+	if not success or _gift_peer != null:
+		return
+	var peer := EOSGMultiplayerPeer.new()
+	var err: int = peer.create_mesh(GIFT_SOCKET_ID)
+	if err != OK:
+		push_warning("[GiftManager] EOSGMultiplayerPeer.create_mesh failed: %s" % err)
+		return
+	peer.set_auto_accept_connection_requests(true)
+	_gift_peer = peer
 
 
 func _process(_delta: float) -> void:
-	if not (SteamManager.is_steam_available and Engine.has_singleton("Steam")):
+	if _gift_peer == null:
 		return
-	var steam = Engine.get_singleton("Steam")
-	var packet_size: int = steam.getAvailableP2PPacketSize(GIFT_CHANNEL)
-	while packet_size > 0:
-		var result: Dictionary = steam.readP2PPacket(packet_size, GIFT_CHANNEL)
-		_handle_packet(result)
-		packet_size = steam.getAvailableP2PPacketSize(GIFT_CHANNEL)
+	_gift_peer.poll()
+	_drain_incoming_packets()
 
 
-func _on_p2p_session_request(remote_id: int) -> void:
-	var steam = Engine.get_singleton("Steam")
-	steam.acceptP2PSessionWithUser(remote_id)
+func _drain_incoming_packets() -> void:
+	while _gift_peer.get_available_packet_count() > 0:
+		var sender_pid: int = _gift_peer.get_packet_peer()
+		var data: PackedByteArray = _gift_peer.get_packet()
+		_handle_packet(sender_pid, data)
 
 
-## ③指定フレンドへアイテムを贈る。ジェムの消費・払い戻しは呼び出し側
+## ③指定フレンド(EOS PUID)へアイテムを贈る。ジェムの消費・払い戻しは呼び出し側
 ## （PurchaseManager.spend_for_gift / refund_gift）の責務で、ここでは配信のみ行う。
-## 戻り値: 配信（ack受領）に成功したら true。Steam無効時や相手がオフラインの場合は false
-func send_gift(friend_steam_id: int, kind: StringName, id: StringName) -> bool:
-	if not (SteamManager.is_steam_available and Engine.has_singleton("Steam")):
+## 戻り値: 配信（ack受領）に成功したら true。EOS無効時や相手に接続できない場合は false
+func send_gift(friend_puid: String, kind: StringName, id: StringName) -> bool:
+	if _gift_peer == null or friend_puid.is_empty():
 		return false
-	var steam = Engine.get_singleton("Steam")
-	var nonce := "%d_%d" % [Time.get_ticks_usec(), friend_steam_id]
+
+	if not _gift_peer.has_user_id(friend_puid):
+		_gift_peer.add_mesh_peer(friend_puid)
+
+	var nonce := "%d_%s" % [Time.get_ticks_usec(), friend_puid]
 	var payload := {
 		"type": "gift",
 		"kind": String(kind),
@@ -65,25 +76,32 @@ func send_gift(friend_steam_id: int, kind: StringName, id: StringName) -> bool:
 		"nonce": nonce,
 	}
 	var bytes := JSON.stringify(payload).to_utf8_buffer()
-	var sent: bool = steam.sendP2PPacket(friend_steam_id, bytes, P2P_SEND_RELIABLE, GIFT_CHANNEL)
-	if not sent:
-		return false
 
 	_pending_acks[nonce] = false
+	var sent := false
 	var elapsed := 0.0
 	while elapsed < ACK_TIMEOUT:
+		_gift_peer.poll()
+		_drain_incoming_packets()
+
+		if not sent:
+			var pid: int = _gift_peer.get_peer_id(friend_puid)
+			if pid != -1:
+				_gift_peer.set_target_peer(pid)
+				sent = _gift_peer.put_packet(bytes) == OK
+
 		if _pending_acks.get(nonce, false):
 			_pending_acks.erase(nonce)
 			return true
+
 		await get_tree().create_timer(ACK_POLL_INTERVAL).timeout
 		elapsed += ACK_POLL_INTERVAL
+
 	_pending_acks.erase(nonce)
 	return false
 
 
-func _handle_packet(result: Dictionary) -> void:
-	var data: PackedByteArray = result.get("data", PackedByteArray())
-	var remote_id: int = int(result.get("remote_steam_id", 0))
+func _handle_packet(sender_pid: int, data: PackedByteArray) -> void:
 	var json := JSON.new()
 	if json.parse(data.get_string_from_utf8()) != OK:
 		return
@@ -93,14 +111,14 @@ func _handle_packet(result: Dictionary) -> void:
 
 	match String(payload.get("type", "")):
 		"gift":
-			_on_gift_packet(remote_id, payload)
+			_on_gift_packet(sender_pid, payload)
 		"gift_ack":
 			var nonce := str(payload.get("nonce", ""))
 			if _pending_acks.has(nonce):
 				_pending_acks[nonce] = true
 
 
-func _on_gift_packet(remote_id: int, payload: Dictionary) -> void:
+func _on_gift_packet(sender_pid: int, payload: Dictionary) -> void:
 	var kind := StringName(str(payload.get("kind", "")))
 	var id := StringName(str(payload.get("id", "")))
 	var from_name := String(payload.get("from_name", "フレンド"))
@@ -120,12 +138,12 @@ func _on_gift_packet(remote_id: int, payload: Dictionary) -> void:
 		return
 
 	gift_received.emit(kind, id, from_name)
-	_send_ack(remote_id, payload)
+	_send_ack(sender_pid, payload)
 
 
-func _send_ack(remote_id: int, payload: Dictionary) -> void:
-	if not Engine.has_singleton("Steam"):
+func _send_ack(sender_pid: int, payload: Dictionary) -> void:
+	if _gift_peer == null:
 		return
-	var steam = Engine.get_singleton("Steam")
 	var ack := {"type": "gift_ack", "nonce": payload.get("nonce", "")}
-	steam.sendP2PPacket(remote_id, JSON.stringify(ack).to_utf8_buffer(), P2P_SEND_RELIABLE, GIFT_CHANNEL)
+	_gift_peer.set_target_peer(sender_pid)
+	_gift_peer.put_packet(JSON.stringify(ack).to_utf8_buffer())
