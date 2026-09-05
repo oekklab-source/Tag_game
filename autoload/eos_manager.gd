@@ -68,6 +68,12 @@ func _init_eos() -> void:
 	is_eos_available = true
 	product_user_id = HAuth.product_user_id
 	print("[EosManager] EOS initialized successfully. product_user_id=%s" % product_user_id)
+
+	# EOS Player Data Storageとのプロフィール同期。ProfileManagerは既にローカルの
+	# load_profile()を終えているので(autoload順で先に_ready()が走る)、
+	# ここではローカル読み込み後の状態を前提にクラウドとマージ/初回アップロードする
+	await sync_profile_with_cloud()
+
 	eos_initialized.emit(true)
 
 
@@ -303,28 +309,52 @@ func upload_rating(new_rating: int) -> void:
 		leaderboard_score_uploaded.emit(true, new_rating)
 
 
-# --- TODO(Phase 4): クラウドセーブ ---
-# EOS Player Data Storageで実装する。profile_manager.gdのmerge_server_inventory()は無変更で流用する。
+# --- クラウドセーブ(Phase 4) ---
+# EOS Player Data Storage Interface(HPlayerDataStorage、アドオン本体には未バンドルのため
+# Phase 4で新規作成)で実装。merge-then-republishの方針はsteam_manager.gdの
+# sync_profile_with_cloud()と同一(バックエンドが変わってもProfileManager側の契約は不変)。
+
+const CLOUD_PROFILE_FILENAME := "profile.json"
+
 
 ## プロフィールJSONをEOS Player Data Storageへ書き込む(EOS無効時は何もせずfalseを返す)
-func cloud_save_profile(_json_text: String) -> bool:
-	# TODO(Phase 4): Player Data Storageへの書き込み
-	return false
+func cloud_save_profile(json_text: String) -> bool:
+	if not is_eos_available:
+		return false
+	return await HPlayerDataStorage.write_file_async(CLOUD_PROFILE_FILENAME, json_text.to_utf8_buffer())
 
 
 ## EOS Player Data Storage上のプロフィールJSONを読む(未保存/EOS無効時は空文字)
 func cloud_load_profile() -> String:
-	# TODO(Phase 4): Player Data Storageからの読み込み
-	return ""
+	if not is_eos_available:
+		return ""
+	var buffer: PackedByteArray = await HPlayerDataStorage.read_file_async(CLOUD_PROFILE_FILENAME)
+	return buffer.get_string_from_utf8()
 
 
 ## EOS Player Data Storage上のプロフィールJSONの最終更新時刻(UNIX秒)
 func cloud_file_timestamp() -> int:
-	# TODO(Phase 4): Player Data Storageのメタデータ取得
-	return 0
+	if not is_eos_available:
+		return 0
+	return await HPlayerDataStorage.get_file_timestamp_async(CLOUD_PROFILE_FILENAME)
 
 
-## ProfileManagerのローカル状態とEOS Player Data Storageを同期する(steam_manager.gdのsync_profile_with_cloudと同じmerge-then-republish方針)
+## ProfileManagerのローカル状態とEOS Player Data Storageを同期する。
+## - クラウドに未保存(初回): データ消失を防ぐため、ローカルの現在値を無条件アップロードする
+## - クラウドに既存: ダウンロード→ProfileManager.merge_server_inventory()でマージ
+##   →マージ後の状態を再アップロードして両端末を収束させる(merge-then-republish)
 func sync_profile_with_cloud() -> void:
-	# TODO(Phase 4): cloud_file_timestamp/cloud_load_profile/merge_server_inventory/cloud_save_profileを組み合わせて実装
-	pass
+	if not is_eos_available:
+		return
+	if await cloud_file_timestamp() == 0:
+		await cloud_save_profile(JSON.stringify(ProfileManager.to_save_dict()))
+		return
+	var remote_text := await cloud_load_profile()
+	if remote_text.is_empty():
+		return
+	var json := JSON.new()
+	if json.parse(remote_text) != OK or typeof(json.data) != TYPE_DICTIONARY:
+		# 破損データはマージをスキップし、ローカルを保護する(絶対にクラッシュ・削除しない)
+		return
+	ProfileManager.merge_server_inventory(json.data)
+	await cloud_save_profile(JSON.stringify(ProfileManager.to_save_dict()))
