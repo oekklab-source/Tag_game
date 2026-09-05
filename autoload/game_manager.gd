@@ -529,12 +529,15 @@ func _update_sight(delta: float) -> void:
 ## アイテムだけ消えて何も置かれなかった（？ブロック側にも状態の判定は無い）。
 ## 「動ける時は必ず使える」に揃えてある
 @rpc("any_peer", "reliable")
-func request_drop(kind: int, pos: Vector3, yaw: float) -> void:
+func request_drop(kind: int, pos: Vector3, yaw: float,
+		launch_velocity := Vector3.ZERO) -> void:
 	if not multiplayer.is_server() or state == State.RESULT:
 		return
+	var sender := multiplayer.get_remote_sender_id()
+	var thrower_id := multiplayer.get_unique_id() if sender == 0 else sender
 	var world := get_tree().current_scene
 	if world and world.has_method("spawn_dropped_item"):
-		world.spawn_dropped_item(kind, pos, yaw)
+		world.spawn_dropped_item(kind, pos, yaw, launch_velocity, thrower_id)
 
 
 ## 接触判定。各キャラの TagArea(Area3D) から body_entered 経由でホスト側のみ呼ばれる。
