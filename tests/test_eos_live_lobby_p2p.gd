@@ -98,8 +98,12 @@ func _run_join(run_tag: String) -> void:
 
 	var found_id := ""
 	var deadline := 30.0
-	var elapsed := 0.0
-	while found_id.is_empty() and elapsed < deadline:
+	# elapsedは実時間(Time.get_ticks_msec())で計測する。以前はループ末尾のsleep分(2.0)しか
+	# 加算しておらず、_wait_until()の待機時間(最大11秒)が計上されずdeadlineが実質何倍にも
+	# 伸びてしまうバグがあったため(request_lobby_list()にタイムアウト保護を追加した際の
+	# 実機検証で発覚)修正。
+	var start_ms := Time.get_ticks_msec()
+	while found_id.is_empty() and (Time.get_ticks_msec() - start_ms) / 1000.0 < deadline:
 		var lobbies: Array = []
 		var got := false
 		var cb := func(l: Array) -> void:
@@ -107,14 +111,17 @@ func _run_join(run_tag: String) -> void:
 			got = true
 		EosManager.lobby_match_list.connect(cb, CONNECT_ONE_SHOT)
 		EosManager.request_lobby_list()
-		await _wait_until(func() -> bool: return got, 8.0)
+		# request_lobby_list()はEosManager側でLOBBY_SEARCH_TIMEOUT_SEC付きの
+		# タイムアウト保護済みのため、待機時間はそれより長めに取り、リスナーの残留を防ぐ
+		await _wait_until(func() -> bool: return got, EosManager.LOBBY_SEARCH_TIMEOUT_SEC + 1.0)
+		if not got and EosManager.lobby_match_list.is_connected(cb):
+			EosManager.lobby_match_list.disconnect(cb)
 		for l in lobbies:
 			if String(l.get("name", "")).contains(run_tag):
 				found_id = String(l["id"])
 				break
 		if found_id.is_empty():
 			await get_tree().create_timer(2.0).timeout
-			elapsed += 2.0
 
 	_assert(not found_id.is_empty(), "request_lobby_list()でホストの部屋をタグ検索で発見できた")
 	if found_id.is_empty():

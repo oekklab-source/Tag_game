@@ -72,11 +72,15 @@ func open() -> void:
 
 
 func _on_refresh_pressed() -> void:
+	if EosManager._is_searching_lobbies:
+		return
 	status_label.text = "ロビーを検索中..."
+	refresh_btn.disabled = true
 	EosManager.request_lobby_list()
 
 
 func _on_lobbies_received(lobbies: Array) -> void:
+	refresh_btn.disabled = false
 	status_label.text = "ロビー一覧を更新しました (%d件)" % lobbies.size()
 	_all_lobbies = lobbies
 	_render_lobbies()

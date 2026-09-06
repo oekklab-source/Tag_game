@@ -23,6 +23,7 @@ signal leaderboard_score_uploaded(success: bool, score: int)
 
 const CREDENTIALS_PATH := "res://eos_credentials.cfg"
 const SYNC_PROFILE_TIMEOUT_SEC := 8.0
+const LOBBY_SEARCH_TIMEOUT_SEC := 10.0
 
 var is_eos_available: bool = false
 var product_user_id: String = ""
@@ -31,6 +32,7 @@ var is_host: bool = false
 
 var _current_lobby: HLobby = null
 var _search_results: Dictionary = {}  # String lobby_id -> HLobby
+var _is_searching_lobbies: bool = false
 
 
 func _ready() -> void:
@@ -154,33 +156,30 @@ func create_lobby(lobby_type: int = 0, max_members: int = 8, lobby_name: String 
 		lobby_created.emit(1, current_lobby_id)
 
 
+## 実機検証で判明した既知の問題(request_leaderboard()と同種): HLobbies.search_by_attribute_async()の
+## ネイティブコールバック(IEOS.lobby_search_find_callback)が無応答のままハングする場合がある。
+## さらにこのシグナルはHLobbies内部でグローバル共有(呼び出しごとの相関IDが無い)ため、
+## 検索が多重に同時実行されると片方のコールバックがもう片方の待機を巻き込んで消費してしまい、
+## 残された側が永久に完了しなくなる問題も確認済み。そのため
+## (1)_is_searching_lobbiesで多重実行そのものを禁止し、(2)念のためタイムアウトも設ける
+## 二重の防御にする(PDS/Leaderboardsと同じ方針)。
 func request_lobby_list() -> void:
 	if is_eos_available:
-		var results = await HLobbies.search_by_attribute_async([
-			{"key": "game", "value": "Tag_Game", "comparison": EOS.ComparisonOp.Equal},
-			{"key": "version", "value": str(GameManager.PROTOCOL_VERSION), "comparison": EOS.ComparisonOp.Equal},
-		])
-		_search_results.clear()
-		if results == null:
-			lobby_match_list.emit([])
+		if _is_searching_lobbies:
+			print("[EosManager] request_lobby_list() は既に検索中のため無視しました(多重実行防止)。")
 			return
-		var lobbies: Array = []
-		for lobby: HLobby in results:
-			_search_results[lobby.lobby_id] = lobby
-			var name_val: String = String(lobby.get_attribute("name").get("value", "Room #%s" % lobby.lobby_id))
-			var host_rating: int = int(lobby.get_attribute("host_rating").get("value", 1500))
-			var tier_val: String = String(lobby.get_attribute("tier").get("value", String(RankingManager.tier_id(host_rating))))
-			var tier_lock_val: bool = String(lobby.get_attribute("tier_lock").get("value", "0")) == "1"
-			lobbies.append({
-				"id": lobby.lobby_id,
-				"name": name_val,
-				"members": lobby.members.size(),
-				"max_members": lobby.max_members,
-				"host_rating": host_rating,
-				"tier": tier_val,
-				"tier_lock": tier_lock_val,
-			})
-		lobby_match_list.emit(lobbies)
+		_is_searching_lobbies = true
+		var state := {"done": false}
+		_request_lobby_list_worker(state)
+		var elapsed := 0.0
+		while not state["done"] and elapsed < LOBBY_SEARCH_TIMEOUT_SEC:
+			await get_tree().create_timer(0.5).timeout
+			elapsed += 0.5
+		if not state["done"]:
+			print("[EosManager] request_lobby_list() timed out after %.1fs (Lobby検索が無応答の可能性あり)。" % LOBBY_SEARCH_TIMEOUT_SEC)
+			lobby_match_list.emit([])
+			# ワーカーはバックグラウンドで動き続ける可能性がある(state["done"]がその後trueになっても
+			# ここでは待たない)。_is_searching_lobbiesはワーカー側が責任を持って解除する
 	else:
 		var mock_lobbies = [
 			{"id": "mock-1001", "name": "初心者歓迎！タグゲーム", "members": 2, "max_members": 6,
@@ -191,6 +190,36 @@ func request_lobby_list() -> void:
 				"host_rating": 1500, "tier": "gold", "tier_lock": false},
 		]
 		lobby_match_list.emit(mock_lobbies)
+
+
+func _request_lobby_list_worker(state: Dictionary) -> void:
+	var results = await HLobbies.search_by_attribute_async([
+		{"key": "game", "value": "Tag_Game", "comparison": EOS.ComparisonOp.Equal},
+		{"key": "version", "value": str(GameManager.PROTOCOL_VERSION), "comparison": EOS.ComparisonOp.Equal},
+	])
+	state["done"] = true
+	_is_searching_lobbies = false
+	_search_results.clear()
+	if results == null:
+		lobby_match_list.emit([])
+		return
+	var lobbies: Array = []
+	for lobby: HLobby in results:
+		_search_results[lobby.lobby_id] = lobby
+		var name_val: String = String(lobby.get_attribute("name").get("value", "Room #%s" % lobby.lobby_id))
+		var host_rating: int = int(lobby.get_attribute("host_rating").get("value", 1500))
+		var tier_val: String = String(lobby.get_attribute("tier").get("value", String(RankingManager.tier_id(host_rating))))
+		var tier_lock_val: bool = String(lobby.get_attribute("tier_lock").get("value", "0")) == "1"
+		lobbies.append({
+			"id": lobby.lobby_id,
+			"name": name_val,
+			"members": lobby.members.size(),
+			"max_members": lobby.max_members,
+			"host_rating": host_rating,
+			"tier": tier_val,
+			"tier_lock": tier_lock_val,
+		})
+	lobby_match_list.emit(lobbies)
 
 
 func join_lobby(lobby_id: String) -> void:
