@@ -70,6 +70,11 @@ func _init_eos() -> void:
 	product_user_id = HAuth.product_user_id
 	print("[EosManager] EOS initialized successfully. product_user_id=%s" % product_user_id)
 
+	# EAS(Epic Account Services)へは一切ログインしない匿名Device ID認証のみの構成のため、
+	# Presence機能(Friends/Overlayと連動)の前提条件(EASセッション)を満たせない。
+	# 有効なままだとLobby作成/参加でEOS側から拒否される可能性があるため無効化しておく。
+	HLobbies.presence_enabled = false
+
 	# EOS Player Data Storageとのプロフィール同期。ProfileManagerは既にローカルの
 	# load_profile()を終えているので(autoload順で先に_ready()が走る)、
 	# ここではローカル読み込み後の状態を前提にクラウドとマージ/初回アップロードする
@@ -120,6 +125,7 @@ func create_lobby(lobby_type: int = 0, max_members: int = 8, lobby_name: String 
 	if is_eos_available:
 		var opts := EOS.Lobby.CreateLobbyOptions.new()
 		opts.local_user_id = HAuth.product_user_id
+		opts.bucket_id = "Tag_Game"  # 必須項目(未設定=空文字だとEOS_InvalidParametersになる。実機検証で確認済み)
 		opts.max_lobby_members = max_members
 		opts.permission_level = EOS.Lobby.LobbyPermissionLevel.PublicAdvertised
 		opts.presence_enabled = HLobbies.presence_enabled
