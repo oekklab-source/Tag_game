@@ -260,6 +260,7 @@ func _on_public_address_ready(addr: String) -> void:
 # ただしログイン後にプロフィール名を変更しても次回ログインまでは反映されない。
 
 const LEADERBOARD_STAT_NAME := "PlayerRating"
+const LEADERBOARD_QUERY_TIMEOUT_SEC := 10.0
 
 var _leaderboard_id_cache: String = ""
 
@@ -279,24 +280,22 @@ func _resolve_leaderboard_id() -> String:
 	return _leaderboard_id_cache
 
 
+## 実機検証で判明した既知の問題: query_leaderboard_definitions/query_leaderboard_ranksの
+## ネイティブコールバックが(エラーすら出さず)無応答のままハングする場合がある。
+## PDS書き込みハング対策(_sync_profile_with_cloud_bounded)と同じ方針で、
+## タイムアウト時は空配列で先に画面を返す(ワーカーはバックグラウンドで動き続け、
+## 遅れて本来のデータが届けばleaderboard_loadedが再度発火しUIも更新される)。
 func request_leaderboard(_start_rank: int = 1, _end_rank: int = 20) -> void:
 	if is_eos_available:
-		var leaderboard_id := await _resolve_leaderboard_id()
-		if leaderboard_id.is_empty():
-			print("[EosManager] Leaderboard定義が見つかりません(stat_name=%s)。Developer Portal側の設定を確認してください。" % LEADERBOARD_STAT_NAME)
+		var state := {"done": false}
+		_request_leaderboard_worker(state)
+		var elapsed := 0.0
+		while not state["done"] and elapsed < LEADERBOARD_QUERY_TIMEOUT_SEC:
+			await get_tree().create_timer(0.5).timeout
+			elapsed += 0.5
+		if not state["done"]:
+			print("[EosManager] request_leaderboard() timed out after %.1fs (Leaderboardsクエリが無応答の可能性あり)。" % LEADERBOARD_QUERY_TIMEOUT_SEC)
 			leaderboard_loaded.emit([])
-			return
-		var records = await HLeaderboards.get_leaderboard_records_async(leaderboard_id)
-		if records == null:
-			leaderboard_loaded.emit([])
-			return
-		var entries: Array = []
-		for r in records:
-			var name_val: String = r.get("user_display_name", "")
-			if name_val.is_empty():
-				name_val = "Player"
-			entries.append({"rank": r.get("rank", 0), "name": name_val, "score": r.get("score", 0)})
-		leaderboard_loaded.emit(entries)
 	else:
 		var mock_entries = [
 			{"rank": 1, "name": "SpeedMaster", "score": 2150},
@@ -306,6 +305,27 @@ func request_leaderboard(_start_rank: int = 1, _end_rank: int = 20) -> void:
 			{"rank": 5, "name": "ChillRunner", "score": 1420},
 		]
 		leaderboard_loaded.emit(mock_entries)
+
+
+func _request_leaderboard_worker(state: Dictionary) -> void:
+	var leaderboard_id := await _resolve_leaderboard_id()
+	if leaderboard_id.is_empty():
+		print("[EosManager] Leaderboard定義が見つかりません(stat_name=%s)。Developer Portal側の設定を確認してください。" % LEADERBOARD_STAT_NAME)
+		state["done"] = true
+		leaderboard_loaded.emit([])
+		return
+	var records = await HLeaderboards.get_leaderboard_records_async(leaderboard_id)
+	state["done"] = true
+	if records == null:
+		leaderboard_loaded.emit([])
+		return
+	var entries: Array = []
+	for r in records:
+		var name_val: String = r.get("user_display_name", "")
+		if name_val.is_empty():
+			name_val = "Player"
+		entries.append({"rank": r.get("rank", 0), "name": name_val, "score": r.get("score", 0)})
+	leaderboard_loaded.emit(entries)
 
 
 func upload_rating(new_rating: int) -> void:
