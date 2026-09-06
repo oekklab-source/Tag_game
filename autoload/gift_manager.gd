@@ -86,7 +86,7 @@ func send_gift(friend_puid: String, kind: StringName, id: StringName) -> bool:
 
 		if not sent:
 			var pid: int = _gift_peer.get_peer_id(friend_puid)
-			if pid != -1:
+			if pid != 0:
 				_gift_peer.set_target_peer(pid)
 				sent = _gift_peer.put_packet(bytes) == OK
 
@@ -98,6 +98,10 @@ func send_gift(friend_puid: String, kind: StringName, id: StringName) -> bool:
 		elapsed += ACK_POLL_INTERVAL
 
 	_pending_acks.erase(nonce)
+	if not sent:
+		push_warning("[GiftManager] send_gift timeout: mesh peer never connected (puid=%s)" % friend_puid)
+	else:
+		push_warning("[GiftManager] send_gift timeout: packet sent but no ack received (puid=%s)" % friend_puid)
 	return false
 
 
