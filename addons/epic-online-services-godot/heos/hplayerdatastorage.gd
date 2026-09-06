@@ -94,18 +94,29 @@ func read_file_async(filename: String) -> PackedByteArray:
 	return buffer
 
 
-## ファイルのメタデータをローカルキャッシュへ問い合わせる(copy_file_metadata_by_filenameの前提)。
-func query_file_async(filename: String) -> bool:
+enum FileQueryStatus { FOUND, NOT_FOUND, ERROR }
+
+
+## ファイルの存在有無をクエリし、見つかった/見つからない/クエリ自体が失敗した、を区別して返す。
+## 呼び出し側が「未存在と確認できた場合」と「一時的な障害で確認できなかった場合」を
+## 区別する必要がある場合(例: クラウドセーブの初回判定)はこちらを使うこと。
+func query_file_status_async(filename: String) -> FileQueryStatus:
 	var opts = EOS.PlayerDataStorage.QueryFileOptions.new()
 	opts.filename = filename
 	EOS.PlayerDataStorage.PlayerDataStorageInterface.query_file(opts)
 
 	var ret = await IEOS.playerdatastorage_interface_query_file_callback
-	if not EOS.is_success(ret):
-		if EOS.result_str(ret) != "NotFound":
-			_log.error("Failed to query file: filename=%s result_code=%s" % [filename, EOS.result_str(ret)])
-		return false
-	return true
+	if EOS.is_success(ret):
+		return FileQueryStatus.FOUND
+	if EOS.result_str(ret) == "NotFound":
+		return FileQueryStatus.NOT_FOUND
+	_log.error("Failed to query file: filename=%s result_code=%s" % [filename, EOS.result_str(ret)])
+	return FileQueryStatus.ERROR
+
+
+## ファイルのメタデータをローカルキャッシュへ問い合わせる(copy_file_metadata_by_filenameの前提)。
+func query_file_async(filename: String) -> bool:
+	return await query_file_status_async(filename) == FileQueryStatus.FOUND
 
 
 ## ファイルの最終更新時刻(UNIX秒)。未存在/失敗時は0。

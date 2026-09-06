@@ -416,13 +416,20 @@ func _sync_profile_with_cloud_bounded() -> void:
 
 
 ## ProfileManagerのローカル状態とEOS Player Data Storageを同期する。
-## - クラウドに未保存(初回): データ消失を防ぐため、ローカルの現在値を無条件アップロードする
+## - クラウドに未保存と確認できた場合(初回): データ消失リスクなく、ローカルの現在値を無条件アップロードする
 ## - クラウドに既存: ダウンロード→ProfileManager.merge_server_inventory()でマージ
 ##   →マージ後の状態を再アップロードして両端末を収束させる(merge-then-republish)
+## - クラウド側の存在有無自体が確認できない場合(一時的な通信障害/PDS不調など):
+##   「未保存」と誤認して上書きしてしまうデータ消失を避けるため、同期処理を中断する
 func sync_profile_with_cloud() -> void:
 	if not is_eos_available:
 		return
-	if await cloud_file_timestamp() == 0:
+	var status: HPlayerDataStorage.FileQueryStatus = \
+		await HPlayerDataStorage.query_file_status_async(CLOUD_PROFILE_FILENAME)
+	if status == HPlayerDataStorage.FileQueryStatus.ERROR:
+		print("[EosManager] sync_profile_with_cloud(): failed to query cloud file status (transient?). Skipping sync to avoid overwriting cloud data.")
+		return
+	if status == HPlayerDataStorage.FileQueryStatus.NOT_FOUND:
 		await cloud_save_profile(JSON.stringify(ProfileManager.to_save_dict()))
 		return
 	var remote_text := await cloud_load_profile()
