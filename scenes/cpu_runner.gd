@@ -151,6 +151,8 @@ const NET_SNAP_DIST := Player.NET_SNAP_DIST
 
 var buffs := BuffSet.new()
 var carry_velocity := Vector3.ZERO
+var bumper_bounce_velocity := Vector3.ZERO
+var bumper_bounce_left := 0.0
 var slide_dir := Vector3.ZERO
 var slide_accel := 0.0
 var slide_cap := 0.0
@@ -241,6 +243,8 @@ func _physics_process(delta: float) -> void:
 	buffs.tick(delta)
 	warp_lock = maxf(warp_lock - delta, 0.0)
 	stun_left = maxf(stun_left - delta, 0.0)
+	var holding_bumper_bounce := bumper_bounce_left > 0.0
+	bumper_bounce_left = maxf(bumper_bounce_left - delta, 0.0)
 	item_lock = maxf(item_lock - delta, 0.0)
 	# 終わるたび必ず false を挟むので、続けて2回転んでも ON_CHANGE の同期が発火する
 	stunned = stun_left > 0.0
@@ -292,7 +296,10 @@ func _physics_process(delta: float) -> void:
 
 	var speed := (DASH_SPEED if is_dashing else SPEED) * buffs.get_mult(&"speed")
 	var target := Vector2(dir.x, dir.z) * speed
-	if slide_left > 0.0:
+	if holding_bumper_bounce:
+		velocity.x = bumper_bounce_velocity.x
+		velocity.z = bumper_bounce_velocity.z
+	elif slide_left > 0.0:
 		velocity = SlideMotion.step(velocity, delta, slide_dir, slide_accel, slide_cap,
 			SLIDE_STEER, dir, SLIDE_MIN_SPEED)
 		floor_snap_length = SLIDE_SNAP
@@ -684,6 +691,7 @@ func teleport(pos: Vector3) -> void:
 	global_position = pos
 	sync_position = position
 	velocity = Vector3.ZERO
+	bumper_bounce_left = 0.0
 	buffs.clear()
 	# ラウンド開始のテレポートでも呼ばれる。player.gd と同じく息を整えておく
 	stamina = STAMINA_MAX
@@ -716,9 +724,15 @@ func launch(v: Vector3) -> void:
 	_stuck_kick_left = 0.0
 
 
+func hold_bumper_bounce(horizontal: Vector3, duration: float) -> void:
+	bumper_bounce_velocity = horizontal
+	bumper_bounce_left = duration
+
+
 func warp_to(pos: Vector3, up_vel: float, exit_kick := Vector3.ZERO) -> void:
 	global_position = pos
 	velocity = Vector3(exit_kick.x, up_vel, exit_kick.z)
+	bumper_bounce_left = 0.0
 	warp_lock = 0.9
 	warp_grace = WARP_GRACE
 	slide_left = 0.0
