@@ -104,18 +104,21 @@ func _run_join(run_tag: String) -> void:
 	# 実機検証で発覚)修正。
 	var start_ms := Time.get_ticks_msec()
 	while found_id.is_empty() and (Time.get_ticks_msec() - start_ms) / 1000.0 < deadline:
-		var lobbies: Array = []
-		var got := false
+		# GDScriptのラムダは外側スコープのローカル変数を値渡しでキャプチャするため、
+		# 単純なvarへの代入では外側から見えない(_run_host/join_lobby待受け部分がDictionaryを
+		# 使っているのと同じ理由でここもDictionaryにする必要がある)。
+		var state := {"lobbies": [], "got": false}
 		var cb := func(l: Array) -> void:
-			lobbies = l
-			got = true
+			state["lobbies"] = l
+			state["got"] = true
 		EosManager.lobby_match_list.connect(cb, CONNECT_ONE_SHOT)
 		EosManager.request_lobby_list()
 		# request_lobby_list()はEosManager側でLOBBY_SEARCH_TIMEOUT_SEC付きの
 		# タイムアウト保護済みのため、待機時間はそれより長めに取り、リスナーの残留を防ぐ
-		await _wait_until(func() -> bool: return got, EosManager.LOBBY_SEARCH_TIMEOUT_SEC + 1.0)
-		if not got and EosManager.lobby_match_list.is_connected(cb):
+		await _wait_until(func() -> bool: return state["got"], EosManager.LOBBY_SEARCH_TIMEOUT_SEC + 1.0)
+		if not state["got"] and EosManager.lobby_match_list.is_connected(cb):
 			EosManager.lobby_match_list.disconnect(cb)
+		var lobbies: Array = state["lobbies"]
 		for l in lobbies:
 			if String(l.get("name", "")).contains(run_tag):
 				found_id = String(l["id"])

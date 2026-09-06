@@ -192,6 +192,19 @@ func request_lobby_list() -> void:
 		lobby_match_list.emit(mock_lobbies)
 
 
+## 実機検証で判明した既知の問題: HLobby.get_attribute()はキーの完全一致比較だが、
+## EOS backendはロビー検索結果(copy_search_result_by_index経由)から返す属性キーを
+## 大文字に正規化する(ホスト自身がcopy_lobby_details経由で読む場合は設定時の大文字小文字
+## がそのまま保たれるため、この差異は検索結果を介した相手側でのみ顕在化する)。
+## そのため検索結果由来のHLobbyから読む属性は、この大小文字非依存の照合を必ず使う。
+func _get_lobby_attr_ci(lobby: HLobby, key: String) -> Dictionary:
+	var key_lower := key.to_lower()
+	for attr in lobby.attributes:
+		if String(attr.key).to_lower() == key_lower:
+			return attr
+	return {}
+
+
 func _request_lobby_list_worker(state: Dictionary) -> void:
 	var results = await HLobbies.search_by_attribute_async([
 		{"key": "game", "value": "Tag_Game", "comparison": EOS.ComparisonOp.Equal},
@@ -206,10 +219,10 @@ func _request_lobby_list_worker(state: Dictionary) -> void:
 	var lobbies: Array = []
 	for lobby: HLobby in results:
 		_search_results[lobby.lobby_id] = lobby
-		var name_val: String = String(lobby.get_attribute("name").get("value", "Room #%s" % lobby.lobby_id))
-		var host_rating: int = int(lobby.get_attribute("host_rating").get("value", 1500))
-		var tier_val: String = String(lobby.get_attribute("tier").get("value", String(RankingManager.tier_id(host_rating))))
-		var tier_lock_val: bool = String(lobby.get_attribute("tier_lock").get("value", "0")) == "1"
+		var name_val: String = String(_get_lobby_attr_ci(lobby, "name").get("value", "Room #%s" % lobby.lobby_id))
+		var host_rating: int = int(_get_lobby_attr_ci(lobby, "host_rating").get("value", 1500))
+		var tier_val: String = String(_get_lobby_attr_ci(lobby, "tier").get("value", String(RankingManager.tier_id(host_rating))))
+		var tier_lock_val: bool = String(_get_lobby_attr_ci(lobby, "tier_lock").get("value", "0")) == "1"
 		lobbies.append({
 			"id": lobby.lobby_id,
 			"name": name_val,
@@ -260,7 +273,7 @@ func get_lobby_data(lobby_id: String, key: String) -> String:
 		lobby = _search_results[lobby_id]
 	if lobby == null:
 		return ""
-	return String(lobby.get_attribute(key).get("value", ""))
+	return String(_get_lobby_attr_ci(lobby, key).get("value", ""))
 
 
 ## 参加者が実際に繋げるアドレスを待つ(EOS無効時は常に空文字)
