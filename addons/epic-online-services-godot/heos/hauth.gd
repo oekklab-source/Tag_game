@@ -314,20 +314,14 @@ func login_anonymous_async(p_user_display_name: String) -> bool:
 		return false
 	_log.debug("Logging in anonymously...")
 
-	EOS.Connect.ConnectInterface.delete_device_id(EOS.Connect.DeleteDeviceIdOptions.new())
-	var delete_ret = await IEOS.connect_interface_delete_device_id_callback
-	if not EOS.is_success(delete_ret):
-		_log.debug("Failed to delete device id: result_code=%s" % EOS.result_str(delete_ret))
-	
-	var opts = EOS.Connect.CreateDeviceIdOptions.new()
-	opts.device_model = " ".join(PackedStringArray([OS.get_name(), OS.get_model_name()]))
-	EOS.Connect.ConnectInterface.create_device_id(opts)
-
-	var create_ret = await IEOS.connect_interface_create_device_id_callback
-	if not EOS.is_success(create_ret):
-		_log.error("Failed to create device id: result_code=%s" % EOS.result_str(create_ret))
+	# NOTE: does not delete_device_id() first. EOS Connect device ids are meant to be created
+	# once and persisted across launches; deleting+recreating on every login discards the
+	# device credential each time, which makes the backend treat every login as a brand new
+	# user and mint a new Product User ID every launch. DuplicateNotAllowed here just means a
+	# device id already exists from a previous launch, which is the expected steady state.
+	if not await _create_device_id_async():
 		return false
-	
+
 	var login_opts = EOS.Connect.LoginOptions.new()
 	login_opts.credentials = EOS.Connect.Credentials.new()
 	login_opts.credentials.type = EOS.ExternalCredentialType.DeviceidAccessToken
@@ -336,8 +330,38 @@ func login_anonymous_async(p_user_display_name: String) -> bool:
 	login_opts.user_login_info.display_name = user_display_name
 	display_name = user_display_name
 	display_name_changed.emit()
-	
+
+	if await login_game_services_async(login_opts):
+		return true
+
+	# Recovery path only: the existing device id may be stale/orphaned on the backend.
+	# Delete and recreate once, then retry login, instead of doing this unconditionally
+	# on every single launch.
+	_log.debug("Login with existing device id failed, recreating device id and retrying...")
+	EOS.Connect.ConnectInterface.delete_device_id(EOS.Connect.DeleteDeviceIdOptions.new())
+	var delete_ret = await IEOS.connect_interface_delete_device_id_callback
+	if not EOS.is_success(delete_ret):
+		_log.debug("Failed to delete device id: result_code=%s" % EOS.result_str(delete_ret))
+
+	if not await _create_device_id_async():
+		return false
+
 	return await login_game_services_async(login_opts)
+
+
+## Creates a device id if one does not already exist. Returns true if a device id exists
+## afterwards (either newly created or already present), false on a genuine failure.
+func _create_device_id_async() -> bool:
+	var opts = EOS.Connect.CreateDeviceIdOptions.new()
+	opts.device_model = " ".join(PackedStringArray([OS.get_name(), OS.get_model_name()]))
+	EOS.Connect.ConnectInterface.create_device_id(opts)
+
+	var create_ret = await IEOS.connect_interface_create_device_id_callback
+	if EOS.is_success(create_ret) or create_ret.result_code == EOS.Result.DuplicateNotAllowed:
+		return true
+
+	_log.error("Failed to create device id: result_code=%s" % EOS.result_str(create_ret))
+	return false
 
 
 ## Get the user info from epic account id.[br]
