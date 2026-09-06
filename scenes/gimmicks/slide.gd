@@ -21,6 +21,15 @@ const GRAVITY := 9.8
 const GRAVITY_SCALE := 1.6
 
 
+func _ready() -> void:
+	body_exited.connect(_release)
+
+
+func _release(body: Node3D) -> void:
+	if body.has_method("release_slide") and body.is_multiplayer_authority():
+		body.release_slide(get_instance_id())
+
+
 func _physics_process(_delta: float) -> void:
 	if center_line.size() < 2:
 		return
@@ -33,10 +42,18 @@ func _physics_process(_delta: float) -> void:
 		var run := flat.length()
 		if run < 0.01:
 			continue
-		# 出口の直進区間は傾斜0なので加速度も0になる。
-		# それでも最低前進速度の押し出しは効くので、必ず前へ抜けられる
+		# Area は斜面の上方/出口平地まで伸びるため、重なりだけで滑らせない。
+		# 足元が実際の斜面上へ入ってから開始し、出口線を越えた瞬間に解放する。
+		var along := (body.global_position - center_line[i]).dot(flat / run)
+		var surface_y := center_line[i].y + d.y * clampf(along / run, 0.0, 1.0)
+		if d.y >= -0.01 or along < 0.0 or along >= run \
+				or body.global_position.y < surface_y - 0.35 \
+				or body.global_position.y > surface_y + 0.75:
+			_release(body)
+			continue
 		var pitch := atan2(-d.y, run)
-		body.apply_slide(flat / run, GRAVITY * sin(pitch) * GRAVITY_SCALE, cap)
+		body.apply_slide(flat / run, GRAVITY * sin(pitch) * GRAVITY_SCALE, cap,
+			pitch, run - along < 2.0, get_instance_id())
 
 
 ## 体の真下のセグメントを線分への射影距離で選ぶ。

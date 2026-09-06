@@ -43,6 +43,7 @@ func _ready() -> void:
 	await _drop_all(player, items)
 	await _verify_placement_rules(player, items)
 	await _verify_thrown_banana_physics()
+	await _verify_banana_support_tracking()
 
 	# ？ブロックから受け取れるかも見る（触れた時と同じ経路を通す）
 	var qblock: Node = world.get_node_or_null("NavRegion/Gimmicks/QuestionBlock0")
@@ -249,6 +250,80 @@ func _verify_thrown_banana_physics() -> void:
 	blocked_banana.queue_free()
 	wall.queue_free()
 	floor_body.queue_free()
+	await get_tree().process_frame
+
+
+func _verify_banana_support_tracking() -> void:
+	print("--- バナナの足場追従 ---")
+	var banana: Area3D = BANANA_SCENE.instantiate()
+	var platform := AnimatableBody3D.new()
+	platform.position = Vector3(180.0, 40.0, 180.0)
+	add_child(platform)
+	add_child(banana)
+	banana.global_position = platform.global_position + Vector3(2.0, 0.25, 0.0)
+	banana.set("_landed", true)
+	banana.call("_remember_support", platform)
+
+	var start := banana.global_position
+	platform.position += Vector3(0.0, 3.0, 0.0)
+	for i in 3:
+		await get_tree().physics_frame
+	_report("リフトの上下移動に追従", banana.global_position.distance_to(
+		start + Vector3(0.0, 3.0, 0.0)) < POSITION_EPS,
+		"開始 %s / 移動後 %s" % [start, banana.global_position])
+
+	var radius_before := (banana.global_position - platform.global_position).length()
+	platform.rotation.y = PI * 0.5
+	for i in 3:
+		await get_tree().physics_frame
+	var expected_rotated := platform.global_position + Vector3(0.0, 0.25, -2.0)
+	var radius_after := (banana.global_position - platform.global_position).length()
+	_report("回転床の回転に追従", banana.global_position.distance_to(expected_rotated) < POSITION_EPS
+		and absf(radius_after - radius_before) < POSITION_EPS,
+		"位置 %s / 期待 %s" % [banana.global_position, expected_rotated])
+
+	banana.queue_free()
+	platform.queue_free()
+	await get_tree().process_frame
+
+	var placed_support := StaticBody3D.new()
+	placed_support.add_to_group("placed_blocks")
+	placed_support.position = Vector3(185.0, 40.0, 185.0)
+	add_child(placed_support)
+	var placed_banana: Area3D = BANANA_SCENE.instantiate()
+	add_child(placed_banana)
+	placed_banana.global_position = placed_support.global_position + Vector3.UP
+	placed_banana.set("_landed", true)
+	placed_banana.call("_remember_support", placed_support)
+	_report("置き壁を消滅監視対象にする", placed_banana.get("_support") == placed_support,
+		"足場 %s" % placed_banana.get("_support"))
+	placed_support.queue_free()
+	await get_tree().process_frame
+	for i in 3:
+		await get_tree().physics_frame
+	_report("置き壁消滅後に再落下", not placed_banana.get("_landed")
+		and placed_banana.get("_support") == null,
+		"着地=%s / 足場=%s" % [placed_banana.get("_landed"),
+			placed_banana.get("_support")])
+	placed_banana.queue_free()
+	await get_tree().process_frame
+
+	var static_floor := StaticBody3D.new()
+	add_child(static_floor)
+	var static_banana: Area3D = BANANA_SCENE.instantiate()
+	add_child(static_banana)
+	static_banana.global_position = Vector3(190.0, 40.0, 190.0)
+	static_banana.set("_landed", true)
+	static_banana.call("_remember_support", static_floor)
+	var fixed_position := static_banana.global_position
+	static_floor.position += Vector3(0.0, 3.0, 0.0)
+	for i in 3:
+		await get_tree().physics_frame
+	_report("通常床では固定したまま", static_banana.global_position.distance_to(
+		fixed_position) < POSITION_EPS and static_banana.get("_support") == null,
+		"位置 %s" % static_banana.global_position)
+	static_banana.queue_free()
+	static_floor.queue_free()
 	await get_tree().process_frame
 
 

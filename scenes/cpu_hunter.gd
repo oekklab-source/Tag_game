@@ -91,7 +91,6 @@ const SLIP_DRAG := Player.SLIP_DRAG
 const SLIDE_STEER := Player.SLIDE_STEER
 const SLIDE_MIN_SPEED := Player.SLIDE_MIN_SPEED
 const SLIDE_SNAP := Player.SLIDE_SNAP
-const SLIDE_GRACE := Player.SLIDE_GRACE
 const WARP_GRACE := Player.WARP_GRACE
 ## ダイブもプレイヤーと同じ性能にする。鬼だけ速い/遅いと追跡バランスが崩れる
 const DIVE_SPEED := Player.DIVE_SPEED
@@ -106,10 +105,7 @@ var buffs := BuffSet.new()
 var carry_velocity := Vector3.ZERO
 var bumper_bounce_velocity := Vector3.ZERO
 var bumper_bounce_left := 0.0
-var slide_dir := Vector3.ZERO
-var slide_accel := 0.0
-var slide_cap := 0.0
-var slide_left := 0.0
+var slide_ride := SlideRide.new()
 var warp_lock := 0.0
 var warp_grace := 0.0
 
@@ -151,6 +147,8 @@ var _stuck_kick_left := 0.0
 ## 割り出さずサーバが実測した値を配る（あちらのコメントを参照）
 @export var sync_speed := 0.0
 @export var sync_air := false
+@export var sync_slide := Vector4.ZERO
+@export var sync_respawn_left := 0.0
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
 @onready var humanoid: Node3D = $Humanoid
@@ -188,9 +186,12 @@ func _process(delta: float) -> void:
 		_follow_sync(delta)
 	humanoid.set_diving(diving)
 	humanoid.set_stunned(stunned)
+	humanoid.set_respawn(sync_respawn_left)
+	humanoid.set_slide(sync_slide, global_rotation.y, delta)
 	humanoid.update_motion(sync_speed, not sync_air, delta)
-	humanoid.rotation.x = lerpf(humanoid.rotation.x,
-		DIVE_PITCH if diving else 0.0, minf(delta * 12.0, 1.0))
+	if diving or stunned or int(sync_slide.x) == SlideRide.Phase.NONE:
+		humanoid.rotation.x = lerpf(humanoid.rotation.x,
+			DIVE_PITCH if diving else 0.0, minf(delta * 12.0, 1.0))
 
 
 ## 頭上の名前ラベル。player.gd と同じく、味方ハンター（人間）にのみ見せる
@@ -203,6 +204,7 @@ func _physics_process(delta: float) -> void:
 	if not multiplayer.is_server():
 		return
 
+	sync_respawn_left = maxf(0.0, sync_respawn_left - delta)
 	buffs.tick(delta)
 	warp_lock = maxf(warp_lock - delta, 0.0)
 	stun_left = maxf(stun_left - delta, 0.0)
@@ -220,7 +222,7 @@ func _physics_process(delta: float) -> void:
 
 	var chasing := (GameManager.state == GameManager.State.PLAYING
 		and GameManager.head_start_left <= 0.0
-		and stun_left <= 0.0 and not diving)
+		and stun_left <= 0.0 and sync_respawn_left <= 0.0 and not diving)
 	var dir := Vector3.ZERO
 	var rise := 0.0
 	var wants_dash := false
@@ -280,29 +282,34 @@ func _physics_process(delta: float) -> void:
 			_try_use_item(to_runner, h_dist)
 			# 見えている逃走者が手頃な距離にいたら飛びかかる。
 			# プレイヤーと同じくダイブ中は操作できず、外せば起き上がりの隙を晒す
-			if (_mind == Mind.CHASE and grounded and dive_cooldown <= 0.0
+			if (_mind == Mind.CHASE and grounded and not slide_ride.active() and dive_cooldown <= 0.0
 					and h_dist > DIVE_MIN and h_dist < DIVE_MAX and absf(to_runner.y) < 2.0):
 				_start_dive(Vector3(to_runner.x, 0.0, to_runner.z))
 
 	_update_stamina(delta, wants_dash)
+	var was_sliding := slide_ride.active()
+	slide_ride.tick(delta)
+	if was_sliding and not slide_ride.active():
+		_repath_timer = 0.0
+		_goal_timer = 0.0
 	var holding_bumper_bounce := bumper_bounce_left > 0.0
 	bumper_bounce_left = maxf(bumper_bounce_left - delta, 0.0)
 
 	# プレイヤーと同じく、空中では慣性を保つ（打ち上げ・ブーストが消えないように）
 	var speed := (DASH_SPEED if is_dashing else SPEED) * buffs.get_mult(&"speed")
 	var target := Vector2(dir.x, dir.z) * speed
-	if holding_bumper_bounce:
+	if sync_respawn_left > 0.0:
+		velocity.x = 0.0
+		velocity.z = 0.0
+	elif holding_bumper_bounce:
 		velocity.x = bumper_bounce_velocity.x
 		velocity.z = bumper_bounce_velocity.z
-	elif slide_left > 0.0:
-		velocity = SlideMotion.step(velocity, delta, slide_dir, slide_accel, slide_cap,
-			SLIDE_STEER, dir, SLIDE_MIN_SPEED)
+	elif slide_ride.active():
+		velocity = slide_ride.move(velocity, delta, dir, SLIDE_STEER, SLIDE_MIN_SPEED)
 		floor_snap_length = SLIDE_SNAP
-		slide_left = maxf(slide_left - delta, 0.0)
-		if slide_left <= 0.0:
-			# 降り切った先は経路上の想定外の場所。すぐ引き直す（warp_to と同じ理由）
-			_repath_timer = 0.0
-			_goal_timer = 0.0
+	elif slide_ride.phase == SlideRide.Phase.RECOVER and grounded:
+		velocity = slide_ride.recover_motion(velocity, target, delta)
+		floor_snap_length = 0.1
 	elif warp_grace > 0.0:
 		# player.gd と同じ理由。ワープ直後の is_on_floor() は1フレーム古く、
 		# それを信じると地上の速度上書きが出口の水平速度を消してしまう
@@ -353,9 +360,10 @@ func _physics_process(delta: float) -> void:
 	# 歩行モーションは物理の実測値で駆動する（player.gd と同じ理由）
 	sync_speed = Vector2(velocity.x, velocity.z).length()
 	sync_air = not grounded
+	sync_slide = slide_ride.visual()
 
 	if global_position.y < WorldData.FALL_LIMIT:
-		teleport(WorldData.zone_center(WorldData.zone_index(global_position)) + Vector3(0, 3, 0))
+		respawn_after_fall()
 
 	sync_position = position
 	sync_yaw = rotation.y
@@ -569,6 +577,7 @@ func get_ai_goal() -> Vector3:
 ## CPU はサーバ権威なので、これらはサーバ上でのみ実行される
 
 func teleport(pos: Vector3) -> void:
+	sync_respawn_left = 0.0
 	global_position = pos
 	sync_position = position
 	velocity = Vector3.ZERO
@@ -582,7 +591,8 @@ func teleport(pos: Vector3) -> void:
 	item_lock = 0.0
 	warp_lock = 0.0
 	warp_grace = 0.0
-	slide_left = 0.0
+	slide_ride.reset()
+	sync_slide = Vector4.ZERO
 	diving = false
 	dive_recover = 0.0
 	dive_cooldown = 0.0
@@ -592,6 +602,8 @@ func teleport(pos: Vector3) -> void:
 
 
 func launch(v: Vector3) -> void:
+	slide_ride.reset()
+	sync_slide = Vector4.ZERO
 	if v.y != 0.0:
 		velocity.y = v.y
 	velocity.x += v.x
@@ -613,7 +625,8 @@ func warp_to(pos: Vector3, up_vel: float, exit_kick := Vector3.ZERO) -> void:
 	bumper_bounce_left = 0.0
 	warp_lock = 0.9
 	warp_grace = WARP_GRACE
-	slide_left = 0.0
+	slide_ride.reset()
+	sync_slide = Vector4.ZERO
 	_repath_timer = 0.0  # ワープ直後は経路と目的地を引き直す
 	_goal_timer = 0.0
 	_stuck_kick_left = 0.0
@@ -629,16 +642,38 @@ func add_carry(v: Vector3) -> void:
 	carry_velocity += v
 
 
-func apply_slide(dir: Vector3, accel: float, cap: float) -> void:
-	slide_dir = dir
-	slide_accel = accel
-	slide_cap = cap
-	slide_left = SLIDE_GRACE
+func apply_slide(dir: Vector3, accel: float, cap: float, pitch := 0.0,
+		near_bottom := false, source_id := 0) -> void:
+	if sync_respawn_left > 0.0 or stunned or warp_grace > 0.0 or bumper_bounce_left > 0.0:
+		return
+	diving = false
+	dive_recover = 0.0
+	slide_ride.contact(source_id, dir, pitch, accel, cap, near_bottom, velocity)
+
+
+func release_slide(source_id: int) -> void:
+	if slide_ride.active():
+		_repath_timer = 0.0
+		_goal_timer = 0.0
+	slide_ride.release(source_id)
+	sync_slide = slide_ride.visual()
 
 
 ## バナナを踏んだ時の転倒。？ブロックは CPU に反応しないので、
 ## CPU が受け取るアイテム系の効果はこれだけ
 func apply_stun(seconds: float) -> void:
+	slide_ride.reset()
+	sync_slide = Vector4.ZERO
 	stun_left = maxf(stun_left, seconds)
 	stunned = true
 	# 水平速度は殺さない。走っていた勢いのまま尻で滑らせる（SLIP_DRAG で減速する）
+
+
+## 落下復帰専用。ラウンド開始などの通常teleportにはペナルティを付けない。
+func respawn_after_fall() -> void:
+	if not is_multiplayer_authority():
+		return
+	teleport(WorldData.respawn_point(self))
+	stun_left = 0.0
+	stunned = false
+	sync_respawn_left = 3.0

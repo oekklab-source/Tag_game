@@ -34,7 +34,8 @@ const SPEED_SMOOTH := 14.0
 const BLEND := 0.15  # アニメ切り替えのクロスフェード秒
 ## エモートは数秒間まわし続けるので、Idle/Run と同じくループ扱いにする
 ## （glTF 既定のワンショットのままだと1周で止まったポーズのまま固まる）
-const LOOPING := ["Idle", "Run", "Jump", "Nice", "Come"]
+const LOOPING := ["Idle", "Run", "Jump", "Nice", "Come", "SlideSit", "SlideProne"]
+const SLIDE_ANIMS := ["", "SlideEnter", "SlideSit", "SlideReverseFall", "SlideProne", "SlideRecover"]
 ## エモート ID（Player.Emote）と再生するクリップ名の対応
 const EMOTE_ANIM := {1: "Nice", 2: "Come"}
 
@@ -44,6 +45,10 @@ var _stunned := false
 var _emote := 0
 var _state := ""
 var _speed := 0.0
+var _slide := Vector4.ZERO
+var _respawn_left := 0.0
+var _respawn_time := 0.0
+var _respawn_birds: RespawnBirds
 
 @onready var _anim: AnimationPlayer = $Model.find_child("AnimationPlayer", true, false)
 @onready var _body: MeshInstance3D = $Model.find_child("Body", true, false)
@@ -77,12 +82,34 @@ func set_color(color: Color) -> void:
 ## 差分ゼロのフレームが混ざり、Idle と Run が交互に出てガタガタになる
 func update_motion(speed: float, on_floor: bool, delta: float) -> void:
 	_speed = lerpf(_speed, speed, 1.0 - exp(-delta * SPEED_SMOOTH))
+	if _respawn_left > 0.0:
+		var changed := _state != "RespawnDizzy"
+		var expected := 3.0 - _respawn_left
+		_respawn_time += delta
+		if changed or absf(_respawn_time - expected) > 0.12:
+			_respawn_time = expected
+		_play("RespawnDizzy", 0.05)
+		if changed or absf(_anim.current_animation_position - expected) > 0.12:
+			_anim.seek(expected, true)
+		_respawn_birds.show_time(_respawn_time)
+		return
 	# 転倒は最優先。接地していて速度もほぼゼロなので、放っておくと Idle で棒立ちになる
 	if _stunned:
 		_play("Slip")
 		return
 	if _diving:
 		_play("Dive")
+		return
+	if int(_slide.x) > SlideRide.Phase.NONE:
+		var clip: String = SLIDE_ANIMS[int(_slide.x)]
+		var changed := _state != clip
+		_play(clip, 0.04)
+		_anim.speed_scale = SlideRide.REVERSE_SPEED if int(_slide.x) == SlideRide.Phase.REVERSE_FALL else 1.0
+		# 途中参加/通信遅延でも転倒を先頭からやり直さない。
+		var length := _anim.current_animation_length
+		var expected := fmod(_slide.y, length) if clip in LOOPING else minf(_slide.y, length)
+		if changed or absf(_anim.current_animation_position - expected) > 0.12:
+			_anim.seek(expected, true)
 		return
 	# エモートのポーズは脚まで含めて全身を上書きするので、走りながら出すと
 	# 脚が止まって見える。立ち止まっている時だけ再生し、走り出したら
@@ -118,10 +145,32 @@ func set_emote(value: int) -> void:
 	_emote = value if EMOTE_ANIM.has(value) else 0
 
 
-func _play(anim_name: String) -> void:
+func set_respawn(left: float) -> void:
+	_respawn_left = left
+	if left > 0.0 and _respawn_birds == null:
+		_respawn_birds = RespawnBirds.new()
+		_respawn_birds.name = "RespawnBirds"
+		add_child(_respawn_birds)
+	if _respawn_birds != null:
+		_respawn_birds.visible = left > 0.0
+
+
+## 視点（親の向き）とキャラの滑走方向を分離する。カメラを回しても姿勢は走路に沿う。
+func set_slide(value: Vector4, body_yaw: float, delta: float) -> void:
+	_slide = value
+	var enabled := int(value.x) > SlideRide.Phase.NONE and not _diving and not _stunned
+	var yaw := wrapf(value.z - body_yaw, -PI, PI) if enabled else 0.0
+	if int(value.x) == SlideRide.Phase.RECOVER:
+		yaw *= 1.0 - clampf(value.y / SlideRide.RECOVER_TIME, 0.0, 1.0)
+	rotation.y = lerp_angle(rotation.y, yaw, minf(delta * 24.0, 1.0))
+	if enabled:
+		rotation.x = lerpf(rotation.x, value.w, minf(delta * 24.0, 1.0))
+
+
+func _play(anim_name: String, blend := BLEND) -> void:
 	if _state == anim_name:
 		return
 	_state = anim_name
 	# speed_scale は AnimationPlayer 全体に効くので、Run 以外へ移る時に必ず戻す
 	_anim.speed_scale = 1.0
-	_anim.play(anim_name, BLEND)
+	_anim.play(anim_name, blend)

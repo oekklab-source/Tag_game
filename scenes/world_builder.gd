@@ -34,7 +34,7 @@ const SLIDE_RAIL_W := 0.5
 const SLIDE_RAIL_H := 1.0
 const SLIDE_AREA_HEIGHT := 4.0  # 滑走 Area の厚み。走路の上に立つ抜け道を塞ぐ
 const SLIDE_AREA_SIDE_INSET := 0.05  # 手すり外側を巻き込まないよう左右を少し狭める
-const SLIDE_EXIT_RUN := 1.5     # 出口から先、平地に伸ばす Area の長さ（下側から近づきやすくする）
+const SLIDE_EXIT_RUN := 1.5     # 出口の解放判定用。平地区間では滑走力を加えない
 const SLIDE_CAP := 18.0         # 滑走の上限速度
 
 ## --- 転落防止の柵 -------------------------------------------------------
