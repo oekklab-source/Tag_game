@@ -11,6 +11,6 @@ compatibility_date = "2024-11-01"
 # `wrangler kv namespace create FRIEND_KV` で作成し、id をここに設定する
 [[kv_namespaces]]
 binding = "FRIEND_KV"
-id = "REPLACE_WITH_REAL_KV_NAMESPACE_ID"
+id = "0271ea03be114f18bcca6289e62cac57"
 
 # secretsは不要(v1: 外部API呼び出し・Webhook署名検証がないため)

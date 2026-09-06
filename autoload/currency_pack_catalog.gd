@@ -14,19 +14,19 @@ const PACKS: Dictionary = {
 		"name": "ジェム 300個",
 		"gems": 300,
 		"display_price": "¥490",
-		"stripe_price_id": "price_REPLACE_WITH_REAL_SMALL",
+		"stripe_price_id": "price_1UCgwbHiDnhvrIYHVtC6yaoz",
 	},
 	&"medium": {
 		"name": "ジェム 800個",
 		"gems": 800,
 		"display_price": "¥1,220",
-		"stripe_price_id": "price_REPLACE_WITH_REAL_MEDIUM",
+		"stripe_price_id": "price_1UCgwsHiDnhvrIYHfFN8ND6D",
 	},
 	&"large": {
 		"name": "ジェム 2000個",
 		"gems": 2000,
 		"display_price": "¥2,800",
-		"stripe_price_id": "price_REPLACE_WITH_REAL_LARGE",
+		"stripe_price_id": "price_1UCgx5HiDnhvrIYHRy6Jpkfl",
 	},
 }
 

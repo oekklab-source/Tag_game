@@ -4,7 +4,7 @@ class_name FriendBackendClient
 ## このファイルだけに閉じ込める(stripe_purchase_provider.gdがcommerce-api/の
 ## URLを一手に引き受けるのと同じ方針)。
 
-const FRIEND_API_BASE_URL := "https://YOUR-FRIEND-API-HOST/"
+const FRIEND_API_BASE_URL := "https://tag-game-friend-api.oekklab.workers.dev/"
 
 
 static func sync(host: Node, puid: String, display_name: String) -> Dictionary:

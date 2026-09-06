@@ -7,7 +7,7 @@ compatibility_date = "2024-11-01"
 # `wrangler kv namespace create COMMERCE_TXNS` で作成し、id をここに設定する
 [[kv_namespaces]]
 binding = "COMMERCE_TXNS"
-id = "REPLACE_WITH_REAL_KV_NAMESPACE_ID"
+id = "9ed5a6a315a84adfa3d94f4a9da62efb"
 
 # 機密値はリポジトリに置かず、以下のコマンドで設定する:
 #   wrangler secret put STRIPE_SECRET_KEY      (Stripeのsecret key。まずテストモードのsk_test_...)

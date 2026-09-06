@@ -23,9 +23,9 @@ export interface Env {
 // クライアント側 CurrencyPackCatalog (autoload/currency_pack_catalog.gd) のミラー。
 // クライアントの静的カタログは信用せず、必ずこちらの値でジェム数/Price IDを確定する
 const PACKS: Record<string, { gems: number; priceId: string }> = {
-	small: { gems: 300, priceId: "price_REPLACE_WITH_REAL_SMALL" },
-	medium: { gems: 800, priceId: "price_REPLACE_WITH_REAL_MEDIUM" },
-	large: { gems: 2000, priceId: "price_REPLACE_WITH_REAL_LARGE" },
+	small: { gems: 300, priceId: "price_1UCgwbHiDnhvrIYHVtC6yaoz" },
+	medium: { gems: 800, priceId: "price_1UCgwsHiDnhvrIYHfFN8ND6D" },
+	large: { gems: 2000, priceId: "price_1UCgx5HiDnhvrIYHRy6Jpkfl" },
 };
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
