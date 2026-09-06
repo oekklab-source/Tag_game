@@ -21,6 +21,13 @@ var _log = HLog.logger("HPlayerDataStorage")
 
 const DEFAULT_CHUNK_BYTES := 4096
 
+## PDS転送(write/read/query)の同時実行を防ぐロック。EOS Player Data Storageは
+## 同一ファイルへの転送を同時に1件しか受け付けないため(AlreadyPendingで失敗する)、
+## このプロジェクトが扱うファイルは1つ(profile.json)なのでファイル名非依存の
+## グローバルロックで十分。
+var _pds_busy := false
+signal _pds_lock_released
+
 #endregion
 
 
@@ -38,7 +45,15 @@ func _ready() -> void:
 ## WriteFileOptions.dataに全バッファを渡す方式で、write_file_data_callback
 ## (チャンク要求)への応答はネイティブ側が自動処理する前提。この前提が誤りだった
 ## 場合はwrite_file_callbackの待機がタイムアウトする形で顕在化するはず。
+## PDS転送ロックで直列化される(実機検証で判明したAlreadyPending競合対策)。
 func write_file_async(filename: String, data: PackedByteArray) -> bool:
+	await _pds_acquire()
+	var result := await _write_file_impl(filename, data)
+	await _pds_release()
+	return result
+
+
+func _write_file_impl(filename: String, data: PackedByteArray) -> bool:
 	_log.debug("Writing file: filename=%s size=%d" % [filename, data.size()])
 	var opts = EOS.PlayerDataStorage.WriteFileOptions.new()
 	opts.filename = filename
@@ -62,7 +77,15 @@ func write_file_async(filename: String, data: PackedByteArray) -> bool:
 ## 指定ファイルをEOS Player Data Storageから読み込む。未存在/失敗時は空のPackedByteArray。
 ## read_file_data_callbackはチャンク単位で複数回発火しうるため、一時接続でバッファへ
 ## 蓄積し、完了シグナル(read_file_callback)到着後に切断する。
+## PDS転送ロックで直列化される(実機検証で判明したAlreadyPending競合対策)。
 func read_file_async(filename: String) -> PackedByteArray:
+	await _pds_acquire()
+	var result := await _read_file_impl(filename)
+	await _pds_release()
+	return result
+
+
+func _read_file_impl(filename: String) -> PackedByteArray:
 	_log.debug("Reading file: filename=%s" % filename)
 	var buffer := PackedByteArray()
 
@@ -100,7 +123,15 @@ enum FileQueryStatus { FOUND, NOT_FOUND, ERROR }
 ## ファイルの存在有無をクエリし、見つかった/見つからない/クエリ自体が失敗した、を区別して返す。
 ## 呼び出し側が「未存在と確認できた場合」と「一時的な障害で確認できなかった場合」を
 ## 区別する必要がある場合(例: クラウドセーブの初回判定)はこちらを使うこと。
+## PDS転送ロックで直列化される(実機検証で判明したAlreadyPending競合対策)。
 func query_file_status_async(filename: String) -> FileQueryStatus:
+	await _pds_acquire()
+	var result: FileQueryStatus = await _query_file_status_impl(filename)
+	await _pds_release()
+	return result
+
+
+func _query_file_status_impl(filename: String) -> FileQueryStatus:
 	var opts = EOS.PlayerDataStorage.QueryFileOptions.new()
 	opts.filename = filename
 	EOS.PlayerDataStorage.PlayerDataStorageInterface.query_file(opts)
@@ -143,5 +174,20 @@ func get_file_timestamp_async(filename: String) -> int:
 
 
 #region Private methods
+
+## PDS転送ロックを取得する(既に使用中ならawaitで空くまで待つ)。
+func _pds_acquire() -> void:
+	while _pds_busy:
+		await _pds_lock_released
+	_pds_busy = true
+
+
+## PDS転送ロックを解放する。ネイティブSDK側のtransfer-handle解放が
+## コールバック発火(=このawait chainの解決)よりわずかに遅れる可能性への
+## 保険として、解放前に短い猶予を置く(実機検証でAlreadyPendingが確認済みのため)。
+func _pds_release() -> void:
+	await get_tree().create_timer(0.2).timeout
+	_pds_busy = false
+	_pds_lock_released.emit()
 
 #endregion
