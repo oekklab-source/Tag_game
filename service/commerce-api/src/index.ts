@@ -84,13 +84,16 @@ async function handleCreateCheckoutSession(request: Request, env: Env): Promise<
 			cancel_url: `${origin}/return?status=cancel`,
 			expires_at: String(expiresAt),
 			"metadata[pack_id]": packId,
+			"managed_payments[enabled]": "false",
 		}),
 	});
 	if (!res.ok) {
+		console.error("stripe checkout.sessions create failed", packId, pack.priceId, res.status, await res.text());
 		return json({ reason: "stripe_api_error" }, 502);
 	}
 	const session: any = await res.json();
 	if (!session?.id || !session?.url) {
+		console.error("stripe checkout.sessions create returned unexpected shape", JSON.stringify(session));
 		return json({ reason: "stripe_api_error" }, 502);
 	}
 
