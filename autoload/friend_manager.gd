@@ -13,7 +13,7 @@ extends Node
 ## PurchaseManager.USE_LIVE_PURCHASESと同じ「デプロイ・動作確認が済むまでfalse」
 ## のロールアウト規約。
 
-const USE_LIVE_FRIEND_BACKEND := false
+const USE_LIVE_FRIEND_BACKEND := true
 
 
 ## ⑤自分のフレンドコードを取得/生成する。フレンド画面が開いた際に呼ぶ。

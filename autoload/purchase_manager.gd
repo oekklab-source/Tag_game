@@ -72,10 +72,11 @@ func purchase_item(kind: StringName, id: StringName) -> bool:
 
 
 ## ③プレゼント用: 自分のジェムを消費するだけで、相手への付与は GiftManager が行う。
-## 失敗（配信不可）時は呼び出し側が refund_gift() で払い戻すこと
+## 失敗（配信不可）時は呼び出し側が refund_gift() で払い戻すこと。
+## 無料(price==0)アイテムはそもそもプレゼント対象外(誰でも無料で入手できるため)
 func spend_for_gift(kind: StringName, id: StringName) -> bool:
 	var price := _item_price(kind, id)
-	if price < 0:
+	if price <= 0:
 		return false
 	return ProfileManager.spend_currency(price)
 

@@ -313,10 +313,13 @@ func add_currency(amount: int) -> void:
 	save_profile()
 
 
-## ②ジェムを消費できるか確認したうえで消費する。残高不足なら何もせず false を返す
+## ②ジェムを消費できるか確認したうえで消費する。残高不足なら何もせず false を返す。
+## amount == 0(無料アイテムの購入/プレゼント)は消費不要なのでそのまま true を返す
 func spend_currency(amount: int) -> bool:
-	if amount <= 0 or premium_currency < amount:
+	if amount < 0 or premium_currency < amount:
 		return false
+	if amount == 0:
+		return true
 	premium_currency -= amount
 	save_profile()
 	return true

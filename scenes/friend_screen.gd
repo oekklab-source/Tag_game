@@ -22,6 +22,9 @@ const SHOP_SCENE := "res://scenes/shop_screen.tscn"
 var _my_code_label: Label
 var _code_input: LineEdit
 var _requests_list: VBoxContainer
+var _remove_confirm_dialog: ConfirmationDialog
+var _pending_remove_puid: String = ""
+var _pending_remove_name: String = ""
 
 
 func _ready() -> void:
@@ -29,6 +32,7 @@ func _ready() -> void:
 	shop_btn.pressed.connect(_on_shop_pressed)
 	_build_code_section()
 	_build_requests_section()
+	_build_remove_confirm_dialog()
 	await _sync_my_code()
 	await refresh()
 
@@ -119,6 +123,17 @@ func _build_requests_section() -> void:
 	main_vbox.move_child(section, 1)
 
 
+## 削除ボタン押下時に出す「本当に削除しますか？」確認ダイアログ。
+## OK/Cancelを1つ使い回し、対象は_pending_remove_puid/nameに保持する
+func _build_remove_confirm_dialog() -> void:
+	_remove_confirm_dialog = ConfirmationDialog.new()
+	_remove_confirm_dialog.title = "フレンド削除の確認"
+	_remove_confirm_dialog.ok_button_text = "削除する"
+	_remove_confirm_dialog.cancel_button_text = "キャンセル"
+	_remove_confirm_dialog.confirmed.connect(_on_remove_confirmed)
+	add_child(_remove_confirm_dialog)
+
+
 func _refresh_requests() -> void:
 	for child in _requests_list.get_children():
 		child.queue_free()
@@ -183,6 +198,11 @@ func _build_friend_row(f: Dictionary) -> Control:
 		invite_btn.pressed.connect(_on_invite_pressed.bind(String(f.get("name", "Friend"))))
 		row.add_child(invite_btn)
 
+	var remove_btn := Button.new()
+	remove_btn.text = "削除"
+	remove_btn.pressed.connect(_confirm_remove_friend.bind(String(f.get("id", "")), String(f.get("name", "Friend"))))
+	row.add_child(remove_btn)
+
 	return row
 
 
@@ -191,6 +211,23 @@ func _on_invite_pressed(friend_name: String) -> void:
 		status_label.text = "接続先をコピーしました。%s さんにDirectConnectタブへ貼り付けてもらってください。" % friend_name
 	else:
 		status_label.text = "招待に失敗しました(ロビーに参加していないか、接続先アドレスがまだ準備できていません)。"
+
+
+func _confirm_remove_friend(friend_puid: String, friend_name: String) -> void:
+	_pending_remove_puid = friend_puid
+	_pending_remove_name = friend_name
+	_remove_confirm_dialog.dialog_text = "%s さんをフレンドから削除しますか？" % friend_name
+	_remove_confirm_dialog.popup_centered()
+
+
+func _on_remove_confirmed() -> void:
+	var friend_puid := _pending_remove_puid
+	var friend_name := _pending_remove_name
+	if await FriendManager.remove_friend(friend_puid):
+		status_label.text = "%s さんをフレンドから削除しました。" % friend_name
+		await refresh()
+	else:
+		status_label.text = "%s さんの削除に失敗しました。" % friend_name
 
 
 func _on_add_friend_pressed() -> void:

@@ -165,6 +165,7 @@ func _build_item_card(kind: StringName, id: StringName, def: Dictionary) -> Cont
 
 	var gift_btn := Button.new()
 	gift_btn.text = "🎁 プレゼントする"
+	gift_btn.disabled = price <= 0
 	gift_btn.pressed.connect(_open_gift_picker.bind(kind, id))
 	vbox.add_child(gift_btn)
 
