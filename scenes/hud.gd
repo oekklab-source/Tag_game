@@ -247,6 +247,8 @@ func _update_labels() -> void:
 		if GameManager.head_start_left > 0.0:
 			lines.append("にげる時間！ 今のうちに走れ" if is_runner
 				else "にげる時間 ― おには動けない")
+	if GameManager.debug_cpu_runner:
+		lines.append("デバッグ: R バナナ / T ブロック / Y ロケット / E 使用 / Q メイン画面")
 	info_label.text = "
 ".join(lines)
 

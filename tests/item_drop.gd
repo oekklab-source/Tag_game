@@ -159,8 +159,8 @@ func _verify_placement_rules(player: Node3D, items: Node) -> void:
 			Player.BANANA_THROW_UP * Player.BANANA_THROW_UP + 2.0 * gravity)) / gravity
 		var distance := Player.BANANA_THROW_SPAWN + Player.BANANA_THROW_FORWARD * flight_time
 		var peak := 1.0 + Player.BANANA_THROW_UP * Player.BANANA_THROW_UP / (2.0 * gravity)
-		_report("放物線は約16m・最高点約4m", distance >= 15.8 and distance <= 16.2
-			and peak >= 3.9 and peak <= 4.1,
+		_report("放物線は約16m・最高点約6m", distance >= 15.8 and distance <= 16.2
+			and peak >= 5.9 and peak <= 6.1,
 			"着地点 %.2fm / 最高点 %.2fm" % [distance, peak])
 		hunter_banana._on_body_entered(player)
 		_report("飛行中は投げ主へ当たらない", not hunter_banana.get("_used"),
@@ -170,9 +170,9 @@ func _verify_placement_rules(player: Node3D, items: Node) -> void:
 
 	player.velocity = Vector3(2.0, 1.5, -3.0)
 	var moving_banana := _spawn_item(player, items, Player.Item.BANANA)
-	var expected_moving_velocity := Vector3(1.0,
-		Player.BANANA_THROW_UP + 0.75, -Player.BANANA_THROW_FORWARD - 1.5)
-	_report("投げ手の全方向速度を半分加算", moving_banana != null
+	var expected_moving_velocity := Vector3(2.0,
+		Player.BANANA_THROW_UP + 0.75, -Player.BANANA_THROW_FORWARD - 3.0)
+	_report("投げ手の水平速度100%・上下速度50%を加算", moving_banana != null
 		and moving_banana.launch_velocity.distance_to(expected_moving_velocity) < 0.01,
 		"初速 %s / 期待 %s" % [moving_banana.launch_velocity, expected_moving_velocity]
 		if moving_banana else "生成なし")
@@ -223,7 +223,7 @@ func _verify_thrown_banana_physics() -> void:
 	var peak_height := peak - floor_top
 	_report("実物も放物線で着地", banana.get("_landed")
 		and flight_distance >= 14.5 and flight_distance <= 15.0
-		and peak_height >= 3.9 and peak_height <= 4.1,
+		and peak_height >= 5.9 and peak_height <= 6.1,
 		"飛行 %.2fm / 最高点 %.2fm" % [flight_distance, peak_height])
 	banana.queue_free()
 	await get_tree().process_frame
@@ -234,7 +234,8 @@ func _verify_thrown_banana_physics() -> void:
 	await get_tree().physics_frame
 	var blocked_banana: Area3D = BANANA_SCENE.instantiate()
 	blocked_banana.position = Vector3(130.0, floor_top + 1.0, 104.0)
-	blocked_banana.launch_velocity = Vector3(0.0, Player.BANANA_THROW_UP,
+	# 通常投擲は最高点6mで壁を飛び越えるため、壁衝突そのものは低い軌道で確認する。
+	blocked_banana.launch_velocity = Vector3(0.0, 2.0,
 		-Player.BANANA_THROW_FORWARD)
 	blocked_banana.thrower_peer_id = 1
 	add_child(blocked_banana)

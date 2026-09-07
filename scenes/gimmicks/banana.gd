@@ -10,7 +10,7 @@ const STUN := 1.5
 const LIFETIME := 30.0  # 拾われないまま残り続けないように自然消滅させる
 const FLOOR_MASK := 9   # World(1) + Platform(8)。床・滑り台・置き壁に着地する
 const FLOOR_PROBE := 0.08
-const THROW_GRAVITY := 9.30  # 速度1.5倍で約16m・最高点約4mになる投げ専用重力
+const THROW_GRAVITY := 14.65  # 水平8.55m/s・上向き12.11m/sで約16m・最高点約6m
 
 var _used := false
 var _landed := false

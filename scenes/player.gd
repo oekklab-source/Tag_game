@@ -72,8 +72,8 @@ const BANANA_BEHIND := 3.0    # 足元の後ろこの距離に置く
 const BLOCK_BEHIND := 3.0     # バナナと同じ距離。カメラ干渉は壁側を除外して防ぐ
 const BANANA_THROW_SPAWN := 1.2
 const BANANA_THROW_FORWARD := 8.55  # 以前の5.7m/sの1.5倍
-const BANANA_THROW_UP := 7.47       # 投げバナナ用重力と合わせて最高点を約4mにする
-const BANANA_CARRY_RATIO := 0.5     # 投げた瞬間の自キャラ速度を全方向とも半分加える
+const BANANA_THROW_UP := 12.11      # 投げバナナ用重力と合わせて最高点を約6mにする
+const BANANA_CARRY_RATIO := Vector3(1.0, 0.5, 1.0)  # 自キャラ速度を水平100%・上下50%加える
 ## 取得直後のルーレット時間。この間は中身が確定しておらず使えない（HUD が回して見せる）
 const ITEM_ROULETTE := 1.2
 
@@ -248,6 +248,7 @@ func _physics_process(delta: float) -> void:
 	if not is_multiplayer_authority():
 		return
 
+	_update_debug_item_shortcuts()
 	# エモートは frozen の判定より前。凍っている鬼も、転んでいる最中も出せる。
 	# dive / use_item と同じく _unhandled_input ではなくここで拾うのは、
 	# 「押しっぱなしの間だけ有効」ではないものを物理フレームの粒度で揃えるため
@@ -276,7 +277,8 @@ func _physics_process(delta: float) -> void:
 			and my_id != GameManager.runner_id
 			and GameManager.head_start_left > 0.0):
 		frozen = true
-	if not frozen and Input.is_action_just_pressed("use_item"):
+	if (not frozen or GameManager.debug_cpu_runner) \
+			and Input.is_action_just_pressed("use_item"):
 		_use_item()
 
 	if warp_grace > 0.0 or not grounded:
@@ -519,6 +521,29 @@ func teleport(pos: Vector3) -> void:
 
 
 ## --- 持ち物アイテム -----------------------------------------------------
+
+func _update_debug_item_shortcuts() -> void:
+	if not GameManager.debug_cpu_runner:
+		return
+	if Input.is_action_just_pressed("debug_return_main"):
+		NetworkManager.leave.call_deferred()
+	elif Input.is_action_just_pressed("debug_give_banana"):
+		give_debug_item(Item.BANANA)
+	elif Input.is_action_just_pressed("debug_give_block"):
+		give_debug_item(Item.BLOCK)
+	elif Input.is_action_just_pressed("debug_give_rocket"):
+		give_debug_item(Item.ROCKET)
+
+
+## CPU逃走者デバッグ専用。ルーレットを通さず、Eですぐ使える状態にする。
+func give_debug_item(id: int) -> void:
+	if not is_multiplayer_authority() or not GameManager.debug_cpu_runner:
+		return
+	if id not in [Item.ROCKET, Item.BANANA, Item.BLOCK]:
+		return
+	item = id
+	item_lock = 0.0
+	item_changed.emit(item)
 
 ## ？ブロックから受け取る。1個だけ持てるので、新しく取ると上書きされる。
 ## 中身は ITEM_ROULETTE 秒かけて確定する演出にするため、その間は使用も止める

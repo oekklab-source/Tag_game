@@ -132,6 +132,8 @@ var squad := HunterSquad.new()
 
 
 func reset() -> void:
+	var debug_was_enabled := debug_cpu_runner
+	debug_cpu_runner = false
 	state = State.WAITING
 	runner_id = -1
 	wanted_runner = -1
@@ -146,6 +148,8 @@ func reset() -> void:
 	_peer_notice_left = 0.0
 	_awaiting_version.clear()
 	_clear_intel()
+	if debug_was_enabled:
+		debug_mode_changed.emit(false)
 
 
 func _clear_intel() -> void:
