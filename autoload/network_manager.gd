@@ -13,6 +13,13 @@ enum SessionKind { SOLO, ONLINE }
 const PORT := 9999
 const WORLD_SCENE := "res://scenes/world.tscn"
 const MAIN_SCENE := "res://scenes/title.tscn"
+const MIGRATION_OVERLAY_SCENE := "res://scenes/migration_overlay.tscn"
+## ⑨EOSがオーナー消失を検知して新オーナーを確定させるまでの待ち時間。この間に
+## host_migratedが来なければ諦める(EOSのハートビート検知は疎通確認ベースで
+## Godot高レベルAPIのTCP切断即時検知より遅れうるため、余裕を持たせる)
+const MIGRATION_OWNER_WAIT_SEC := 15.0
+## ⑨新ホストがCloudflare Tunnelを再確立するまでの待ち時間。既存のTUNNEL_POLL_TIMEOUTと揃える
+const MIGRATION_RECONNECT_WAIT_SEC := 30.0
 ## tools/serve.ps1 がトンネルのホスト名を書き出す先。ホストのゲームプロセスは
 ## create_process で撃ちっぱなしにした別プロセスの標準出力を直接は読めないため、
 ## ファイル経由でホスト名を受け渡す
@@ -43,10 +50,23 @@ var _tunnel_pid := -1
 var _tunnel_poll_timer: Timer = null
 var _tunnel_poll_elapsed := 0.0
 
+## ⑨EOSロビー経由の対戦中、ホストが落ちた際に生存者だけでゲームを続けるための状態機械。
+## 対象はEOSロビー経由のみ(DirectConnectはロビーを持たないため対象外、matched_via_eos_lobby参照)
+signal migration_status_changed(text: String)
+var is_migrating := false
+## GameManager.snapshot_for_host_disconnect_penalty()の戻り値を、新ホストが
+## 確定するまで一時保持しておく置き場(空辞書なら報告対象なし)
+var _pending_host_penalty := {}
+## SceneTreeTimerのtimeoutを後から無効化する手段がないため、世代カウンタで
+## 「もう次の段階に進んでいる/マイグレーションが終わっている」場合の遅延タイムアウトを無視する
+var _migration_token := 0
+var _migration_overlay: CanvasLayer = null
+
 
 func _ready() -> void:
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
+	EosManager.host_migrated.connect(_on_host_migrated)
 	_apply_cmdline()
 
 
@@ -276,6 +296,11 @@ func _stop_tunnel_poll() -> void:
 
 
 func leave() -> void:
+	# ⑨connection_failed等、_migration_failed()を経由しない経路からleave()が
+	# 呼ばれた場合の後始末(再接続試行中の接続失敗など)。既にクリア済みなら無害
+	is_migrating = false
+	_pending_host_penalty = {}
+	_hide_migration_overlay()
 	mode = Mode.NONE
 	session_kind = SessionKind.SOLO
 	public_address = ""
@@ -297,4 +322,144 @@ func _on_connection_failed() -> void:
 
 func _on_server_disconnected() -> void:
 	last_error = "ホストとの接続が切れました"
+	if not _should_attempt_migration():
+		leave()
+		return
+	# ⑨旧ホスト(peer_id==1)のペナルティ計算に必要な情報は、まだ生きている今のうちに
+	# ローカルのレプリケート済み状態から確保しておく(GameManager.reset()で失われる前)
+	_pending_host_penalty = GameManager.snapshot_for_host_disconnect_penalty()
+	is_migrating = true
+	_show_migration_overlay("ホストとの接続が切れました。引き継ぎ先を確認しています…")
+	_start_migration_timeout(MIGRATION_OWNER_WAIT_SEC)
+
+
+## ⑨EOSロビー経由(クイックマッチ/ルームマッチ)の対戦のみマイグレーションを試みる。
+## DirectConnect(招待リンク/IP直結)はEOSロビーを持たないため対象外(現状どおりleave()へ)
+func _should_attempt_migration() -> bool:
+	return matched_via_eos_lobby and EosManager.is_eos_available \
+		and not EosManager.current_lobby_id.is_empty()
+
+
+## EosManager.host_migrated(EOSロビーのオーナー自動昇格)を受けて、実際にホストを
+## 差し替える。is_migrating中でなければ無関係なロビーイベントとして無視する
+func _on_host_migrated(_new_owner_puid: String, i_am_new_host: bool) -> void:
+	if not is_migrating:
+		return
+	if i_am_new_host:
+		if EosManager.can_host_of(EosManager.product_user_id):
+			# ⑨自分がホストとして確定した時点でペナルティを報告する
+			# (新ホストに昇格した端末だけが報告する。friend-apiはpuidキーの単純上書きで
+			# 冪等なため、_migration_failed()側の全員報告フォールバックと重複しても安全)
+			_report_pending_host_penalty()
+			_promote_self_to_host()
+		elif await EosManager.handoff_if_incapable():
+			# Web版等ホストになれない端末が昇格した場合。can_host=1の別メンバーへ委譲済みで、
+			# 再度host_migratedが発火するのを待つ
+			_update_migration_status("別のプレイヤーへホストを引き継いでいます…")
+			_start_migration_timeout(MIGRATION_OWNER_WAIT_SEC)
+		else:
+			_migration_failed("ホストを引き継げるプレイヤーがいませんでした")
+	else:
+		_update_migration_status("新しいホストの準備を待っています…")
+		# ⑨オーナー確定待ち(15秒)のタイムアウトがまだ有効なままだと、新ホストの
+		# トンネル確立を待っている最中(最大30秒)に誤って_migration_failed()してしまう。
+		# 世代カウンタを進めて古いタイムアウトを無効化してから再接続待ちに入る
+		_start_migration_timeout(MIGRATION_RECONNECT_WAIT_SEC)
+		_reconnect_as_client()
+
+
+func _promote_self_to_host() -> void:
+	_update_migration_status("あなたが新しいホストになりました。準備しています…")
+	_reset_for_migration()
+	mode = Mode.HOST
+	session_kind = SessionKind.ONLINE
+	public_address = _resolve_lan_address()
+	if not public_address.is_empty():
+		public_address_ready.emit(public_address)
+	_start_migration_timeout(MIGRATION_RECONNECT_WAIT_SEC)
+	get_tree().change_scene_to_file(WORLD_SCENE)
+
+
+## ⑨新ホストがhost_addr属性を更新するまでポーリングする
+## (EosManager.await_host_addr()を長い待ち時間で再利用)
+func _reconnect_as_client() -> void:
+	var addr := await EosManager.await_host_addr(
+		EosManager.current_lobby_id, int(MIGRATION_RECONNECT_WAIT_SEC / 0.5), 0.5)
+	if not is_migrating:
+		return  # 待っている間にタイムアウト等で既に処理済み
+	if addr.is_empty():
+		_migration_failed("新しいホストに接続できませんでした")
+		return
+	_reset_for_migration()
+	start_client(addr)
+
+
+## leave()のサブセット。GameManagerの試合状態はクリアするが、マイグレーション中は
+## ロビー離脱・タイトル遷移をしない(それをするとマッチング自体が成立しなくなる)
+func _reset_for_migration() -> void:
+	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+	GameManager.reset()
+
+
+func _migration_failed(reason: String) -> void:
+	if not is_migrating:
+		return
+	last_error = reason
+	# ⑨新ホストが決まらなかった場合、生存者全員が独立に報告する(friend-apiは
+	# puidキーの単純上書きで冪等なため、複数人が同じ値を送っても壊れない)
+	_report_pending_host_penalty()
+	is_migrating = false
+	_hide_migration_overlay()
 	leave()
+
+
+func _report_pending_host_penalty() -> void:
+	if _pending_host_penalty.is_empty():
+		return
+	var s: Dictionary = _pending_host_penalty
+	_pending_host_penalty = {}
+	var delta := RankingManager.calculate_rating_delta(
+		s.was_runner, false, s.survival, s.hunter_count, false, s.self_rating, 1500)
+	FriendManager.report_disconnect_penalty(s.puid, delta)
+
+
+## SceneTreeTimerは後から止められないため、世代カウンタ(_migration_token)で
+## 「発火時点でまだこの段階を待っているか」を確認してから_migration_failed()を呼ぶ
+func _start_migration_timeout(seconds: float) -> void:
+	_migration_token += 1
+	var token := _migration_token
+	get_tree().create_timer(seconds).timeout.connect(
+		func() -> void:
+			if is_migrating and token == _migration_token:
+				_migration_failed("ホストの引き継ぎがタイムアウトしました")
+	)
+
+
+func _update_migration_status(text: String) -> void:
+	if _migration_overlay != null:
+		_migration_overlay.set_text(text)
+	migration_status_changed.emit(text)
+
+
+func _show_migration_overlay(text: String) -> void:
+	if _migration_overlay == null:
+		var scene: PackedScene = load(MIGRATION_OVERLAY_SCENE)
+		_migration_overlay = scene.instantiate()
+		get_tree().root.add_child(_migration_overlay)
+	_update_migration_status(text)
+
+
+func _hide_migration_overlay() -> void:
+	if _migration_overlay != null:
+		_migration_overlay.queue_free()
+		_migration_overlay = null
+
+
+## world.gd._ready()から、新ホストのシーン起動完了(is_server()分岐の末尾)または
+## クライアントの新ホストへの接続確立(connected_to_server)のタイミングで呼ばれる。
+## マイグレーション中でなければ無害(通常の新規参加時にも無条件で呼ばれるため)
+func finish_migration_if_active() -> void:
+	if not is_migrating:
+		return
+	is_migrating = false
+	_hide_migration_overlay()

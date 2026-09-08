@@ -18,6 +18,9 @@ signal lobby_created(connect_status: int, lobby_id: String)
 signal lobby_match_list(lobbies: Array)
 signal lobby_joined(lobby_id: String, permissions: int, locked: bool, response: int)
 signal lobby_chat_update(lobby_id: int, change_id: int, making_change_id: int, chat_state: int)
+## ⑨EOSロビーのオーナーが(元オーナーの消失により)別メンバーへ自動的に昇格した際に発火。
+## new_owner_puidは新オーナーのproduct_user_id、i_am_new_hostは自分がそれかどうか
+signal host_migrated(new_owner_puid: String, i_am_new_host: bool)
 signal leaderboard_loaded(entries: Array)
 signal leaderboard_score_uploaded(success: bool, score: int)
 
@@ -131,6 +134,9 @@ func create_lobby(lobby_type: int = 0, max_members: int = 8, lobby_name: String 
 		opts.max_lobby_members = max_members
 		opts.permission_level = EOS.Lobby.LobbyPermissionLevel.PublicAdvertised
 		opts.presence_enabled = HLobbies.presence_enabled
+		# ⑨明示的にfalse(=マイグレーション許可)を設定する。既定値も既にfalseだが、
+		# ホストマイグレーション機能が本作の前提になったことを意図として明文化しておく
+		opts.disable_host_migration = false
 		var lobby: HLobby = await HLobbies.create_lobby_async(opts)
 		if lobby == null:
 			lobby_created.emit(0, "")
@@ -149,6 +155,8 @@ func create_lobby(lobby_type: int = 0, max_members: int = 8, lobby_name: String 
 			print("[EosManager] Failed to write initial lobby attributes.")
 		if not NetworkManager.public_address_ready.is_connected(_on_public_address_ready):
 			NetworkManager.public_address_ready.connect(_on_public_address_ready)
+		_watch_lobby(lobby)
+		await _publish_can_host()
 		lobby_created.emit(1, current_lobby_id)
 	else:
 		current_lobby_id = "mock-12345678"
@@ -248,6 +256,8 @@ func join_lobby(lobby_id: String) -> void:
 		_current_lobby = lobby
 		current_lobby_id = lobby.lobby_id
 		is_host = false
+		_watch_lobby(lobby)
+		await _publish_can_host()
 		lobby_joined.emit(current_lobby_id, 0, false, 1)
 	else:
 		current_lobby_id = lobby_id
@@ -312,6 +322,83 @@ func _on_public_address_ready(addr: String) -> void:
 		_current_lobby.add_attribute("host_addr", addr)
 		if not await _current_lobby.update_async():
 			print("[EosManager] Failed to update host_addr attribute.")
+
+
+# --- ホストマイグレーション(Phase 8) ---
+# EOS Lobbiesは既定でホストマイグレーション(オーナー消失時の自動オーナー昇格)が
+# 有効になっている(create_lobby()のdisable_host_migration=false参照)。ここでは
+# そのイベントを購読してゲーム側(NetworkManager)へ伝える薄い橋渡しだけを行う。
+
+## Windows Desktop版のみ_launch_tunnel()(Cloudflare Tunnel)でインターネット越しの
+## 到達性を確保できるため、ホストマイグレーションの昇格先になれるのもこの条件を
+## 満たす端末だけ(Web版はtitle.gdでそもそもホストボタン自体が非表示)
+func _compute_can_host() -> bool:
+	return not OS.has_feature("web") and OS.get_name() == "Windows"
+
+
+## 自分のcan_host(ホストになれるか)をロビーメンバー属性として公開する。
+## create_lobby()/join_lobby()の両方から、ロビー参加が確定した直後に呼ぶ
+func _publish_can_host() -> void:
+	if not is_eos_available or _current_lobby == null:
+		return
+	_current_lobby.add_current_member_attribute("can_host", "1" if _compute_can_host() else "0")
+	if not await _current_lobby.update_async():
+		print("[EosManager] Failed to publish can_host attribute.")
+
+
+func _watch_lobby(lobby: HLobby) -> void:
+	if not lobby.lobby_owner_changed.is_connected(_on_lobby_owner_changed):
+		lobby.lobby_owner_changed.connect(_on_lobby_owner_changed)
+
+
+## EOSのオーナー自動昇格(旧オーナー消失検知)を受けての通知。
+## _init_from_details()がowner_product_user_idを更新してからこのシグナルを
+## 発火する(hlobby.gd参照)ため、ここでis_owner()を読めば新オーナーを正しく判定できる
+func _on_lobby_owner_changed() -> void:
+	if _current_lobby == null:
+		return
+	is_host = _current_lobby.is_owner()
+	host_migrated.emit(_current_lobby.owner_product_user_id, is_host)
+
+
+## 指定したメンバーがホストになれる(can_host=1を公開済み)かどうか
+func can_host_of(product_user_id: String) -> bool:
+	if _current_lobby == null:
+		return false
+	var member := _current_lobby.get_member_by_product_user_id(product_user_id)
+	if member == null:
+		return false
+	return String(member.get_attribute("can_host").get("value", "0")) == "1"
+
+
+## can_host=1の候補の中から決定的なルール(puidの辞書順)で1人選ぶ。
+## EOS呼び出しを一切含まない純粋関数として切り出してあり、テストではこちらを直接検証する。
+## 候補が見つからなければ空文字を返す
+func _pick_handoff_target() -> String:
+	if _current_lobby == null:
+		return ""
+	var candidates: Array[String] = []
+	for member in _current_lobby.members:
+		if member.product_user_id != product_user_id and can_host_of(member.product_user_id):
+			candidates.append(member.product_user_id)
+	if candidates.is_empty():
+		return ""
+	candidates.sort()
+	return candidates[0]
+
+
+## 自分が新オーナーに昇格したがホストになれない(can_host=0、Web版等)場合に呼ぶ。
+## can_host=1の別メンバーへ委譲し、再度lobby_owner_changed(→host_migrated)を連鎖的に発火させる。
+## 戻り値true=委譲を試みた(次のhost_migratedを待てばよい)、
+## false=委譲先が見つからない/委譲失敗(呼び出し側でマイグレーション断念と判断する)
+func handoff_if_incapable() -> bool:
+	if _current_lobby == null or not is_host:
+		return false
+	var target_puid := _pick_handoff_target()
+	if target_puid.is_empty():
+		return false
+	var target := _current_lobby.get_member_by_product_user_id(target_puid)
+	return await target.promote_member_async()
 
 
 # --- リーダーボード(Phase 3) ---

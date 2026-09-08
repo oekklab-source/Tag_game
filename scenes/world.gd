@@ -49,13 +49,19 @@ func _ready() -> void:
 		multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 		_spawn_player(1)
 		GameManager.broadcast_my_profile()
+		# ⑨ホストマイグレーション中でなければ無害(no-op)。マイグレーション中なら
+		# 新ホストとしてのシーン起動が完了したのでオーバーレイを閉じる
+		NetworkManager.finish_migration_if_active()
 	else:
 		# ②④ 接続が確立してから自分のプロフィール（レート/ティア/コスチューム）を
 		# ホストへ報告する。setup_peer() 直後はまだハンドシェイク中のことがあるため待つ。
 		# multiplayer は world.tscn を跨いで生き続ける SceneTree 側のオブジェクトなので、
 		# ONE_SHOT にしないと再入室のたびに接続が積み重なってしまう
-		multiplayer.connected_to_server.connect(
-			func(): GameManager.broadcast_my_profile(), CONNECT_ONE_SHOT)
+		var _on_connected_to_server := func() -> void:
+			GameManager.broadcast_my_profile()
+			# ⑨マイグレーション中でなければ無害。新ホストへの再接続が確立したので閉じる
+			NetworkManager.finish_migration_if_active()
+		multiplayer.connected_to_server.connect(_on_connected_to_server, CONNECT_ONE_SHOT)
 
 
 func _unhandled_input(event: InputEvent) -> void:

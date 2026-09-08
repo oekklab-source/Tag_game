@@ -732,9 +732,14 @@ func should_cpu_takeover_runner(peer_id: int) -> bool:
 func on_player_left(peer_id: int, cpu_took_over: bool = false) -> void:
 	if not multiplayer.is_server():
 		return
-	# ⑦敗北精算の報告はプロフィール消去より前に行う(puidが必要なため)
+	# ⑦⑧敗北精算の報告はプロフィール消去より前に行う(puidが必要なため)。
+	# 逃走者のCPU代行(cpu_took_over)に加え、対戦中に切断した鬼役にも同様にペナルティを課す
+	# (通信切断による不正な勝敗回避を防ぐため。鬼が抜けても試合継続に支障はないので
+	# CPU代行等の救済措置は不要で、ペナルティ記録のみ行う)
 	if cpu_took_over:
-		_report_runner_disconnect_penalty(peer_id)
+		_report_participant_disconnect_penalty(peer_id, true)
+	elif round_is_ranked and state == State.PLAYING and peer_id != runner_id:
+		_report_participant_disconnect_penalty(peer_id, false)
 	_awaiting_version.erase(peer_id)
 	if peer_profiles.has(peer_id):
 		peer_profiles.erase(peer_id)
@@ -748,19 +753,41 @@ func on_player_left(peer_id: int, cpu_took_over: bool = false) -> void:
 		_end_round.rpc(false, EndReason.RUNNER_LEFT)
 
 
-## ⑦切断した本人はその場で反映できないため、サーバー(friend-api)に敗北分の
+## ⑦⑧切断した本人はその場で反映できないため、サーバー(friend-api)に敗北分の
 ## レート変動を記録し、本人が次回ログインした際に自分で適用する
 ## (RankingManager._on_eos_initialized()参照)。CPU AIは別途開発中のため、
-## 「最強CPU」は既存のcpu_runner.gdをそのまま流用する暫定実装
-func _report_runner_disconnect_penalty(peer_id: int) -> void:
+## 「最強CPU」は既存のcpu_runner.gdをそのまま流用する暫定実装。
+## was_runner=falseの場合(鬼切断)はcalculate_rating_delta内のis_runner==is_winner
+## 正規化により survival が MAX_TIME 扱いになり、「逃げ切られた」前提の最大ペナルティになる
+func _report_participant_disconnect_penalty(peer_id: int, was_runner: bool) -> void:
 	var puid := String(peer_profiles.get(peer_id, {}).get("puid", ""))
 	if puid.is_empty():
 		return
 	var self_rating := int(peer_profiles.get(peer_id, {}).get("rating", 1500))
 	var survival := ROUND_TIME - time_left
 	var delta := RankingManager.calculate_rating_delta(
-		true, false, survival, round_hunter_count, false, self_rating, 1500)
+		was_runner, false, survival, round_hunter_count, false, self_rating, 1500)
 	FriendManager.report_disconnect_penalty(puid, delta)
+
+
+## ⑨ホスト(peer_id==1)自身がPLAYING中に切断した場合の敗北精算に使うスナップショットを取る。
+## NetworkManagerがserver_disconnected検知直後、まだローカルのレプリケート済み状態
+## (peer_profiles/runner_id/time_left等)が生きている間に呼ぶ。呼び出し元は死んだ
+## ホストではなく生存クライアント自身なので、on_player_left系と違いis_server()は問わない
+func snapshot_for_host_disconnect_penalty() -> Dictionary:
+	const HOST_PEER_ID := 1
+	if state != State.PLAYING or not round_is_ranked:
+		return {}
+	var puid := String(peer_profiles.get(HOST_PEER_ID, {}).get("puid", ""))
+	if puid.is_empty():
+		return {}
+	return {
+		"puid": puid,
+		"was_runner": runner_id == HOST_PEER_ID,
+		"self_rating": int(peer_profiles.get(HOST_PEER_ID, {}).get("rating", 1500)),
+		"survival": ROUND_TIME - time_left,
+		"hunter_count": round_hunter_count,
+	}
 
 
 ## ⑦レーティング戦で逃げる役が切断した際、既存の(暫定)cpu_runner.gdへ操作を
