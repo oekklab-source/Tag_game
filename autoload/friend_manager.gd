@@ -102,6 +102,25 @@ func invite_to_lobby() -> bool:
 	return true
 
 
+## ⑦レーティング戦で逃げる役が切断した際、ホストが代わりに敗北分のレート変動を
+## 報告する(暫定実装)。本人はオフラインのため次回ログイン時にconsume_pending_penalty()
+## で本人自身が適用する。失敗しても対戦継続には影響しないためfire-and-forgetでよい
+func report_disconnect_penalty(puid: String, rating_delta: int) -> void:
+	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
+		await FriendBackendClient.report_penalty(self, puid, rating_delta)
+
+
+## ⑦自分宛ての保留中ペナルティがあれば取得し、同時にサーバー側から削除する。
+## 戻り値: {"pending": bool, "rating_delta": int}
+func consume_pending_penalty() -> Dictionary:
+	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
+		var res := await FriendBackendClient.consume_penalty(self, EosManager.product_user_id)
+		if not res.get("api_ok", false) or not res.get("pending", false):
+			return {"pending": false}
+		return {"pending": true, "rating_delta": int(res.get("rating_delta", 0))}
+	return {"pending": false}
+
+
 ## バックエンド無効時、⑤のUIをオフラインでも確認できるようにするモックフレンド一覧
 func _mock_friends() -> Array[Dictionary]:
 	return [

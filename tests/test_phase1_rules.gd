@@ -60,7 +60,7 @@ func _test_head_start(world: Node) -> void:
 	print("\n--- [2] ヘッドスタート拘束 (8秒) ---")
 	GameManager.set_wanted_runner_to(1) # ホスト(1)がRunner
 	var spawns: Dictionary = {1: Vector3.ZERO, 99: Vector3(10, 0, 10)}
-	GameManager._start_round(1, 1.0, spawns)
+	GameManager._start_round(1, 1.0, spawns, true)
 
 	_assert(GameManager.state == GameManager.State.PLAYING, "ラウンド開始 -> PLAYING")
 	_assert(is_equal_approx(GameManager.head_start_left, GameManager.HEAD_START), "head_start_left == 8.0s")
@@ -167,7 +167,7 @@ func _test_intel_sharing(world: Node) -> void:
 func _test_tag_catch(world: Node) -> void:
 	print("\n--- [5] タッチ判定 (Tag / Catch) ---")
 	var spawns: Dictionary = {1: Vector3.ZERO}
-	GameManager._start_round(1, 1.0, spawns)
+	GameManager._start_round(1, 1.0, spawns, true)
 	GameManager.head_start_left = 0.0 # ヘッドスタート解除
 
 	var runner: CharacterBody3D = world.get_node("Players/1")
@@ -196,7 +196,7 @@ func _test_tag_catch(world: Node) -> void:
 func _test_time_up(world: Node) -> void:
 	print("\n--- [6] タイムアップ逃げ切り (Time Up) ---")
 	var spawns: Dictionary = {1: Vector3.ZERO}
-	GameManager._start_round(1, 1.0, spawns)
+	GameManager._start_round(1, 1.0, spawns, true)
 	GameManager.head_start_left = 0.0
 	GameManager.time_left = 0.02 # 残り0.02秒に設定
 

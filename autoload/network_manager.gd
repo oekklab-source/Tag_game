@@ -31,6 +31,13 @@ signal public_address_ready(addr: String)
 ## URL の ?s= による自動参加は1回だけ。接続失敗時は leave() が main.tscn へ戻すので、
 ## ガードが無いと同じアドレスへ無限に再接続しに行く
 var auto_join_done := false
+## ③このセッションがEOSロビー(ルームマッチ/クイックマッチ、見知らぬ相手との
+## レーティング戦)経由か、DirectConnect(招待リンク/IP直結、フレンドのみの
+## プライベート対戦)経由かを表す。room_match_dialog.gd が接続開始前に設定する。
+## ホスト側のこの値がGameManager._start_round()のRPC引数として全ピアへ配られ、
+## 鬼のランダム化・レーティング適用可否を決める(接続方法はピアごとに違いうるため、
+## 各ピアが自分のこの値だけを見て判断すると食い違いうる。PROTOCOL_VERSION 4の説明参照)
+var matched_via_eos_lobby := false
 ## tools/serve.ps1（トンネル）の PID。同一セッションで再ホストしても二重起動しないための記録
 var _tunnel_pid := -1
 var _tunnel_poll_timer: Timer = null
@@ -238,9 +245,14 @@ func leave() -> void:
 	mode = Mode.NONE
 	session_kind = SessionKind.SOLO
 	public_address = ""
+	matched_via_eos_lobby = false
 	_stop_tunnel_poll()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	GameManager.reset()
+	# EOSロビー経由のセッションだった場合、ここで明示的に抜けておかないと
+	# ロビーがゴースト状態(検索には出るがホストの実体はもう無い)のまま残り続ける
+	if not EosManager.current_lobby_id.is_empty():
+		EosManager.leave_lobby()
 	get_tree().change_scene_to_file(MAIN_SCENE)
 
 

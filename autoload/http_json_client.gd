@@ -4,8 +4,17 @@ class_name HttpJsonClient
 ## バックエンドへPOST+JSON往復する呼び出しの共通ヘルパー。stripe_purchase_provider.gd
 ## の _call_api() と同じ契約を持つ(ネットワーク層が成功しJSONとして解釈できた場合
 ## のみ api_ok=true を含めてレスポンスをそのまま返す)。
+## HTTPRequest.timeout はデフォルト0(無制限)。ネットワーク到達性が無い/不安定な
+## 環境(パケットが黙って落ちるファイアウォール等)ではOSレベルのTCPタイムアウト任せに
+## なり、数分単位で無応答になりうる。特にRankingManagerの起動時ペナルティ確認のように
+## ユーザー操作を介さず自動発火する呼び出しでは、これがそのままアプリ起動のフリーズに
+## 直結するため、全呼び出し共通でタイムアウトを必ず設定する
+const REQUEST_TIMEOUT_SEC := 10.0
+
+
 static func post_json(host: Node, url: String, body: Dictionary) -> Dictionary:
 	var http := HTTPRequest.new()
+	http.timeout = REQUEST_TIMEOUT_SEC
 	host.add_child(http)
 	var err := http.request(
 		url,

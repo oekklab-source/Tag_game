@@ -309,6 +309,30 @@ custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 text = "逃げる役になる"
 
+; 待機中に一時的に他画面を開くための入口。world.tscnのシーンツリー自体は
+; 離れず、hud.gdがオーバーレイとして子に追加する(部屋は生きたまま)
+[node name="OverlayButtonsRow" type="HBoxContainer" parent="Lobby/Box/Col"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="OpenCostumeButton" type="Button" parent="Lobby/Box/Col/OverlayButtonsRow"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "着せ替え"
+
+[node name="OpenShopButton" type="Button" parent="Lobby/Box/Col/OverlayButtonsRow"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "ショップ"
+
+[node name="OpenFriendButton" type="Button" parent="Lobby/Box/Col/OverlayButtonsRow"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "フレンド"
+
 [node name="DebugCpuRunnerButton" type="CheckButton" parent="Lobby/Box/Col"]
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
@@ -318,6 +342,28 @@ text = "デバッグ: CPU逃走者 OFF"
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 text = "ラウンド開始"
+
+; ホストのみ表示。公開ロビーの定員を待機中に変更する(定員に満たなくても
+; StartButtonで開始自体は既に可能。これは検索一覧上の表示定員を直すためのもの)
+[node name="MaxMembersRow" type="HBoxContainer" parent="Lobby/Box/Col"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="MaxMembersLabel" type="Label" parent="Lobby/Box/Col/MaxMembersRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 15
+text = "定員"
+
+[node name="MaxMembersSpin" type="SpinBox" parent="Lobby/Box/Col/MaxMembersRow"]
+layout_mode = 2
+min_value = 2
+max_value = 8
+value = 8
+
+[node name="MaxMembersApplyButton" type="Button" parent="Lobby/Box/Col/MaxMembersRow"]
+layout_mode = 2
+text = "変更"
 
 [node name="LeaveButton" type="Button" parent="Lobby/Box/Col"]
 custom_minimum_size = Vector2(0, 44)

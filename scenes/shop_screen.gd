@@ -6,6 +6,11 @@ extends Control
 
 const TITLE_SCENE := "res://scenes/title.tscn"
 
+## hud.gdがロビー待機中にオーバーレイとして埋め込んだ場合に、閉じる操作の代わりに発火する。
+## タイトルから専用シーンとして開かれた場合(get_tree().current_scene == self)は
+## 従来通りタイトルへのシーン遷移を行うため、その場合は発火しない
+signal closed
+
 @onready var gem_label: Label = $TopBar/GemBadge/HBox/GemLabel
 @onready var back_btn: Button = $TopBar/BackButton
 @onready var pack_row: HBoxContainer = $ContentMargin/Scroll/MainVBox/PackSection/PackRow
@@ -259,4 +264,7 @@ func _on_gift_received(kind: StringName, id: StringName, from_name: String) -> v
 
 
 func _on_back_pressed() -> void:
-	get_tree().change_scene_to_file(TITLE_SCENE)
+	if get_tree().current_scene == self:
+		get_tree().change_scene_to_file(TITLE_SCENE)
+	else:
+		closed.emit()

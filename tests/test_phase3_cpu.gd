@@ -56,7 +56,7 @@ func _test_ai_state_transitions(world: Node, cpu: CharacterBody3D) -> void:
 	print("\n--- [1] CPU AI 状態遷移 ---")
 	# Runner を壁の奥 (見えない位置: ゾーン1の奥) に配置
 	var spawns: Dictionary = {1: Vector3(0, 2, -60)}
-	GameManager._start_round(1, 1.0, spawns)
+	GameManager._start_round(1, 1.0, spawns, true)
 	GameManager.head_start_left = 0.0 # ヘッドスタート解除
 
 	var runner: CharacterBody3D = world.get_node("Players/1")

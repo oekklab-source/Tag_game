@@ -67,6 +67,17 @@ var _last_rating_delta := 0
 var _rating_applied := false
 var _rating_shown := false  # ①CPU戦や離脱中断ではレート行を表示しない
 
+## 待機中に一時的に開く着せ替え/ショップ/フレンド画面。world.tscnのシーンツリーは
+## 離れず、hudの子としてオーバーレイ表示することで部屋(接続・スポーン状態)を保つ
+const OVERLAY_SCENES := {
+	"costume": "res://scenes/costume_screen.tscn",
+	"shop": "res://scenes/shop_screen.tscn",
+	"friend": "res://scenes/friend_screen.tscn",
+}
+var _overlay_instance: Control = null
+var _overlay_full_notified := false
+var _max_members_row_was_visible := false
+
 @onready var vignette: TextureRect = $Vignette
 @onready var role_badge: PanelContainer = $RoleBadge
 @onready var role_label: Label = $RoleBadge/RoleLabel
@@ -90,8 +101,14 @@ var _rating_shown := false  # ①CPU戦や離脱中断ではレート行を表�
 @onready var lobby_status: Label = $Lobby/Box/Col/Status
 @onready var lobby_list: VBoxContainer = $Lobby/Box/Col/ListBox/List
 @onready var lobby_role_button: Button = $Lobby/Box/Col/RoleButton
+@onready var lobby_open_costume_button: Button = $Lobby/Box/Col/OverlayButtonsRow/OpenCostumeButton
+@onready var lobby_open_shop_button: Button = $Lobby/Box/Col/OverlayButtonsRow/OpenShopButton
+@onready var lobby_open_friend_button: Button = $Lobby/Box/Col/OverlayButtonsRow/OpenFriendButton
 @onready var lobby_debug_cpu_runner_button: CheckButton = $Lobby/Box/Col/DebugCpuRunnerButton
 @onready var lobby_start_button: Button = $Lobby/Box/Col/StartButton
+@onready var lobby_max_members_row: HBoxContainer = $Lobby/Box/Col/MaxMembersRow
+@onready var lobby_max_members_spin: SpinBox = $Lobby/Box/Col/MaxMembersRow/MaxMembersSpin
+@onready var lobby_max_members_apply_button: Button = $Lobby/Box/Col/MaxMembersRow/MaxMembersApplyButton
 @onready var lobby_leave_button: Button = $Lobby/Box/Col/LeaveButton
 @onready var lobby_hint: Label = $Lobby/Box/Col/Hint
 @onready var info_label: Label = $InfoLabel
@@ -119,8 +136,12 @@ func _ready() -> void:
 	vignette.texture = _radial_texture()
 	vignette.modulate = Color(1.0, 0.12, 0.12, 0.0)
 	lobby_role_button.pressed.connect(GameManager.toggle_my_role)
+	lobby_open_costume_button.pressed.connect(_open_overlay.bind("costume"))
+	lobby_open_shop_button.pressed.connect(_open_overlay.bind("shop"))
+	lobby_open_friend_button.pressed.connect(_open_overlay.bind("friend"))
 	lobby_debug_cpu_runner_button.toggled.connect(GameManager.set_debug_cpu_runner)
 	lobby_start_button.pressed.connect(GameManager.request_start_round)
+	lobby_max_members_apply_button.pressed.connect(_on_max_members_apply_pressed)
 	# なかま待ち中は接続を切ってタイトルへ戻れる唯一の手段。
 	# ホストが押すと全員切断されるが、それは server_disconnected 経由で
 	# 各参加者が自動的に NetworkManager.leave() されるので既存動作のまま
@@ -244,18 +265,26 @@ func _update_labels() -> void:
 ## キー操作（R / Enter）も同じことができる
 func _update_lobby() -> void:
 	var waiting := GameManager.state == GameManager.State.WAITING
-	lobby.visible = waiting
+	# オーバーレイ(着せ替え/ショップ/フレンド)表示中はロビーパネル自体は隠す。
+	# 接続・GameManagerの状態には一切触れないので、部屋は裏で生きたまま
+	lobby.visible = waiting and _overlay_instance == null
 	if not waiting:
 		return
 
 	var me := multiplayer.get_unique_id()
 	var ids := GameManager.player_ids()
 	var is_host := multiplayer.is_server()
+	# ②EOSロビー経由(見知らぬ相手とのレーティング戦)は鬼を必ずランダムに決めるため、
+	# 立候補UI(役割ボタン・ホストの指名クリック)自体を出さない。DirectConnect
+	# (フレンドのみのプライベート対戦)は従来通り立候補制のまま
+	var is_eos_matched := NetworkManager.matched_via_eos_lobby
+	_update_max_members_row(is_host)
+	_check_overlay_room_full(ids.size(), is_host)
 	# 版数を出しておくと、古いビルドが混ざったときに見ただけで分かる
 	lobby_status.text = "%s ／ %d人が参加中 ／ v%d" % ["ホスト（あなた）" if is_host
 		else "参加中（ホストは別の人）", ids.size(), GameManager.PROTOCOL_VERSION]
 
-	_rebuild_roster(ids, me, is_host)
+	_rebuild_roster(ids, me, is_host, is_eos_matched)
 
 	var debug_available := is_host and ids.size() == 1
 	if is_host and GameManager.debug_cpu_runner and not debug_available:
@@ -266,12 +295,17 @@ func _update_lobby() -> void:
 	var i_am_runner := GameManager.wanted_runner == me
 	lobby_role_button.text = "デバッグ中: あなたは鬼" if GameManager.debug_cpu_runner else ("おにに戻る" if i_am_runner else "逃げる役になる")
 	lobby_role_button.disabled = GameManager.debug_cpu_runner
+	lobby_role_button.visible = not is_eos_matched
 	lobby_start_button.visible = is_host
 	lobby_start_button.disabled = ids.is_empty()
 	if not GameManager.peer_notice.is_empty():
 		# ビルドの食い違いなど、放っておくと原因の分からない不具合になるものを出す
 		lobby_hint.text = GameManager.peer_notice
 		lobby_hint.modulate = Color(1.0, 0.55, 0.4)
+	elif is_eos_matched:
+		lobby_hint.text = "この対戦は鬼がランダムで決まります（立候補不可）%s" \
+			% ("　Enter キー: 開始" if is_host else "　― ホストが始めるのを待っています")
+		lobby_hint.modulate = Color.WHITE
 	elif is_host and GameManager.debug_cpu_runner:
 		lobby_hint.text = "デバッグ中: あなたが鬼、CPUが逃げる役です。Enter キー: 開始"
 		lobby_hint.modulate = Color.WHITE
@@ -283,9 +317,79 @@ func _update_lobby() -> void:
 		lobby_hint.modulate = Color.WHITE
 
 
+## 定員変更UIはホストかつEOSロビー経由(公開ロビーを持っている)の時だけ意味を持つ。
+## DirectConnectにはEOSロビーという概念自体が無い。
+## 毎フレーム値を上書きすると入力中のSpinBoxと喧嘩するので、非表示→表示に
+## 変わった瞬間だけ現在値を反映する
+func _update_max_members_row(is_host: bool) -> void:
+	var show := is_host and not EosManager.current_lobby_id.is_empty()
+	if show and not _max_members_row_was_visible:
+		lobby_max_members_spin.value = EosManager.get_current_lobby_max_members()
+	lobby_max_members_row.visible = show
+	_max_members_row_was_visible = show
+
+
+## _update_lobby()が毎フレームlobby_hint.textを上書きするため、ここでの
+## メッセージ表示は意味を持たない。失敗時はSpinBoxの表示を実際の値に戻すことで
+## 「変更が反映されていないのに反映されたように見える」食い違いだけは防ぐ
+func _on_max_members_apply_pressed() -> void:
+	var new_max := int(lobby_max_members_spin.value)
+	var ok: bool = await EosManager.update_max_members(new_max)
+	if not ok:
+		lobby_max_members_spin.value = EosManager.get_current_lobby_max_members()
+
+
+## 着せ替え/ショップ/フレンド画面をworld.tscnのシーンツリーを離れずに
+## オーバーレイとして開く。閉じる操作はそれぞれのcloseシグナル経由(_on_overlay_closed)
+func _open_overlay(key: String) -> void:
+	if _overlay_instance != null:
+		return
+	var scene: PackedScene = load(OVERLAY_SCENES[key])
+	var inst: Control = scene.instantiate()
+	add_child(inst)
+	_overlay_instance = inst
+	_overlay_full_notified = false
+	GameManager.lobby_overlay_open = true
+	if inst.has_signal("closed"):
+		inst.closed.connect(_on_overlay_closed)
+
+
+func _on_overlay_closed() -> void:
+	if is_instance_valid(_overlay_instance):
+		_overlay_instance.queue_free()
+	_overlay_instance = null
+	GameManager.lobby_overlay_open = false
+
+
+## 満員通知: オーバーレイを開いている間だけ人数を監視し、定員に達した瞬間に
+## 一度だけポップアップする。定員を下回ったら再度通知できるようリセットする
+func _check_overlay_room_full(member_count: int, is_host: bool) -> void:
+	if _overlay_instance == null or not is_host:
+		return
+	var max_m := EosManager.get_current_lobby_max_members()
+	if member_count >= max_m:
+		if not _overlay_full_notified:
+			_overlay_full_notified = true
+			_show_room_full_popup()
+	else:
+		_overlay_full_notified = false
+
+
+func _show_room_full_popup() -> void:
+	var dlg := AcceptDialog.new()
+	dlg.dialog_text = "部屋の人数が揃いました。戻りますか？"
+	dlg.ok_button_text = "部屋に戻る"
+	add_child(dlg)
+	dlg.confirmed.connect(func() -> void:
+		_on_overlay_closed()
+		dlg.queue_free())
+	dlg.canceled.connect(dlg.queue_free)
+	dlg.popup_centered()
+
+
 ## 一覧は毎フレーム作り直さず、中身が変わったときだけ組み直す
-func _rebuild_roster(ids: Array[int], me: int, is_host: bool) -> void:
-	var key := "%s|%d|%d" % [ids, GameManager.wanted_runner, int(is_host)]
+func _rebuild_roster(ids: Array[int], me: int, is_host: bool, is_eos_matched: bool) -> void:
+	var key := "%s|%d|%d|%d" % [ids, GameManager.wanted_runner, int(is_host), int(is_eos_matched)]
 	if key == _roster_key:
 		return
 	_roster_key = key
@@ -296,13 +400,16 @@ func _rebuild_roster(ids: Array[int], me: int, is_host: bool) -> void:
 		lobby_list.add_child(_roster_note("だれもいません"))
 		return
 	for id in ids:
-		lobby_list.add_child(_roster_row(id, me, is_host))
-	if GameManager.wanted_runner < 0:
+		lobby_list.add_child(_roster_row(id, me, is_host, is_eos_matched))
+	if is_eos_matched:
+		lobby_list.add_child(_roster_note("鬼は開始時にランダムで決まります（立候補不可）"))
+	elif GameManager.wanted_runner < 0:
 		lobby_list.add_child(_roster_note("逃げる役が未定です（開始時にランダムで決まります）"))
 
 
 ## 1行 = 名前 + 役割バッジ。ホストなら行ごとクリックして指名できる
-func _roster_row(id: int, me: int, is_host: bool) -> Control:
+## (ただしEOSロビー経由=レーティング戦では鬼をランダム化するため指名UIは出さない)
+func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Control:
 	var is_runner := id == GameManager.wanted_runner
 	var row := PanelContainer.new()
 	row.add_theme_stylebox_override("panel", _sb_row)
@@ -327,7 +434,7 @@ func _roster_row(id: int, me: int, is_host: bool) -> Control:
 	h.add_child(tier_badge)
 	h.add_child(badge)
 	row.add_child(h)
-	if not is_host:
+	if not is_host or is_eos_matched:
 		return row
 	# ホストだけ、行を押して逃げる役を付け替えられる
 	var btn := Button.new()

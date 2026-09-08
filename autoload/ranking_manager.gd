@@ -5,6 +5,30 @@ extends Node
 
 signal rating_changed(old_rating: int, new_rating: int, delta: int)
 
+## ⑦RankingManagerはEosManagerよりも先にautoload初期化されるため、ここで
+## eos_initializedへ接続してもシグナルの発火を取りこぼす心配は無い(project.godotの
+## [autoload]順で保証されている)
+func _ready() -> void:
+	EosManager.eos_initialized.connect(_on_eos_initialized)
+
+
+## ⑦レーティング戦で逃げる役として切断し、CPUに代行された場合の敗北精算(暫定実装)。
+## 本人はその場にいないため反映できず、サーバー側(friend-api)に記録されたものを
+## 起動時に一度だけ取りに行く。StripePurchaseProvider.reconcile_pending()と同じ
+## 「起動時一回だけの確認・適用・クリア」パターン
+func _on_eos_initialized(success: bool) -> void:
+	if not success:
+		return
+	var res := await FriendManager.consume_pending_penalty()
+	if not res.get("pending", false):
+		return
+	var delta := int(res.get("rating_delta", 0))
+	var old_r := ProfileManager.rating
+	ProfileManager.apply_match_result(delta, false, true)
+	var new_r := ProfileManager.rating
+	EosManager.upload_rating(new_r)
+	rating_changed.emit(old_r, new_r, delta)
+
 # --- 基本設定定数 ---
 const K_BASE: float = 16.0
 const MAX_TIME: float = 180.0

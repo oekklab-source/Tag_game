@@ -12,6 +12,11 @@ extends Control
 const TITLE_SCENE := "res://scenes/title.tscn"
 const SHOP_SCENE := "res://scenes/shop_screen.tscn"
 
+## hud.gdがロビー待機中にオーバーレイとして埋め込んだ場合に、閉じる操作の代わりに発火する。
+## タイトルから専用シーンとして開かれた場合(get_tree().current_scene == self)は
+## 従来通りタイトルへのシーン遷移を行うため、その場合は発火しない
+signal closed
+
 @onready var back_btn: Button = $TopBar/BackButton
 @onready var shop_btn: Button = $TopBar/ShopButton
 @onready var main_vbox: VBoxContainer = $ContentMargin/Scroll/MainVBox
@@ -30,6 +35,10 @@ var _pending_remove_name: String = ""
 func _ready() -> void:
 	back_btn.pressed.connect(_on_back_pressed)
 	shop_btn.pressed.connect(_on_shop_pressed)
+	# オーバーレイ埋め込み時はショップへのシーン遷移が待機中の部屋を巻き込んで壊すため
+	# 導線ごと隠す(閉じてからhud側の「ショップ」ボタンで開き直せば良い)
+	if get_tree().current_scene != self:
+		shop_btn.hide()
 	_build_code_section()
 	_build_requests_section()
 	_build_remove_confirm_dialog()
@@ -251,8 +260,12 @@ func _on_copy_code_pressed() -> void:
 
 
 func _on_shop_pressed() -> void:
-	get_tree().change_scene_to_file(SHOP_SCENE)
+	if get_tree().current_scene == self:
+		get_tree().change_scene_to_file(SHOP_SCENE)
 
 
 func _on_back_pressed() -> void:
-	get_tree().change_scene_to_file(TITLE_SCENE)
+	if get_tree().current_scene == self:
+		get_tree().change_scene_to_file(TITLE_SCENE)
+	else:
+		closed.emit()

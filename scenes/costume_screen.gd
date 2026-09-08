@@ -8,6 +8,11 @@ extends Control
 const TITLE_SCENE := "res://scenes/title.tscn"
 const SHOP_SCENE := "res://scenes/shop_screen.tscn"
 
+## hud.gdがロビー待機中にオーバーレイとして埋め込んだ場合に、閉じる操作の代わりに発火する。
+## タイトルから専用シーンとして開かれた場合(get_tree().current_scene == self)は
+## 従来通りタイトルへのシーン遷移を行うため、その場合は発火しない
+signal closed
+
 @onready var name_edit: LineEdit = $ContentMargin/ContentRow/RightPane/NameRow/NameEdit
 @onready var preview: Control = $ContentMargin/ContentRow/PreviewPane/CostumePreview
 @onready var category_costume_btn: Button = $ContentMargin/ContentRow/RightPane/CategoryRow/CategorySidebar/CostumeTabButton
@@ -57,6 +62,10 @@ func _ready() -> void:
 	save_btn.pressed.connect(_on_save_pressed)
 	back_btn.pressed.connect(_on_back_pressed)
 	shop_btn.pressed.connect(_on_shop_pressed)
+	# オーバーレイ埋め込み時はショップへのシーン遷移が待機中の部屋を巻き込んで壊すため
+	# 導線ごと隠す(閉じてからhud側の「ショップ」ボタンで開き直せば良い)
+	if get_tree().current_scene != self:
+		shop_btn.hide()
 	category_costume_btn.pressed.connect(_on_category_pressed.bind(0))
 	category_color_btn.pressed.connect(_on_category_pressed.bind(1))
 	category_hat_btn.pressed.connect(_on_category_pressed.bind(2))
@@ -286,12 +295,22 @@ func _on_save_pressed() -> void:
 		ProfileManager.set_costume(_selected_costume_id, _selected_colors)
 	if ProfileManager.owns_hat(_selected_hat_id):
 		ProfileManager.set_hat(_selected_hat_id)
-	get_tree().change_scene_to_file(TITLE_SCENE)
+	_leave()
 
 
 func _on_back_pressed() -> void:
-	get_tree().change_scene_to_file(TITLE_SCENE)
+	_leave()
+
+
+## タイトルから専用シーンとして開かれていれば従来通りタイトルへ、
+## hud.gdのオーバーレイとして埋め込まれていれば closed を発火して呼び出し元に閉じてもらう
+func _leave() -> void:
+	if get_tree().current_scene == self:
+		get_tree().change_scene_to_file(TITLE_SCENE)
+	else:
+		closed.emit()
 
 
 func _on_shop_pressed() -> void:
-	get_tree().change_scene_to_file(SHOP_SCENE)
+	if get_tree().current_scene == self:
+		get_tree().change_scene_to_file(SHOP_SCENE)

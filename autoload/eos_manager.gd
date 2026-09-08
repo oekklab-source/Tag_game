@@ -264,6 +264,26 @@ func leave_lobby() -> void:
 	is_host = false
 
 
+## 今のロビーの公開定員(ホストのみ意味を持つ)。ロビー未所持時は室内UIの初期値と
+## 揃えて8を返す
+func get_current_lobby_max_members() -> int:
+	if _current_lobby != null:
+		return _current_lobby.max_members
+	return 8
+
+
+## ホストが待機中に公開ロビーの定員を変更する。add_attribute()と同じ
+## 「値を書き換えてupdate_async()で反映」の2段階パターン(create_lobby()参照)
+func update_max_members(new_max: int) -> bool:
+	if not is_eos_available or _current_lobby == null or not is_host:
+		return false
+	_current_lobby.max_members = new_max
+	if not await _current_lobby.update_async():
+		print("[EosManager] Failed to update lobby max_members.")
+		return false
+	return true
+
+
 ## ロビーのカスタムデータを読む(EOS無効時は常に空文字)
 func get_lobby_data(lobby_id: String, key: String) -> String:
 	var lobby: HLobby = null

@@ -194,6 +194,8 @@ func _on_do_create_pressed() -> void:
 func _on_lobby_created(connect_status: int, _lobby_id: String) -> void:
 	if connect_status == 1:
 		status_label.text = "ロビーを作成しました！ゲームを開始します。"
+		# ②EOSロビー経由=見知らぬ相手とのレーティング戦。鬼のランダム化・レート適用の判定に使う
+		NetworkManager.matched_via_eos_lobby = true
 		NetworkManager.start_host(true)
 	else:
 		status_label.text = "ロビーの作成に失敗しました。"
@@ -207,6 +209,8 @@ func _on_lobby_joined(lobby_id: String, _permissions: int, _locked: bool, respon
 		status_label.text = "ロビーへの参加に失敗しました。"
 		return
 	status_label.text = "ロビーに参加しました！ゲームへ接続中..."
+	# ②EOSロビー経由=見知らぬ相手とのレーティング戦。鬼のランダム化・レート適用の判定に使う
+	NetworkManager.matched_via_eos_lobby = true
 	if EosManager.is_eos_available:
 		var addr := await EosManager.await_host_addr(lobby_id)
 		if addr.is_empty():
@@ -224,11 +228,15 @@ func _on_direct_join_pressed() -> void:
 	if addr.is_empty():
 		status_label.text = "アドレスを入力してください"
 		return
+	# ②DirectConnect=フレンドのみのプライベート対戦(レーティング無し、鬼は立候補制)
+	NetworkManager.matched_via_eos_lobby = false
 	NetworkManager.start_client(addr)
 
 
 func _on_direct_host_pressed() -> void:
 	GameManager.tier_lock_enabled = false
+	# ②DirectConnect=フレンドのみのプライベート対戦(レーティング無し、鬼は立候補制)
+	NetworkManager.matched_via_eos_lobby = false
 	if NetworkManager.start_host(true):
 		hide()
 	else:

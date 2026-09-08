@@ -14,6 +14,15 @@
  *   POST /respond-request  -> リクエストを承諾/拒否する
  *   POST /list-friends     -> 自分のフレンド一覧
  *   POST /remove-friend    -> フレンド解除(双方向)
+ *
+ * ⑦レーティング戦で逃げる役が対戦中に切断した場合の「敗北精算待ち」記録(暫定実装)。
+ * フレンド機能とは無関係だが、PUIDキーのKVを既に持つこのWorkerに相乗りさせる方が
+ * 新規Workerを増やすより単純なため、ここに同居させている:
+ *   POST /report-penalty   -> ホストが切断検知時に敗北分のレート変動を記録する
+ *   POST /consume-penalty  -> 本人クライアントが起動時に一度だけ取得し、同時に削除する
+ *     (読み取りと削除を1回のリクエストにまとめているため、取得後クライアント側で
+ *     適用する前に落ちると精算されずに消える。二重ペナルティより「たまに精算漏れ」の
+ *     方が実害が小さいため、意図的にこちらを選んでいる)
  */
 
 export interface Env {
@@ -43,6 +52,12 @@ interface FriendEntry {
 	name: string;
 }
 
+interface PendingPenalty {
+	rating_delta: number;
+	reason: string;
+	created_at: number;
+}
+
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
@@ -62,6 +77,10 @@ export default {
 				return handleListFriends(request, env);
 			case "/remove-friend":
 				return handleRemoveFriend(request, env);
+			case "/report-penalty":
+				return handleReportPenalty(request, env);
+			case "/consume-penalty":
+				return handleConsumePenalty(request, env);
 			default:
 				return json({ error: "not_found" }, 404);
 		}
@@ -212,6 +231,37 @@ async function handleRemoveFriend(request: Request, env: Env): Promise<Response>
 	return json({ ok: true });
 }
 
+async function handleReportPenalty(request: Request, env: Env): Promise<Response> {
+	const body = await safeJson(request);
+	const puid = String(body?.puid ?? "");
+	const ratingDelta = Number(body?.rating_delta ?? NaN);
+	if (!puid || !Number.isFinite(ratingDelta)) {
+		return json({ reason: "invalid_request" }, 400);
+	}
+	const record: PendingPenalty = {
+		rating_delta: ratingDelta,
+		reason: "runner_disconnect",
+		created_at: Date.now(),
+	};
+	await env.FRIEND_KV.put(penaltyKey(puid), JSON.stringify(record));
+	return json({ ok: true });
+}
+
+async function handleConsumePenalty(request: Request, env: Env): Promise<Response> {
+	const body = await safeJson(request);
+	const puid = String(body?.puid ?? "");
+	if (!puid) {
+		return json({ reason: "invalid_request" }, 400);
+	}
+	const raw = await env.FRIEND_KV.get(penaltyKey(puid));
+	if (!raw) {
+		return json({ pending: false });
+	}
+	await env.FRIEND_KV.delete(penaltyKey(puid));
+	const record: PendingPenalty = JSON.parse(raw);
+	return json({ pending: true, rating_delta: record.rating_delta });
+}
+
 async function addFriend(env: Env, ownerPuid: string, entry: FriendEntry): Promise<void> {
 	const raw = await env.FRIEND_KV.get(friendsKey(ownerPuid));
 	const friends: FriendEntry[] = raw ? JSON.parse(raw) : [];
@@ -278,6 +328,9 @@ function requestsKey(puid: string): string {
 }
 function friendsKey(puid: string): string {
 	return `friends:${puid}`;
+}
+function penaltyKey(puid: string): string {
+	return `penalty:${puid}`;
 }
 function rateLimitKey(ip: string): string {
 	const day = new Date().toISOString().slice(0, 10);

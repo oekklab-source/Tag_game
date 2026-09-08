@@ -59,12 +59,18 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# 着せ替え/ショップ/フレンドをオーバーレイ表示中は、そちらのUI操作中に
+	# R/Tab/Enterのロビーショートカットが裏で誤爆しないようにする
+	if GameManager.lobby_overlay_open:
+		return
 	if event.is_action_pressed("start_round") and multiplayer.is_server():
 		GameManager.request_start_round()
-	elif event.is_action_pressed("toggle_role"):
-		# 役割の立候補は全ピアができる（逃走者の枠は1つなので奪い合いになる）
+	elif event.is_action_pressed("toggle_role") and not NetworkManager.matched_via_eos_lobby:
+		# 役割の立候補は全ピアができる（逃走者の枠は1つなので奪い合いになる）。
+		# ②EOSロビー経由(レーティング戦)は鬼をランダム化するため立候補自体を無効にする
 		GameManager.toggle_my_role()
-	elif event.is_action_pressed("cycle_runner") and multiplayer.is_server():
+	elif event.is_action_pressed("cycle_runner") and multiplayer.is_server() \
+			and not NetworkManager.matched_via_eos_lobby:
 		GameManager.cycle_wanted_runner()
 
 
@@ -79,9 +85,15 @@ func _on_peer_connected(id: int) -> void:
 
 func _on_peer_disconnected(id: int) -> void:
 	var p := players.get_node_or_null(str(id))
+	# ⑦レーティング戦で逃げる役が対戦中に切断した場合はCPUに代行させる(暫定実装、
+	# 既存のcpu_runner.gdをそのまま流用)。ノードを破棄する前に判定・位置取得する
+	var takeover := GameManager.should_cpu_takeover_runner(id)
+	var last_pos: Vector3 = p.position if p else Vector3.ZERO
 	if p:
 		p.queue_free()
-	GameManager.on_player_left(id)
+	if takeover:
+		spawn_cpu_runner(last_pos)
+	GameManager.on_player_left(id, takeover)
 
 
 ## 湧き位置を決めてプレイヤーを生成し、その座標を返す。

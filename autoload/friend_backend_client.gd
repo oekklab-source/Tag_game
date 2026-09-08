@@ -46,3 +46,18 @@ static func remove_friend(host: Node, puid: String, friend_puid: String) -> Dict
 		"puid": puid,
 		"friend_puid": friend_puid,
 	})
+
+
+## ⑦レーティング戦の逃走者切断時のCPU代行(暫定実装)用。ホストが切断検知時に呼ぶ
+static func report_penalty(host: Node, puid: String, rating_delta: int) -> Dictionary:
+	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "report-penalty", {
+		"puid": puid,
+		"rating_delta": rating_delta,
+	})
+
+
+## ⑦本人クライアントが起動時に一度だけ呼ぶ。取得と同時にサーバー側で削除される
+static func consume_penalty(host: Node, puid: String) -> Dictionary:
+	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "consume-penalty", {
+		"puid": puid,
+	})

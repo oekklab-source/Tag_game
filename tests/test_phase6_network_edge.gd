@@ -55,7 +55,7 @@ func _test_lobby_disconnect() -> void:
 func _test_runner_disconnect_during_round() -> void:
 	print("\n--- [2] ラウンド中の逃走者切断 (RUNNER_LEFT) ---")
 	var spawns: Dictionary = {42: Vector3.ZERO}
-	GameManager._start_round(42, 1.0, spawns)
+	GameManager._start_round(42, 1.0, spawns, true)
 	GameManager.head_start_left = 0.0
 
 	_assert(GameManager.state == GameManager.State.PLAYING, "ゲーム中 -> PLAYING")

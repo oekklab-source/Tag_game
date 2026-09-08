@@ -33,7 +33,13 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## 原因が非常に分かりにくい。Web 版はブラウザが古いビルドをキャッシュするため
 ## 特に起きやすいので、接続直後に突き合わせてはっきり知らせる。
 ## 2->3: ②④ report_profile/_sync_profiles RPC を追加したため
-const PROTOCOL_VERSION := 3
+## 3->4: _start_round に is_eos_matched 引数を追加したため
+## (レーティング戦=ランダム鬼/プライベート(DirectConnect)=立候補鬼の区別に必要。
+## 各ピアがNetworkManager.matched_via_eos_lobbyを別々にローカル判定すると、
+## 「ホストはEOSロビーで部屋作成、招待された側はDirectConnectで参加」のような
+## 既存の招待フロー(friend_screen.gdのinvite_to_lobby)でピア間の判定が食い違いうる。
+## ホストが一度だけ決めてRPC引数として全ピアへ配ることで、この不整合を防ぐ)
+const PROTOCOL_VERSION := 4
 ## 参加者から版数の返事が来るのを待つ時間。古いビルドには ack_version 自体が
 ## 無いので、無反応もまた「食い違っている」ことの手がかりになる。
 ## ただし回線が遅いだけの可能性もあるので、無反応では蹴らず警告に留める
@@ -119,6 +125,10 @@ var _awaiting_version := {}   # ホスト専用。peer_id -> 返事待ちの経�
 var peer_profiles := {}
 ## ②ホストが「同じレート帯のみ参加可」を選んでいるか。room_match_dialog がホスト開始前に設定する
 var tier_lock_enabled := false
+## 待機中に着せ替え/ショップ/フレンドをオーバーレイ表示している間はtrue。
+## hud.gd が開閉のたびに設定する。world.gd はこれを見て、オーバーレイ操作中に
+## R/Tab/Enterのロビーショートカットが誤爆しないようガードする
+var lobby_overlay_open := false
 
 var _sight_timer := 0.0
 var _seer_ids := {}       # ホスト専用。視認中の鬼の instance_id
@@ -151,6 +161,7 @@ func reset() -> void:
 	_awaiting_version.clear()
 	round_is_ranked = false
 	round_hunter_count = 0
+	lobby_overlay_open = false
 	peer_profiles.clear()
 	tier_lock_enabled = false
 	_clear_intel()
@@ -316,10 +327,16 @@ func request_start_round() -> void:
 	# デバッグONのときだけ逆にして、自分が Hunter、CPU が Runner になる。
 	var new_runner: int
 	var mult := 1.0
+	# ②EOSロビー経由(見知らぬ相手とのレーティング戦)では公平性のため鬼を必ずランダムに
+	# 選ぶ。DirectConnect(フレンドのみのプライベート対戦)は従来通り立候補を優先する
+	var is_eos_matched := NetworkManager.matched_via_eos_lobby
 	if solo_debug_runner:
 		new_runner = CPU_RUNNER_ID
 	elif solo:
 		new_runner = ids[0]
+	elif is_eos_matched:
+		new_runner = ids.pick_random()
+		mult = hunter_mult_for(ids.size() - 1)
 	else:
 		# 準備中に選ばれた人がいればその人。誰も立候補していなければランダム
 		new_runner = wanted_runner if ids.has(wanted_runner) else ids.pick_random()
@@ -334,7 +351,7 @@ func request_start_round() -> void:
 			continue
 		spawns[id] = _hunter_spawn(i)
 		i += 1
-	_start_round.rpc(new_runner, mult, spawns)
+	_start_round.rpc(new_runner, mult, spawns, is_eos_matched)
 	if solo_debug_runner:
 		_sync_head.rpc(0.0)
 		var world := get_tree().current_scene
@@ -671,6 +688,10 @@ func _my_profile_payload() -> Dictionary:
 		"costume": String(ProfileManager.costume_id),
 		"colors": ProfileManager.colors_to_html(ProfileManager.costume_colors),
 		"hat": String(ProfileManager.hat_id),
+		# ⑦切断時のCPU代行(レーティング戦のみ)で、本人不在のまま敗北精算を
+		# サーバー側に記録するのに必要。EOS無効時は空文字(その場合はround_is_ranked
+		# 自体が発生しないケースが大半だが、念のため空でも安全に無視されるようにする)
+		"puid": EosManager.product_user_id,
 	}
 
 
@@ -701,9 +722,19 @@ func _sync_profiles(all: Dictionary) -> void:
 	profiles_changed.emit()
 
 
-func on_player_left(peer_id: int) -> void:
+## ⑦対戦中に切断した逃げる役をレーティング戦でだけCPU代行に切り替えるかどうか。
+## world.gd._on_peer_disconnected()がノードを実際に破棄する前に判定するために公開している
+func should_cpu_takeover_runner(peer_id: int) -> bool:
+	return multiplayer.is_server() and state == State.PLAYING \
+		and peer_id == runner_id and round_is_ranked
+
+
+func on_player_left(peer_id: int, cpu_took_over: bool = false) -> void:
 	if not multiplayer.is_server():
 		return
+	# ⑦敗北精算の報告はプロフィール消去より前に行う(puidが必要なため)
+	if cpu_took_over:
+		_report_runner_disconnect_penalty(peer_id)
 	_awaiting_version.erase(peer_id)
 	if peer_profiles.has(peer_id):
 		peer_profiles.erase(peer_id)
@@ -711,8 +742,33 @@ func on_player_left(peer_id: int) -> void:
 	# 抜けた人が指名されたままだと、次のラウンドで誰も逃走者にならない
 	if wanted_runner == peer_id:
 		_set_wanted_runner.rpc(-1)
-	if state == State.PLAYING and peer_id == runner_id:
+	if cpu_took_over:
+		_set_runner_cpu.rpc()
+	elif state == State.PLAYING and peer_id == runner_id:
 		_end_round.rpc(false, EndReason.RUNNER_LEFT)
+
+
+## ⑦切断した本人はその場で反映できないため、サーバー(friend-api)に敗北分の
+## レート変動を記録し、本人が次回ログインした際に自分で適用する
+## (RankingManager._on_eos_initialized()参照)。CPU AIは別途開発中のため、
+## 「最強CPU」は既存のcpu_runner.gdをそのまま流用する暫定実装
+func _report_runner_disconnect_penalty(peer_id: int) -> void:
+	var puid := String(peer_profiles.get(peer_id, {}).get("puid", ""))
+	if puid.is_empty():
+		return
+	var self_rating := int(peer_profiles.get(peer_id, {}).get("rating", 1500))
+	var survival := ROUND_TIME - time_left
+	var delta := RankingManager.calculate_rating_delta(
+		true, false, survival, round_hunter_count, false, self_rating, 1500)
+	FriendManager.report_disconnect_penalty(puid, delta)
+
+
+## ⑦レーティング戦で逃げる役が切断した際、既存の(暫定)cpu_runner.gdへ操作を
+## 引き継がせる。CPU_RUNNER_IDは元々ソロ練習のデバッグモード用に使われている
+## 「鬼が人間、逃げる役がCPU」のセンチネル値で、get_runner()がそのまま流用できる
+@rpc("authority", "call_local", "reliable")
+func _set_runner_cpu() -> void:
+	runner_id = CPU_RUNNER_ID
 
 
 ## リザルトを見せ終えたら WAITING に戻して**止める**。
@@ -728,17 +784,19 @@ func _schedule_next_round() -> void:
 ## --- RPC（ホスト -> 全ピア） -------------------------------------------
 
 @rpc("authority", "call_local", "reliable")
-func _start_round(new_runner: int, mult: float, spawns: Dictionary) -> void:
+func _start_round(new_runner: int, mult: float, spawns: Dictionary, is_eos_matched: bool) -> void:
 	runner_id = new_runner
 	hunter_mult = mult
 	time_left = ROUND_TIME
 	head_start_left = HEAD_START
 	tagger_peer_id = -1
 	state = State.PLAYING
-	# ①レートは人間の対戦相手が2人以上いるときだけ。全ピアがローカルに同じ
-	# player_ids() を見て計算するので、RPC引数を増やさずに済む（PROTOCOL_VERSION据え置き）
+	# ①レートは人間の対戦相手が2人以上、かつ②EOSロビー経由(見知らぬ相手との
+	# レーティング戦)のときだけ。is_eos_matchedはホストが一度だけ判定してRPC引数として
+	# 配る(NetworkManager.matched_via_eos_lobbyは接続方法によりピアごとに違いうるため、
+	# 各ピアが別々にローカル判定すると不整合になりうる。詳細はPROTOCOL_VERSIONの説明参照)
 	var humans := player_ids().size()
-	round_is_ranked = humans >= 2
+	round_is_ranked = humans >= 2 and is_eos_matched
 	round_hunter_count = (humans - 1) if humans >= 2 else SOLO_CPU_COUNT
 	world_time = 0.0  # 全ピアのギミック位相をここで揃える
 	_clear_intel()    # 前ラウンドの目撃情報を持ち越さない
