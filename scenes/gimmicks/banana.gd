@@ -10,13 +10,17 @@ const STUN := 1.5
 const LIFETIME := 30.0  # 拾われないまま残り続けないように自然消滅させる
 const FLOOR_MASK := 9   # World(1) + Platform(8)。床・滑り台・置き壁に着地する
 const FLOOR_PROBE := 0.08
+const THROW_GRAVITY := 9.30  # 速度1.5倍で約16m・最高点約4mになる投げ専用重力
 
 var _used := false
-var _fall_velocity := 0.0
 var _landed := false
+var launch_velocity := Vector3.ZERO
+var thrower_peer_id := -1
+var _velocity := Vector3.ZERO
 
 
 func _ready() -> void:
+	_velocity = launch_velocity
 	body_entered.connect(_on_body_entered)
 	if multiplayer.is_server():
 		await get_tree().create_timer(LIFETIME).timeout
@@ -31,9 +35,10 @@ func _process(delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	if not multiplayer.is_server() or _used or _landed:
 		return
-	var gravity := float(ProjectSettings.get_setting("physics/3d/default_gravity"))
-	_fall_velocity -= gravity * delta
-	var next := global_position + Vector3(0.0, _fall_velocity * delta, 0.0)
+	var gravity := THROW_GRAVITY if thrower_peer_id >= 0 \
+		else float(ProjectSettings.get_setting("physics/3d/default_gravity"))
+	_velocity.y -= gravity * delta
+	var next := global_position + _velocity * delta
 	var q := PhysicsRayQueryParameters3D.create(
 		global_position + Vector3(0.0, FLOOR_PROBE, 0.0),
 		next - Vector3(0.0, FLOOR_PROBE, 0.0),
@@ -43,9 +48,14 @@ func _physics_process(delta: float) -> void:
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	if hit.is_empty():
 		global_position = next
+	elif hit.normal.y < 0.55:
+		# 壁へ当たったら貫通させず、水平速度を失ってその場から落下する。
+		global_position = hit.position + hit.normal * FLOOR_PROBE
+		_velocity.x = 0.0
+		_velocity.z = 0.0
 	else:
 		global_position = hit.position
-		_fall_velocity = 0.0
+		_velocity = Vector3.ZERO
 		_landed = true
 
 
@@ -53,6 +63,9 @@ func _on_body_entered(body: Node3D) -> void:
 	if not multiplayer.is_server() or _used:
 		return
 	if not body.has_method("apply_stun"):
+		return
+	if not _landed and thrower_peer_id >= 0 \
+			and String(body.name).to_int() == thrower_peer_id:
 		return
 	_used = true
 	_hit.rpc(body.get_path())

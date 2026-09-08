@@ -23,8 +23,6 @@ enum State { WAITING, PLAYING, RESULT }
 ## 文言を書き換えた瞬間に勝敗判定が黙って壊れるため、状態と表示を分ける
 enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 
-## 索敵が視界のみになり「見つかる -> 追われる」が本番になったので、
-## 以前 150 に縮めた分を戻す。5〜6体で全域を一度掃くのに実効110秒ほどかかる
 ## 通信の取り決めの版数。**RPC の引数を足す/減らす/並べ替えたら必ず上げる。**
 ##
 ## Godot の RPC は「メソッド名と引数の個数」が両ピアで一致していることを前提にしており、
@@ -32,14 +30,18 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## 症状は「つながってはいるのに状態が同期しない・ラウンドが始まらない」で、
 ## 原因が非常に分かりにくい。Web 版はブラウザが古いビルドをキャッシュするため
 ## 特に起きやすいので、接続直後に突き合わせてはっきり知らせる。
-## 2->3: ②④ report_profile/_sync_profiles RPC を追加したため
-## 3->4: _start_round に is_eos_matched 引数を追加したため
+## **RPC の引数だけでなく、player.tscn の同期プロパティを足す/減らす場合も上げること。**
+## スポーン状態のペイロードが変わり、症状は RPC の食い違いと同じく分かりにくい。
+## v2: _start_round / _sync_state に鬼の人数（CPU 込み）を足した
+## v3: player.tscn の同期プロパティに sync_emote（エモート）を足した
+## v4: ②④ report_profile/_sync_profiles RPC を追加したため
+## v5: _start_round に is_eos_matched 引数を追加したため
 ## (レーティング戦=ランダム鬼/プライベート(DirectConnect)=立候補鬼の区別に必要。
 ## 各ピアがNetworkManager.matched_via_eos_lobbyを別々にローカル判定すると、
 ## 「ホストはEOSロビーで部屋作成、招待された側はDirectConnectで参加」のような
 ## 既存の招待フロー(friend_screen.gdのinvite_to_lobby)でピア間の判定が食い違いうる。
 ## ホストが一度だけ決めてRPC引数として全ピアへ配ることで、この不整合を防ぐ)
-const PROTOCOL_VERSION := 4
+const PROTOCOL_VERSION := 5
 ## 参加者から版数の返事が来るのを待つ時間。古いビルドには ack_version 自体が
 ## 無いので、無反応もまた「食い違っている」ことの手がかりになる。
 ## ただし回線が遅いだけの可能性もあるので、無反応では蹴らず警告に留める
@@ -50,15 +52,20 @@ const RESULT_TIME := 5.0
 ## 「見えないこと」自体がヘッドスタートになったので、初期位置を離れる分で足りる。
 ## 8秒 ≒ 69m（約1.3ゾーン分）
 const HEAD_START := 8.0
-## 探索速度に線形に効く最大のレバー。きつすぎると感じたらまずここを 5 に戻す
-const SOLO_CPU_COUNT := 6
+## 1ラウンドの定員。逃走者1人 + 鬼 MAX_HUNTERS 人 = 4人で遊ぶ。
+## 人間が足りない分は CPU 鬼で埋めるので、1人でも4人でも構成は変わらない。
+## 鬼を減らした分の圧力は HunterSquad の連携（分担探索・挟み込み）で補っている。
+## ぬるいと感じたらまずここを 4 に上げるのが安全（CPU の速度は触らない）
+const MAX_HUNTERS := 3
 const CPU_RUNNER_ID := 0
 ## 逃走者は中央ゾーン。座標を直書きすると ZONE_GROUND[4] == 0.0 に暗黙依存し、
 ## 中央の地面高さを変えた瞬間に宙に浮く（あるいは床に埋まる）
 const RUNNER_SPAWN_ZONE := 4
-## 鬼のスポーンゾーン（辺 -> 角の順）。広いマップでは逃走者の周囲に固めるより
-## ゾーン中心に散らした方がマップ全体を覆えて機能する。中央(4)は逃走者用
-const HUNTER_SPAWN_ZONES: Array[int] = [1, 3, 5, 7, 0, 2, 6, 8]
+## 鬼のスポーンゾーン。広いマップでは逃走者の周囲に固めるより
+## ゾーン中心に散らした方がマップ全体を覆えて機能する。中央(4)は逃走者用。
+## 先頭3つ（北・南西・南東）が中央を囲む三角になるよう並べてある。
+## 定員が鬼3人なので、ここの並び順がそのまま初期配置の広がりを決める
+const HUNTER_SPAWN_ZONES: Array[int] = [1, 6, 8, 3, 5, 0, 2, 7]
 # ゾーンごとに地面の高さが違うため、スポーンは高めから落として着地させる
 const HUNTER_SPAWN_HEIGHT := 3.0
 
@@ -72,20 +79,26 @@ const SIGHT_RANGE := 48.0
 ## 水平の全角。Camera3D は既定の垂直75°で 16:9 なら水平約107°なので、
 ## 検出コーンを画面より意図的に狭くしてある（見えていないのに通報される方が悪い）
 const SIGHT_FOV_DEG := 100.0
+## CPU鬼だけの視界。CPUには画面が無く「見えていないのに通報される」不公平が
+## 起きないため、人間側(SIGHT_RANGE/SIGHT_FOV_DEG)を広げずにここだけを強くする。
+## 75m はゾーン間隔(53.5m)を超えるので隣接ゾーンまで見通せ、180°は
+## cpu_hunter.gd の首振り(SCAN_ANGLE 45°)と合わさって実効約270°になる
+const CPU_SIGHT_RANGE := 75.0
+const CPU_SIGHT_FOV_DEG := 180.0
 const SIGHT_EYE := 1.5
 ## 頭と胴。どちらか通れば視認とする。単一レイだと ？ブロック1個で全身が隠れてしまう
 const SIGHT_TARGET_Y: Array[float] = [1.55, 0.85]
 ## World(1) + Platform(8)。Character(2) を含めないので鬼同士や逃走者自身で自己遮蔽しない。
 ## player.tscn の SpringArm3D.collision_mask と同じ値 = カメラアームが当たる物は視線も遮る
 const SIGHT_MASK := 9
-const SIGHT_TICK := 0.1     # 10Hz。消費側の REPATH_INTERVAL(0.3) に対して十分速い
-const INTEL_TIME := 10.0    # 見失ってからゾーン情報が消えるまで
+const SIGHT_TICK := 0.05    # 20Hz。発見からCHASE入りまでの遅延を詰める
+const INTEL_TIME := 16.0    # 見失ってからゾーン情報が消えるまで
 const HUNTER_STAMINA_DEFAULT := 100.0
 const HUNTER_STAMINA_THREE_PLAYER := 120.0
 const HUNTER_STAMINA_TWO_PLAYER := 150.0
 ## 視認が途切れてから spotted を落とすまでの猶予。これが無いと逃走者が柱の陰を
-## 横切るだけで 10Hz でばたつき、RPC を撒き散らしバナーも点滅する
-const SPOTTED_HOLD := 1.5
+## 横切るだけで 20Hz でばたつき、RPC を撒き散らしバナーも点滅する
+const SPOTTED_HOLD := 2.5
 
 var state: int = State.WAITING
 var runner_id := -1
@@ -94,6 +107,9 @@ var runner_id := -1
 var wanted_runner := -1
 var debug_cpu_runner := false
 var hunter_mult := 1.0
+## このラウンドの鬼の人数（CPU 鬼を含む）。速度補正とスタミナの基準になるので、
+## 人間だけを数えていると CPU で埋めた分がバランス計算から漏れる
+var hunter_count := 1
 var time_left := ROUND_TIME
 var head_start_left := 0.0
 var result_runner_won := false
@@ -134,6 +150,10 @@ var _sight_timer := 0.0
 var _seer_ids := {}       # ホスト専用。視認中の鬼の instance_id
 var _no_sight_for := 0.0
 
+## 鬼の連携（分担探索・張り込み・挟み込み）の共有状態。ホスト専用。
+## CPU 鬼はここへ「自分の担当」を問い合わせるだけで、互いを直接見に行かない
+var squad := HunterSquad.new()
+
 
 func _ready() -> void:
 	# ロビー中にプロフィール設定（④コスチューム変更等）が変わったら、繋がっている
@@ -151,6 +171,8 @@ func reset() -> void:
 	runner_id = -1
 	wanted_runner = -1
 	hunter_mult = 1.0
+	hunter_count = 1
+	squad.begin_round()
 	time_left = ROUND_TIME
 	head_start_left = 0.0
 	result_runner_won = false
@@ -186,20 +208,20 @@ func zone_at(pos: Vector3) -> int:
 
 ## 鬼の人数に応じた速度補正。広いマップでは鬼が分散するので、
 ## 以前の 80% のような強い減速は逆効果になる
-func hunter_mult_for(hunter_count: int) -> float:
-	if hunter_count >= 5:
+func hunter_mult_for(count: int) -> float:
+	if count >= 5:
 		return 0.90
-	if hunter_count >= 3:
+	if count >= 3:
 		return 0.95
 	return 1.0
 
 
 ## 鬼のブースト時間は人数が少ないほど長くする。
 ## 1人の逃走者に対して鬼が 1 / 2 / 3人以上のとき、150 / 120 / 100。
-func hunter_stamina_max_for(hunter_count: int) -> float:
-	if hunter_count <= 1:
+func hunter_stamina_max_for(count: int) -> float:
+	if count <= 1:
 		return HUNTER_STAMINA_TWO_PLAYER
-	if hunter_count == 2:
+	if count == 2:
 		return HUNTER_STAMINA_THREE_PLAYER
 	return HUNTER_STAMINA_DEFAULT
 
@@ -207,10 +229,8 @@ func hunter_stamina_max_for(hunter_count: int) -> float:
 func stamina_max_for(peer_id: int) -> float:
 	if state != State.PLAYING or peer_id == runner_id:
 		return HUNTER_STAMINA_DEFAULT
-	# CPU逃走者デバッグは、人間の鬼が必ず1人だけ。
-	if runner_id == CPU_RUNNER_ID:
-		return HUNTER_STAMINA_TWO_PLAYER
-	return hunter_stamina_max_for(maxi(player_ids().size() - 1, 1))
+	# hunter_count は CPU 鬼を含む実数で、ラウンド開始時に全ピアへ配ってある
+	return hunter_stamina_max_for(maxi(hunter_count, 1))
 
 
 func get_speed_mult(peer_id: int) -> float:
@@ -227,11 +247,32 @@ func get_runner() -> Node:
 	return _find_player(runner_id)
 
 
+## 今ラウンドの鬼すべて（人間 + CPU）。視界の走査と連携の割り当てが同じ集合を
+## 見るように一本化してある。人間の鬼を数え漏らすと CPU が人間の担当を重複して取る
+func hunters() -> Array[Node3D]:
+	var out: Array[Node3D] = []
+	var runner := get_runner()
+	for p in get_tree().get_nodes_in_group("players"):
+		if p != runner:
+			out.append(p)
+	for c in get_tree().get_nodes_in_group("cpu_hunters"):
+		out.append(c)
+	return out
+
+
 func _find_player(peer_id: int) -> Node:
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.name == str(peer_id):
 			return p
 	return null
+
+
+## 表示名。sync_nickname が未到着/未設定ならフォールバックの仮表記を返す
+func nickname_for(peer_id: int) -> String:
+	var p := _find_player(peer_id)
+	if p and "sync_nickname" in p and not p.sync_nickname.is_empty():
+		return p.sync_nickname
+	return "プレイヤー %d" % peer_id
 
 
 ## --- ホスト側ロジック -------------------------------------------------
@@ -326,7 +367,6 @@ func request_start_round() -> void:
 	# 1人だけなら通常ソロ: 自分が Runner になり CPU 鬼が追う。
 	# デバッグONのときだけ逆にして、自分が Hunter、CPU が Runner になる。
 	var new_runner: int
-	var mult := 1.0
 	# ②EOSロビー経由(見知らぬ相手とのレーティング戦)では公平性のため鬼を必ずランダムに
 	# 選ぶ。DirectConnect(フレンドのみのプライベート対戦)は従来通り立候補を優先する
 	var is_eos_matched := NetworkManager.matched_via_eos_lobby
@@ -336,12 +376,20 @@ func request_start_round() -> void:
 		new_runner = ids[0]
 	elif is_eos_matched:
 		new_runner = ids.pick_random()
-		mult = hunter_mult_for(ids.size() - 1)
 	else:
 		# 準備中に選ばれた人がいればその人。誰も立候補していなければランダム
 		new_runner = wanted_runner if ids.has(wanted_runner) else ids.pick_random()
-		mult = hunter_mult_for(ids.size() - 1)
-	# スポーン位置: Runner は中央ゾーン、Hunter は外周ゾーンの中心に散らす
+
+	# 鬼は「逃走者以外の人間」が務め、足りない分を CPU で埋めて必ず定員にする。
+	# 人間が定員を超えたら全員が鬼（あぶれた人の受け皿が無いため上限は掛けない）。
+	# デバッグ（CPU逃走者）だけは1対1の検証用なので CPU 鬼を足さない
+	var human_hunters := ids.size() if solo_debug_runner else ids.size() - 1
+	var cpu_hunters := 0 if solo_debug_runner else maxi(MAX_HUNTERS - human_hunters, 0)
+	var total_hunters := maxi(human_hunters + cpu_hunters, 1)
+	var mult := hunter_mult_for(total_hunters)
+
+	# スポーン位置: Runner は中央ゾーン、Hunter は外周ゾーンの中心に散らす。
+	# CPU は人間の続き番号を使い、同じゾーンに重ねない
 	var spawns := {}
 	if not solo_debug_runner:
 		spawns[new_runner] = _runner_spawn()
@@ -351,17 +399,15 @@ func request_start_round() -> void:
 			continue
 		spawns[id] = _hunter_spawn(i)
 		i += 1
-	_start_round.rpc(new_runner, mult, spawns, is_eos_matched)
+	_start_round.rpc(new_runner, mult, total_hunters, spawns, is_eos_matched)
+	var world := get_tree().current_scene
 	if solo_debug_runner:
 		_sync_head.rpc(0.0)
-		var world := get_tree().current_scene
 		if world.has_method("spawn_cpu_runner"):
 			world.spawn_cpu_runner(_runner_spawn())
-	elif solo:
-		var world := get_tree().current_scene
-		for n in SOLO_CPU_COUNT:
-			if world.has_method("spawn_cpu_hunter"):
-				world.spawn_cpu_hunter(_hunter_spawn(n))
+	elif world.has_method("spawn_cpu_hunter"):
+		for n in cpu_hunters:
+			world.spawn_cpu_hunter(_hunter_spawn(i + n))
 
 
 func _runner_spawn() -> Vector3:
@@ -391,7 +437,7 @@ func _clear_cpu_hunters() -> void:
 	for cpu in get_tree().get_nodes_in_group("cpu_hunters"):
 		# queue_free() だけではこのフレーム中グループに残る。残っていると
 		# 同フレームにテレポートしたプレイヤーが消滅予定の CPU に乗ってしまい、
-		# cpu_hunter.gd の巡回開始位置の割り当て（グループの人数）も狂う
+		# squad の担当ゾーンも消滅予定の個体に押さえられたままになる
 		cpu.remove_from_group("cpu_hunters")
 		cpu.queue_free()
 
@@ -409,6 +455,9 @@ func _physics_process(delta: float) -> void:
 	# ヘッドスタート中も視認は成立させる（凍っていても目はある）。
 	# 検出が視界のみになった分の埋め合わせにもなる
 	_update_sight(delta)
+	# 連携の割り当てもヘッドスタート中から更新する。凍結が明けた瞬間に
+	# 全員が担当ゾーンを持って散り始めるので、出だしの数秒を無駄にしない
+	squad.tick(delta, hunters(), get_runner(), spotted_zone)
 	# ヘッドスタート中は鬼が凍結され、本タイマーとタッチ判定は動かない
 	if head_start_left > 0.0:
 		var prev_head := ceili(head_start_left)
@@ -439,18 +488,24 @@ func _physics_process(delta: float) -> void:
 ##
 ## 上下方向の判定は入れない。段丘マップは高低差が8mあり、垂直コーンや3D距離だと
 ## CLOUD DECK(地面8m) から CASTLE COURT(0m) を見下ろす時に不可解な false negative が出る。
+##
+## CPU鬼だけ CPU_SIGHT_RANGE / CPU_SIGHT_FOV_DEG を使う。人間の鬼は自分の画面で
+## 判断できるので検出コーンを画面より狭く保つ必要があるが、CPUにはその制約が無い
 func can_see(hunter: Node3D, target: Node3D) -> bool:
 	if hunter == null or target == null:
 		return false
+	var is_cpu := hunter.is_in_group("cpu_hunters")
+	var sight_range := CPU_SIGHT_RANGE if is_cpu else SIGHT_RANGE
+	var sight_fov_deg := CPU_SIGHT_FOV_DEG if is_cpu else SIGHT_FOV_DEG
 	var to_target := target.global_position - hunter.global_position
 	var t2 := Vector2(to_target.x, to_target.z)
-	if t2.length() > SIGHT_RANGE:
+	if t2.length() > sight_range:
 		return false
 	var fwd := -hunter.global_transform.basis.z
 	var f2 := Vector2(fwd.x, fwd.z)
 	if f2.length_squared() < 1e-6 or t2.length_squared() < 1e-6:
 		return false
-	if f2.normalized().dot(t2.normalized()) < cos(deg_to_rad(SIGHT_FOV_DEG * 0.5)):
+	if f2.normalized().dot(t2.normalized()) < cos(deg_to_rad(sight_fov_deg * 0.5)):
 		return false
 	# GameManager は Node なので get_world_3d() を持たない。空間は対象ノード側から取る。
 	# また intersect_ray は物理フレーム内から呼ぶこと（_process だと flushing エラー）
@@ -480,10 +535,7 @@ func _update_sight(delta: float) -> void:
 		_sight_timer = SIGHT_TICK
 		# 鬼を tick 間で分散させない。一括評価の方が spotted_zone が一貫する
 		_seer_ids.clear()
-		for h in get_tree().get_nodes_in_group("players"):
-			if h != runner and can_see(h, runner):
-				_seer_ids[h.get_instance_id()] = true
-		for h in get_tree().get_nodes_in_group("cpu_hunters"):
+		for h in hunters():
 			if can_see(h, runner):
 				_seer_ids[h.get_instance_id()] = true
 
@@ -524,12 +576,15 @@ func _update_sight(delta: float) -> void:
 ## アイテムだけ消えて何も置かれなかった（？ブロック側にも状態の判定は無い）。
 ## 「動ける時は必ず使える」に揃えてある
 @rpc("any_peer", "reliable")
-func request_drop(kind: int, pos: Vector3, yaw: float) -> void:
+func request_drop(kind: int, pos: Vector3, yaw: float,
+		launch_velocity := Vector3.ZERO) -> void:
 	if not multiplayer.is_server() or state == State.RESULT:
 		return
+	var sender := multiplayer.get_remote_sender_id()
+	var thrower_id := multiplayer.get_unique_id() if sender == 0 else sender
 	var world := get_tree().current_scene
 	if world and world.has_method("spawn_dropped_item"):
-		world.spawn_dropped_item(kind, pos, yaw)
+		world.spawn_dropped_item(kind, pos, yaw, launch_velocity, thrower_id)
 
 
 ## 接触判定。各キャラの TagArea(Area3D) から body_entered 経由でホスト側のみ呼ばれる。
@@ -665,7 +720,7 @@ func place_player(pos: Vector3) -> void:
 func sync_to_peer(peer_id: int) -> void:
 	if multiplayer.is_server():
 		_sync_state.rpc_id(peer_id, state, runner_id, wanted_runner, hunter_mult,
-			time_left, head_start_left, result_runner_won, result_reason,
+			hunter_count, time_left, head_start_left, result_runner_won, result_reason,
 			spotted_zone, intel_left, spotted)
 
 
@@ -811,9 +866,11 @@ func _schedule_next_round() -> void:
 ## --- RPC（ホスト -> 全ピア） -------------------------------------------
 
 @rpc("authority", "call_local", "reliable")
-func _start_round(new_runner: int, mult: float, spawns: Dictionary, is_eos_matched: bool) -> void:
+func _start_round(new_runner: int, mult: float, hunters_n: int, spawns: Dictionary, is_eos_matched: bool) -> void:
 	runner_id = new_runner
 	hunter_mult = mult
+	hunter_count = hunters_n
+	squad.begin_round()  # 前ラウンドの担当を持ち越さない（ホスト以外では空回り）
 	time_left = ROUND_TIME
 	head_start_left = HEAD_START
 	tagger_peer_id = -1
@@ -824,7 +881,7 @@ func _start_round(new_runner: int, mult: float, spawns: Dictionary, is_eos_match
 	# 各ピアが別々にローカル判定すると不整合になりうる。詳細はPROTOCOL_VERSIONの説明参照)
 	var humans := player_ids().size()
 	round_is_ranked = humans >= 2 and is_eos_matched
-	round_hunter_count = (humans - 1) if humans >= 2 else SOLO_CPU_COUNT
+	round_hunter_count = hunters_n
 	world_time = 0.0  # 全ピアのギミック位相をここで揃える
 	_clear_intel()    # 前ラウンドの目撃情報を持ち越さない
 	state_changed.emit(state)
@@ -885,6 +942,7 @@ func _back_to_waiting() -> void:
 	round_is_ranked = false
 	round_hunter_count = 0
 	_clear_intel()
+	squad.begin_round()
 	state_changed.emit(state)
 	if multiplayer.is_server():
 		_clear_cpu_characters()
@@ -908,12 +966,14 @@ func _sync_intel(left: float) -> void:
 
 
 @rpc("authority", "call_remote", "reliable")
-func _sync_state(s: int, r_id: int, wanted: int, mult: float, t: float, head: float,
+func _sync_state(s: int, r_id: int, wanted: int, mult: float, hunters_n: int,
+		t: float, head: float,
 		won: bool, reason: int, zone: int, intel: float, live: bool) -> void:
 	state = s
 	runner_id = r_id
 	wanted_runner = wanted
 	hunter_mult = mult
+	hunter_count = hunters_n
 	time_left = t
 	head_start_left = head
 	result_runner_won = won

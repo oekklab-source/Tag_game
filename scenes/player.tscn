@@ -27,6 +27,15 @@ properties/3/replication_mode = 1
 properties/4/path = NodePath(".:sync_air")
 properties/4/spawn = true
 properties/4/replication_mode = 2
+properties/5/path = NodePath(".:sync_nickname")
+properties/5/spawn = true
+properties/5/replication_mode = 2
+properties/6/path = NodePath(".:sync_emote")
+properties/6/spawn = true
+properties/6/replication_mode = 2
+properties/7/path = NodePath(".:stunned")
+properties/7/spawn = true
+properties/7/replication_mode = 2
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
@@ -47,6 +56,30 @@ shape = SubResource("tag_shape")
 
 ; モデルが実寸（全高1.74m）なので拡大は不要
 [node name="Humanoid" parent="." instance=ExtResource("2_humanoid")]
+
+; 味方ハンター同士にのみ表示する頭上の名前ラベル。Humanoid の兄弟に置き、
+; ダイブ演出で Humanoid.rotation.x が直接書き換わっても傾かないようにする
+[node name="NameLabel" type="Label3D" parent="."]
+visible = false
+position = Vector3(0, 2.0, 0)
+billboard = 1
+outline_size = 8
+outline_modulate = Color(0, 0, 0, 1)
+font_size = 48
+
+; エモートの固定文言。NameLabel と同じ理由で Humanoid の兄弟に置く
+; （ダイブで Humanoid.rotation.x が倒れても吹き出しは傾かない）。
+; 名前ラベル(y=2.0)と重ならないよう一段上に出す
+[node name="EmoteLabel" type="Label3D" parent="."]
+visible = false
+position = Vector3(0, 2.5, 0)
+billboard = 1
+outline_size = 10
+outline_modulate = Color(0, 0, 0, 1)
+font_size = 56
+no_depth_test = true
+render_priority = 1
+outline_render_priority = 1
 
 [node name="SpringArm3D" type="SpringArm3D" parent="."]
 position = Vector3(0, 1.6, 0)

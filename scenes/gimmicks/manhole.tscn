@@ -1,0 +1,23 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scenes/gimmicks/manhole.gd" id="1_manhole"]
+[ext_resource type="PackedScene" path="res://assets/props/manhole.glb" id="2_model"]
+
+; フタの上だけを判定にする。土管の口（半径2.1m・高さ2.6m）をそのまま流用すると、
+; 地面と面一になったぶん「横を走り抜けただけ」で吸い込まれる
+[sub_resource type="CylinderShape3D" id="lid_shape"]
+height = 1.2
+radius = 1.1
+
+[node name="Manhole" type="Area3D"]
+collision_layer = 4
+collision_mask = 2
+script = ExtResource("1_manhole")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.6, 0)
+shape = SubResource("lid_shape")
+
+; 静的コリジョンは持たせない。持たせるとナビメッシュに穴が空いて
+; CPU がマンホールを迂回する（土管の時はそれが前提だった）
+[node name="Model" parent="." instance=ExtResource("2_model")]

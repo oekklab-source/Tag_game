@@ -45,6 +45,14 @@ func _process(_delta: float) -> bool:
 	humanoid.set_diving(true)
 	humanoid.update_motion(9.0, true, step)
 	print("  diving  -> %s" % player.current_animation)
+	humanoid.set_diving(false)
+	# 転倒はダイブより優先。走っている速度を渡しても Slip になること
+	humanoid.set_stunned(true)
+	humanoid.update_motion(9.0, true, step)
+	print("  stunned -> %s" % player.current_animation)
+	humanoid.set_stunned(false)
+	humanoid.update_motion(0.0, true, step)
+	print("  recover -> %s" % player.current_animation)
 
 	var body: MeshInstance3D = humanoid.get_node("Model").find_child("Body", true, false)
 	var costume: MeshInstance3D = humanoid.get_node("Model").find_child("Costume", true, false)

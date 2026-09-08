@@ -56,6 +56,12 @@ theme_override_colors/font_color = Color(1, 0.5, 0.4, 1)
 theme_override_font_sizes/font_size = 16
 horizontal_alignment = 1
 
+[node name="NicknameEdit" type="LineEdit" parent="CenterContainer/VBox" unique_id=635420981]
+custom_minimum_size = Vector2(320, 56)
+layout_mode = 2
+placeholder_text = "ニックネーム"
+max_length = 12
+
 [node name="HostButton" type="Button" parent="CenterContainer/VBox" unique_id=135365812]
 custom_minimum_size = Vector2(320, 56)
 layout_mode = 2

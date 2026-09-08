@@ -14,6 +14,8 @@ emission_energy_multiplier = 0.7
 [sub_resource type="BoxMesh" id="block_mesh"]
 material = SubResource("block_mat")
 size = Vector3(5, 4.5, 1)
+subdivide_width = 1
+subdivide_height = 1
 
 [sub_resource type="BoxShape3D" id="block_shape"]
 size = Vector3(5, 4.5, 1)

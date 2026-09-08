@@ -38,40 +38,46 @@ func _ready() -> void:
 	_report("初動で雲土管に入らない", runner != null and zone != 0 and runner.global_position.y < 5.0,
 		"雲の展望台へワープした、または高所に残っている")
 
+	# ここから先は近道ギミック（滑り台・ジャンプ台・ダッシュパネル・バンパー）を
+	# 通り抜けられるかだけを見る。CPU 逃走者は鬼の位置と GameManager.spotted で
+	# 行き先を選び直すので、鬼が近く／見えているとテストが指定した _goal が
+	# その場で捨てられてしまう。人間の鬼を退場させて ROAM 固定にしてから測る
+	if me:
+		me.remove_from_group("players")
+		me.queue_free()
+		me = null
+		await _settle()
+
 	if runner:
 		var slide_pts := CPU_NAV_ASSIST._slide_path(WorldData.SLIDES[1])
 		runner.teleport(slide_pts[0] + Vector3(0, 1.0, 0))
-		runner._goal = WorldData.zone_center(1)
-		runner._goal_timer = 10.0
+		_force_goal(runner, WorldData.zone_center(1))
 		var before := runner.global_position
-		await _wait(3.0)
+		for i in range(int(ceil(3.0 * Engine.physics_ticks_per_second))):
+			await get_tree().physics_frame
+			if is_instance_valid(runner):
+				_force_goal(runner, WorldData.zone_center(1))
 		var moved := Vector2(runner.global_position.x - before.x, runner.global_position.z - before.z).length()
 		_report("滑り台入口で止まらない", moved > 4.0 and runner.global_position.y < before.y,
 			"滑り台入口から十分に進んでいない")
 
 		var boost_goal := WorldData.zone_center(5)
 		runner.teleport(WorldData.zone_point(2, 0.0, 20.0) + Vector3(0.0, 1.0, 0.0))
-		runner._goal = boost_goal
-		runner._goal_timer = 10.0
-		runner._repath_timer = 0.0
+		_force_goal(runner, boost_goal)
 		var min_boost_dist := await _track_min_xz_dist(runner, boost_goal, 9.0)
 		_report("ブロック広場からブーストサーキットへ抜ける", min_boost_dist < 10.0,
 			"坂道出口付近で止まり、ブーストサーキット中心へ近づけていない")
 
 		var spring_pad := WorldData.zone_point(5, 0.0, 19.0)
 		runner.teleport(spring_pad + Vector3(0.0, 1.0, -7.0))
-		runner._goal = WorldData.zone_center(8)
-		runner._goal_timer = 10.0
-		runner._repath_timer = 0.0
-		var max_y := await _track_max_y(runner, 4.0)
+		_force_goal(runner, WorldData.zone_center(8))
+		var max_y := await _track_max_y(runner, WorldData.zone_center(8), 4.0)
 		_report("ブーストサーキットでジャンプ台を使う",
 			max_y > WorldData.ZONE_GROUND[5] + 5.0,
 			"そらの階段へ向かうジャンプ台で十分に上昇していない")
 
 		runner.teleport(WorldData.zone_center(8) + Vector3(0.0, 1.0, 0.0))
-		runner._goal = WorldData.zone_center(7)
-		runner._goal_timer = 12.0
-		runner._repath_timer = 0.0
+		_force_goal(runner, WorldData.zone_center(7))
 		var min_lift_dist := await _track_min_xz_dist(runner, WorldData.zone_center(7), 10.0)
 		var dropped_to_lift := runner.global_position.y < WorldData.ZONE_GROUND[8] - 2.0
 		_report("そらの階段からリフト港へ抜ける", dropped_to_lift and min_lift_dist < 15.0,
@@ -89,12 +95,23 @@ func _wait(sec: float) -> void:
 	await get_tree().create_timer(sec).timeout
 
 
-func _track_max_y(body: Node3D, sec: float) -> float:
+## 逃走 AI は 0.4 秒ごとに行き先を選び直すので、放っておくとテストが指定した
+## _goal はすぐ捨てられる。ここで見たいのは「指定した場所へ辿り着けるか」
+## （近道ギミックを通れるか）なので、計測の間だけ選び直しを止めて釘付けにする
+func _force_goal(body: Node3D, target: Vector3) -> void:
+	body._goal = target
+	body._goal_timer = 999.0
+	body._repick_timer = 999.0
+	body._progress_timer = 999.0
+
+
+func _track_max_y(body: Node3D, target: Vector3, sec: float) -> float:
 	var frames := int(ceil(sec * Engine.physics_ticks_per_second))
 	var max_y := body.global_position.y
 	for i in range(frames):
 		await get_tree().physics_frame
 		if is_instance_valid(body):
+			_force_goal(body, target)
 			max_y = maxf(max_y, body.global_position.y)
 	return max_y
 
@@ -105,6 +122,7 @@ func _track_min_xz_dist(body: Node3D, target: Vector3, sec: float) -> float:
 	for i in range(frames):
 		await get_tree().physics_frame
 		if is_instance_valid(body):
+			_force_goal(body, target)
 			min_dist = minf(min_dist, _xz_dist(body.global_position, target))
 	return min_dist
 

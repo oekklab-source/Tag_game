@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://bbkkf8j7awyro"]
+
+[ext_resource type="Script" path="res://tests/shot_stamina.gd" id="1_script"]
+
+[node name="ShotStamina" type="Node"]
+script = ExtResource("1_script")

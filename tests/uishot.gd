@@ -43,6 +43,14 @@ func _ready() -> void:
 		await get_tree().physics_frame
 	await _shot(out, "playing")
 
+	# 3b) エモート（自分＝鬼が「カモン！」を出した瞬間）。
+	# 頭上の吹き出しと、ミニマップで自分のドットが光ることを見る
+	var me: Node = world.get_node("Players/1")
+	me._start_emote()
+	for i in 20:
+		await get_tree().physics_frame
+	await _shot(out, "emote")
+
 	# 4) リザルト
 	GameManager._end_round(false, GameManager.EndReason.TAGGED)
 	for i in 5:

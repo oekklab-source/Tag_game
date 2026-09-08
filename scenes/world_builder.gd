@@ -53,9 +53,11 @@ const PARAPET_PAD_GAP := 7.0
 ## ナビリンクの端点をゾーンの縁から内側へ寄せる距離。
 ## 縁ちょうどだとナビメッシュが agent_radius 分だけ縮んでいて乗らない
 const NAV_LINK_INSET := 3.0
-## 土管リンクの端点を土管の中心からずらす距離。
-## 土管が navmesh に空ける穴は「半径1.5 + agent_radius 0.45 + セル量子化」で実測 2.3m。
-## ここを超えつつ GIMMICK_CLEARANCE(3.5) の内側なら、周りに壁が生えないことも保証される
+## マンホールのリンクの端点を、マンホールの中心からずらす距離。
+## 中心に両端点を置くと CPU は「相手のフタの上」へ直接移動してしまい、
+## 途中でフタを踏まないのでワープが発動しない。相手と反対側の足元へ逃がしておけば、
+## 端点から相手へ一直線に歩くと必ずフタの上（判定 半径1.1m）を通る。
+## GIMMICK_CLEARANCE(3.5) の内側なので、この位置に壁が生えないことも保証される
 const PIPE_LINK_OFFSET := 3.0
 ## 遮蔽ブロックは「跳び乗れるパルクール用の家具」（2〜5m）。
 ## 視線を切る役目は下の 6m 壁が担うので数は絞る
@@ -89,6 +91,10 @@ const CORRIDOR_HALF := 9.0
 const WALL_OUTER_MARGIN := 2.5  # ゾーン外周から空ける帯
 const WALL_GAP := 2.5           # 壁同士の最低隙間（CPU が通れる幅）
 const WALL_CLEARANCE := 2.0     # ギミック・遮蔽ブロックの脇を通れるだけの距離
+## 外周4隅の面取り長さ。壁が直角に交差したままだと move_and_slide() が
+## 2枚の壁の法線を相殺してキャラがその場で詰まる（部屋の角にハマる典型例）。
+## 対角の壁面で1つに減らし、速度を斜めへ逃がせるようにする
+const WALL_CORNER_CHAMFER := 4.0
 ## 隣接ゾーンの床は突き合わせだとボクセル化で継ぎ目が分断されたり、
 ## 隙間から落下しうるので、必ずこの分だけ重ねる（スロープの取り付け位置も追従する）
 const SEAM_OVERLAP := 1.0
@@ -167,6 +173,8 @@ class Batch:
 			total += (_groups[key][1] as Array).size()
 		return "%d個 -> %d本" % [total, _groups.size()]
 
+	## 内部クラスからは外側の static func を呼べないので、ここだけは
+	## _set_subdiv() を使わず直接代入する（定数は外側から引ける）
 	static func _unit_mesh(kind: int, mat: Material) -> Mesh:
 		var mesh: Mesh
 		match kind:
@@ -187,24 +195,47 @@ class Batch:
 			Shape.PRISM:
 				var p := PrismMesh.new()
 				p.size = Vector3.ONE
+				p.subdivide_width = BATCH_BOX_SUBDIV
+				p.subdivide_height = BATCH_BOX_SUBDIV
+				p.subdivide_depth = BATCH_BOX_SUBDIV
 				mesh = p
 			_:
 				var b := BoxMesh.new()
 				b.size = Vector3.ONE
+				b.subdivide_width = BATCH_BOX_SUBDIV
+				b.subdivide_height = BATCH_BOX_SUBDIV
+				b.subdivide_depth = BATCH_BOX_SUBDIV
 				mesh = b
 		mesh.surface_set_material(0, mat)
 		return mesh
 
-## 丸物の分割数。Web 書き出しの予算があるので上げない（既存の _coin と同じ）
-const ROUND_SEGMENTS := 12
-const ROUND_RINGS := 6
+## 丸物の分割数。塔と配管の胴は MultiMesh へ集約済み、円錐の笠と球は
+## 個数が知れているので、頂点が増えてもドローコールは1本も増えない
+const ROUND_SEGMENTS := 20
+## リングだけ控えめなのは、潰した球（バンパー）が専用シェイプを持てず
+## create_convex_shape() で凸包を起こすため。頂点数が当たり判定のコストへ直結する。
+## シルエットの滑らかさは radial_segments がほぼ全部決めるので実害は無い
+const ROUND_RINGS := 8
+## 平らな面をこの長さごとに分割する。
+## gl_compatibility はフォグを頂点シェーダで計算するので、55m 四方の床を
+## 2枚の三角形で貼ると距離が対角線に沿って線形補間され、対角線の折れ目と
+## 段になった帯がそのまま画面に出る（旧 tests/shots/ground.png の赤い床）。
+##
+## 誤差は区間長の2乗で効くので、55m を 9m に割るだけで約37分の1になる。
+## 4.5m まで詰めた版と撮り比べたが画素の差はほぼ無く、三角形だけが
+## 1万5千本増えた。見た目が同じなら軽い方を採る。
+## 重いと感じたら上げるだけで全体の分割が一段荒くなる（レバーはこの1定数）
+const MESH_SEGMENT_M := 9.0
+## 1辺あたりの分割上限。外周壁(162m)でも 24 で頭打ちにする
+const MESH_SEGMENT_MAX := 24
+## MultiMesh の単位メッシュは 1x1x1 をインスタンス側で拡大するので実寸が無い。
+## 集約するプロップは 6〜9m しかないので固定値で足りる
+const BATCH_BOX_SUBDIV := 2
 const GUARD_THICK := 3.0  # 天面ガードの厚み。飛び乗った瞬間に必ず入る高さ
 ## 丸いプロップの直径は「壁の長さ」をそのまま使うと太すぎるので縮める
 const ROUND_PROP_SCALE := 0.55
 const CRATE_DEPTH := 3.4  # コンテナの奥行き。壁(1.2)より厚く、通路を潰さない程度
-const PATTERN_RES := 4        # 床の模様のピクセル数（4x4）
-const PATTERN_CONTRAST := 0.93  # 濃い側の明度。低くすると市松が強く出すぎる
-const NEON_ZONE := 5  # BOOST CIRCUIT。ネオンを使うのはここだけに絞る
+
 
 ## --- バンパー -----------------------------------------------------------
 ## 以前ここには当たり判定の無い緑のドームを飾りとして撒いていたが、
@@ -226,11 +257,12 @@ const QUADRANTS: Array[Vector2] = [
 const BUMPER_D := 4.4  # 差し渡し
 const BUMPER_H := 2.2
 const BUMPER_PAD := 0.5  # 弾き返す Area を幾何より外へ張り出す量
+const BUMPER_VISUAL_STYLE := 9  # 7: リングクッション / 9: 半透明ドーム
 
 
 const SPRING_SCENE := preload("res://scenes/gimmicks/spring_pad.tscn")
 const BOOST_SCENE := preload("res://scenes/gimmicks/boost_panel.tscn")
-const PIPE_SCENE := preload("res://scenes/gimmicks/warp_pipe.tscn")
+const MANHOLE_SCENE := preload("res://scenes/gimmicks/manhole.tscn")
 const QBLOCK_SCENE := preload("res://scenes/gimmicks/question_block.tscn")
 const LIFT_SCENE := preload("res://scenes/gimmicks/moving_platform.tscn")
 const SPINNER_SCENE := preload("res://scenes/gimmicks/rotating_platform.tscn")
@@ -241,37 +273,30 @@ const FLOAT_SHADER := preload("res://scenes/decor_float.gdshader")
 
 
 static func build(map_root: Node3D, gimmick_root: Node3D, decor_root: Node3D) -> void:
-	var checker := _checker_texture()
 	var zone_mats: Array[StandardMaterial3D] = []
 	for idx in WorldData.ZONE_COUNT:
-		var m := pop_material(WorldData.ZONE_COLORS[idx])
-		_apply_checker(m, _zone_pattern(idx))
-		zone_mats.append(m)
+		zone_mats.append(pop_material(WorldData.ZONE_COLORS[idx]))
 	_build_slabs(map_root, zone_mats)
-	# スロープは「道」として床から浮き立つ暖色に（白系だと光を受けて飛んでしまう）
-	var ramp_mat := pop_material(Color(0.86, 0.5, 0.24))
-	_apply_checker(ramp_mat, checker)
-	_build_ramps(map_root, ramp_mat)
-	_build_walls(map_root, pop_material(Color(0.32, 0.26, 0.48)))
-	_build_parapets(map_root, pop_material(Color(0.94, 0.72, 0.32)))
+	# スロープは設置されている各ゾーンのテーマ色で生成
+	_build_ramps(map_root, zone_mats)
+	var wall_mat := pop_material(Color(0.24, 0.18, 0.38))
+	_build_walls(map_root, wall_mat)
+	_build_wall_corners(map_root, wall_mat)
+	_build_parapets(map_root, zone_mats)
 	# 後から置く物が先に置いた物へ重ならないよう、確定した位置を順に積み上げていく
-	var occupied := _build_gimmicks(gimmick_root)
+	var occupied := _build_gimmicks(gimmick_root, zone_mats)
 	# 滑り台の走路は「面」なので点列では守れない。矩形のキープアウトとして
 	# 後続の配置へ渡す（詳細は _slide_rects）
 	var slide_paths := _build_slides(map_root, gimmick_root)
 	var keepout := _slide_rects(slide_paths)
 	keepout.append_array(_landmark_rects())
 	_build_nav_links(gimmick_root, slide_paths)
-	occupied.append_array(
-		_build_cover(map_root, pop_material(Color(0.82, 0.62, 0.3)), occupied, keepout))
-	# 構造物はゾーンごとのアクセント色で建てる。
-	# 床（ZONE_COLORS）と分離した色にしないと、地形と一体化して形が読めない
+	# 構造物・遮蔽ブロック・バンパーは各ゾーンのテーマ色で統一して建てる
 	var accent_mats: Array[StandardMaterial3D] = []
 	for idx in WorldData.ZONE_COUNT:
-		# BOOST CIRCUIT だけネオンにして「サーキット」の性格を出す。
-		# ネオンは glow の閾値を超えて滲むので、広げると画面全体がボケる
-		accent_mats.append(neon_material(WorldData.ZONE_ACCENTS[idx]) if idx == NEON_ZONE
-			else soft_material(WorldData.ZONE_ACCENTS[idx]))
+		accent_mats.append(soft_material(WorldData.ZONE_COLORS[idx]))
+	occupied.append_array(
+		_build_cover(map_root, accent_mats, occupied, keepout))
 	# バンパーはプロップより先に建てて、自分の矩形を keepout へ積む。
 	# こうしないと後から建つ壁がバンパーにめり込む
 	_build_bumpers(map_root, accent_mats, occupied, keepout)
@@ -283,74 +308,34 @@ static func build(map_root: Node3D, gimmick_root: Node3D, decor_root: Node3D) ->
 	_build_decor(decor_root)
 
 
-## 床の模様。ワールド空間トライプラナーで貼るので UV 作成が不要になり、
-## 全てのスラブとスロープで模様が途切れずに繋がる。
-##
-## ゾーンごとに柄を変えて場所の見分けをつける。テクスチャは 4x4 ピクセルなので
-## 9枚あってもメモリは無視できるし、マテリアル数も増えない
-## （もともとゾーンごとに1個作っている）。
-## コントラストを弱くしてあるのは、市松が強いと「ふわふわ」を壊すため
-static func _zone_pattern(idx: int) -> ImageTexture:
-	var img := Image.create(PATTERN_RES, PATTERN_RES, false, Image.FORMAT_RGB8)
-	img.fill(Color.WHITE)
-	var dark := Color(PATTERN_CONTRAST, PATTERN_CONTRAST, PATTERN_CONTRAST)
-	for y in PATTERN_RES:
-		for x in PATTERN_RES:
-			var on := false
-			match idx:
-				0:  # CLOUD DECK    無地（雲の上なので柄なし）
-					on = false
-				1, 7:  # PIPE YARD / LIFT HARBOR  縦ストライプ
-					on = x % 2 == 0
-				3, 6:  # GARDEN GREEN / SPRING VALLEY  水玉
-					on = (x % 2 == 1) and (y % 2 == 1)
-				5:  # BOOST CIRCUIT  斜めストライプ（速度感）
-					on = (x + y) % 2 == 0
-				8:  # SKY STEPS      同心円の近似
-					on = maxi(absi(x - 1), absi(y - 1)) % 2 == 0
-				_:  # BLOCK PLAZA / CASTLE COURT  市松（基準）
-					on = ((x / 2) + (y / 2)) % 2 == 0
-			if on:
-				img.set_pixel(x, y, dark)
-	return ImageTexture.create_from_image(img)
-
-
-## 市松のみの汎用版。スロープと滑り台に使う
-static func _checker_texture() -> ImageTexture:
-	return _zone_pattern(4)
-
-
-static func _apply_checker(m: StandardMaterial3D, tex: Texture2D) -> void:
-	m.albedo_texture = tex
-	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	m.uv1_triplanar = true
-	m.uv1_world_triplanar = true
-	# 4x4 のテクスチャが 16m ごとに繰り返す = 1マス4m（従来と同じ大きさ）
-	m.uv1_scale = Vector3(0.0625, 0.0625, 0.0625)
-
-
 ## ノード名は明示的に振る。？ブロックの RPC はノードパスで解決されるため、
 ## 全ピアで名前が一致していることが前提になる（自動採番に任せない）。
-static func _build_gimmicks(root: Node3D) -> Array[Vector3]:
+static func _build_gimmicks(root: Node3D, mats: Array[StandardMaterial3D] = []) -> Array[Vector3]:
 	var occupied: Array[Vector3] = []
 	for i in WorldData.SPRING_PADS.size():
 		var e: Array = WorldData.SPRING_PADS[i]
-		occupied.append(_place(root, SPRING_SCENE, "SpringPad%d" % i, e))
+		var pos := _place(root, SPRING_SCENE, "SpringPad%d" % i, e)
+		_assert_clear_of_ramps(e[0], pos, "SpringPad%d" % i)
+		occupied.append(pos)
 	for i in WorldData.BOOST_PANELS.size():
 		var e: Array = WorldData.BOOST_PANELS[i]
-		occupied.append(_place(root, BOOST_SCENE, "BoostPanel%d" % i, e, e[3]))
+		var pos := _place(root, BOOST_SCENE, "BoostPanel%d" % i, e, e[3])
+		_assert_clear_of_ramps(e[0], pos, "BoostPanel%d" % i)
+		occupied.append(pos)
 	for i in WorldData.QUESTION_BLOCKS.size():
 		var e: Array = WorldData.QUESTION_BLOCKS[i]
 		occupied.append(_place(root, QBLOCK_SCENE, "QuestionBlock%d" % i, e))
-	# 土管はテーブル上で2本ずつペアになっているので相互に参照させる
-	var pipes: Array[Node3D] = []
-	for i in WorldData.WARP_PIPES.size():
-		var e: Array = WorldData.WARP_PIPES[i]
-		occupied.append(_place(root, PIPE_SCENE, "WarpPipe%d" % i, e))
-		pipes.append(root.get_node("WarpPipe%d" % i))
-	for i in range(0, pipes.size() - 1, 2):
-		pipes[i].pair = pipes[i + 1]
-		pipes[i + 1].pair = pipes[i]
+	# マンホールはテーブル上で2基ずつペアになっているので相互に参照させる
+	var manholes: Array[Node3D] = []
+	for i in WorldData.MANHOLES.size():
+		var e: Array = WorldData.MANHOLES[i]
+		var pos := _place(root, MANHOLE_SCENE, "Manhole%d" % i, e)
+		_assert_clear_of_ramps(e[0], pos, "Manhole%d" % i)
+		occupied.append(pos)
+		manholes.append(root.get_node("Manhole%d" % i))
+	for i in range(0, manholes.size() - 1, 2):
+		manholes[i].pair = manholes[i + 1]
+		manholes[i + 1].pair = manholes[i]
 	# 動く床・回転床は高さ指定があるので個別に配置する
 	for i in WorldData.MOVING_PLATFORMS.size():
 		var e: Array = WorldData.MOVING_PLATFORMS[i]
@@ -359,6 +344,10 @@ static func _build_gimmicks(root: Node3D) -> Array[Vector3]:
 		n.position = WorldData.zone_point(e[0], e[1], e[3]) + Vector3(0, e[2], 0)
 		n.travel = Vector3(e[4], e[5], e[6])
 		n.period = e[7]
+		if not mats.is_empty() and e[0] < mats.size():
+			var mesh_inst := n.get_node_or_null("Mesh") as MeshInstance3D
+			if mesh_inst != null:
+				mesh_inst.material_override = mats[e[0]]
 		root.add_child(n)
 		# 開始位置だけでなく通り道の終端も押さえる。
 		# でないとリフトが往復する先に壁や遮蔽ブロックが建ってしまう
@@ -370,6 +359,10 @@ static func _build_gimmicks(root: Node3D) -> Array[Vector3]:
 		n.name = "RotatingPlatform%d" % i
 		n.position = WorldData.zone_point(e[0], e[1], e[3]) + Vector3(0, e[2], 0)
 		n.spin = e[4]
+		if not mats.is_empty() and e[0] < mats.size():
+			var mesh_inst := n.get_node_or_null("Mesh") as MeshInstance3D
+			if mesh_inst != null:
+				mesh_inst.material_override = mats[e[0]]
 		root.add_child(n)
 		occupied.append(n.position)
 	return occupied
@@ -381,7 +374,7 @@ static func _build_gimmicks(root: Node3D) -> Array[Vector3]:
 ##
 ## 滑り台は一方通行にする（bidirectional = false）。双方向にすると
 ## CPU が「登れる」と誤解して経路を引き、押し戻されて永久に振動する。
-## 土管は元から双方向なので、これが CPU にとって唯一の登坂ルートになる。
+## マンホールは元から双方向なので、これが CPU にとって唯一の登坂ルートになる。
 static func _build_nav_links(root: Node3D, slide_paths: Array) -> void:
 	for i in slide_paths.size():
 		var pts: Array = slide_paths[i]
@@ -392,17 +385,17 @@ static func _build_nav_links(root: Node3D, slide_paths: Array) -> void:
 		inward.y = 0.0
 		_nav_link(root, "SlideLink%d" % i,
 			entry + inward.normalized() * NAV_LINK_INSET, pts[2], false)
-	var pipes := WorldData.WARP_PIPES
-	for i in range(0, pipes.size() - 1, 2):
-		var a: Array = pipes[i]
-		var b: Array = pipes[i + 1]
+	var holes := WorldData.MANHOLES
+	for i in range(0, holes.size() - 1, 2):
+		var a: Array = holes[i]
+		var b: Array = holes[i + 1]
 		var pa := WorldData.zone_point(a[0], a[1], a[2])
 		var pb := WorldData.zone_point(b[0], b[1], b[2])
-		# 端点は土管の中心ではなく「相手と反対側の足元」に置く。
-		# 土管は半径1.5mの静的ボディなのでナビメッシュに 2.3m ほどの穴が空き、
-		# 中心に置いた端点はメッシュに繋がらない。
-		# この位置なら端点から相手へ一直線に歩くと必ず土管の口を通るので、
-		# 経路をたどるだけで warp_pipe の Area に入る
+		# 端点はマンホールの中心ではなく「相手と反対側の足元」に置く。
+		# 中心に置くと CPU は相手のフタの上へ直接移動してしまい、途中で
+		# フタを踏まないのでワープが起きない。この位置なら端点から相手へ
+		# 一直線に歩くと必ずフタの上を通るので、経路をたどるだけで
+		# manhole の Area に入る
 		var away := Vector3(pa.x - pb.x, 0.0, pa.z - pb.z).normalized() * PIPE_LINK_OFFSET
 		_nav_link(root, "PipeLink%d" % i, pa + away, pb - away, true)
 
@@ -441,18 +434,18 @@ static func pop_material(c: Color) -> StandardMaterial3D:
 	return m
 
 
-## ふわふわの基調材。白を混ぜて彩度を落とし、粗さを上げる。
-## 影側が沈まないよう、発光はアルベドより「明るい」色にする。
+## ふわふわの基調材。彩度を保ちつつ適度な粗さを設定。
+## 影側が沈まないよう、発光はアルベドよりわずかに明るい色にする。
 ## rim_enabled は Compatibility での挙動が不確実なので使わず、これで縁の明るさを作る
 static func soft_material(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
-	m.albedo_color = c.lerp(Color.WHITE, 0.08)
+	m.albedo_color = c.lerp(Color.WHITE, 0.02)
 	m.roughness = 0.95
 	m.metallic = 0.0
 	m.metallic_specular = 0.15
 	m.emission_enabled = true
-	m.emission = c.lerp(Color.WHITE, 0.3)
-	m.emission_energy_multiplier = 0.16
+	m.emission = c.lerp(Color.WHITE, 0.12)
+	m.emission_energy_multiplier = 0.14
 	return m
 
 
@@ -473,17 +466,21 @@ static func _build_slabs(root: Node3D, mats: Array[StandardMaterial3D]) -> void:
 		var ext := WorldData.zone_extent(idx)
 		var col: int = WorldData.ZONE_COL[idx]
 		var row: int = WorldData.ZONE_ROW[idx]
+		var ground_y: float = WorldData.ZONE_GROUND[idx]
 		var x0 := center.x - ext.x * 0.5
 		var x1 := center.x + ext.x * 0.5
 		var z0 := center.z - ext.y * 0.5
 		var z1 := center.z + ext.y * 0.5
-		if col > 0:
+		# 隣接ゾーンと同じ高さ（段差なし）の場合は、同一平面でのポリゴン重複による
+		# Z-fighting（点滅・ガビガビ）を防ぐため重ねしろをつけず突き合わせにする。
+		# 段差がある場合（崖）は隙間落下防止のため従来どおり重ねしろを設ける。
+		if col > 0 and absf(ground_y - WorldData.ZONE_GROUND[idx - 1]) >= 0.05:
 			x0 -= SEAM_OVERLAP
-		if col < 2:
+		if col < 2 and absf(ground_y - WorldData.ZONE_GROUND[idx + 1]) >= 0.05:
 			x1 += SEAM_OVERLAP
-		if row > 0:
+		if row > 0 and absf(ground_y - WorldData.ZONE_GROUND[idx - 3]) >= 0.05:
 			z0 -= SEAM_OVERLAP
-		if row < 2:
+		if row < 2 and absf(ground_y - WorldData.ZONE_GROUND[idx + 3]) >= 0.05:
 			z1 += SEAM_OVERLAP
 		var h: float = center.y - WorldData.SLAB_BOTTOM
 		_box(root, "Zone%d" % idx,
@@ -493,13 +490,13 @@ static func _build_slabs(root: Node3D, mats: Array[StandardMaterial3D]) -> void:
 
 ## 滑り台を架けた境界にはスロープを作らない。
 ## 歩いて降りられてしまうと滑り台を使う理由が無くなるため
-static func _build_ramps(root: Node3D, mat: Material) -> void:
+static func _build_ramps(root: Node3D, mats: Array[StandardMaterial3D]) -> void:
 	for pair in WorldData.RAMP_PAIRS_X:
 		if not _has_slide(pair[0], pair[1]):
-			_ramp(root, pair[0], pair[1], mat, true)
+			_ramp(root, pair[0], pair[1], mats, true)
 	for pair in WorldData.RAMP_PAIRS_Z:
 		if not _has_slide(pair[0], pair[1]):
-			_ramp(root, pair[0], pair[1], mat, false)
+			_ramp(root, pair[0], pair[1], mats, false)
 
 
 ## 順序を問わずこのゾーン対に滑り台があるか
@@ -513,12 +510,14 @@ static func _has_slide(a: int, b: int) -> bool:
 ## a は西/北側、b は東/南側のゾーン。
 ## スロープは境界から「低い側のゾーン」へ向かって伸ばすので、
 ## 高い側の崖のふちにぴたりと接続され、低い側の床に滑らかに着地する。
-static func _ramp(root: Node3D, a: int, b: int, mat: Material, along_x: bool) -> void:
+static func _ramp(root: Node3D, a: int, b: int, mats: Array[StandardMaterial3D], along_x: bool) -> void:
 	var ya: float = WorldData.ZONE_GROUND[a]
 	var yb: float = WorldData.ZONE_GROUND[b]
 	var rise := absf(yb - ya)
 	if rise < 0.05:
 		return  # 段差なし。床同士が直接つながっている
+	var lo := a if ya < yb else b
+	var mat: Material = mats[lo] if lo < mats.size() else null
 	var run := maxf(RAMP_MIN_RUN, rise * RAMP_RUN_PER_RISE)
 	var hyp := sqrt(run * run + rise * rise)
 	var angle := atan2(rise, run)
@@ -546,6 +545,46 @@ static func _low_side_index(a: int, along_x: bool) -> int:
 	return WorldData.ZONE_COL[a] if along_x else WorldData.ZONE_ROW[a]
 
 
+## テーブルを編集して不変条件を破ったら、その場で落として気づけるようにする
+## (_assert_slide_fits と同じ方針)。マンホールやジャンプ台などのギミックは
+## 地面と面一に置かれる前提のため、傾斜の途中に置くとめり込みや動作不良の原因になる
+static func _assert_clear_of_ramps(idx: int, pos: Vector3, node_name: String) -> void:
+	for pair in WorldData.RAMP_PAIRS_X:
+		_assert_clear_of_ramp(idx, pos, pair[0], pair[1], true, node_name)
+	for pair in WorldData.RAMP_PAIRS_Z:
+		_assert_clear_of_ramp(idx, pos, pair[0], pair[1], false, node_name)
+
+
+## a-b 間のランプ(スロープ)が占める範囲に pos が入っていないか確認する。
+## _ramp() と同じ式で「低い側のゾーンへ rise*RAMP_RUN_PER_RISE(最低 RAMP_MIN_RUN) だけ
+## 食い込む」範囲を求め、対象ゾーンがその低い側で無ければ何もしない
+static func _assert_clear_of_ramp(idx: int, pos: Vector3, a: int, b: int,
+		along_x: bool, node_name: String) -> void:
+	var ya: float = WorldData.ZONE_GROUND[a]
+	var yb: float = WorldData.ZONE_GROUND[b]
+	var rise := absf(yb - ya)
+	if rise < 0.05 or _has_slide(a, b):
+		return  # 段差なし。またはこの境界はスロープの代わりに滑り台がある
+	var run := maxf(RAMP_MIN_RUN, rise * RAMP_RUN_PER_RISE)
+	var dir := -1.0 if ya < yb else 1.0
+	var boundary := WorldData.BAND * (-1.0 if _low_side_index(a, along_x) == 0 else 1.0)
+	var low_zone := b if dir > 0.0 else a
+	if idx != low_zone:
+		return
+	var near := boundary
+	var far := boundary + dir * run
+	var lo := minf(near, far)
+	var hi := maxf(near, far)
+	var along: float = pos.x if along_x else pos.z
+	var across: float = pos.z if along_x else pos.x
+	var cross_center: float = WorldData.AXIS_CENTER[
+		WorldData.ZONE_ROW[a] if along_x else WorldData.ZONE_COL[a]]
+	var in_run := along > lo and along < hi
+	var in_width := absf(across - cross_center) < RAMP_WIDTH * 0.5
+	assert(not (in_run and in_width),
+		"%s がゾーン%dのランプ(%d<->%d)の傾斜面に置かれている" % [node_name, idx, a, b])
+
+
 ## --- 転落防止の柵 -------------------------------------------------------
 
 ## 落差のある境界に柵を立て、決められた口（滑り台の入口 / スロープの取り付け口）
@@ -554,21 +593,22 @@ static func _low_side_index(a: int, along_x: bool) -> int:
 ##
 ## 柵は高い側の床に立てるので、低い側から見ると崖の上の手すりになる。
 ## 高さ 2.5m はジャンプ(1.38m)では越えられず、視線を切る 6m 級でもない
-static func _build_parapets(root: Node3D, mat: Material) -> void:
+static func _build_parapets(root: Node3D, mats: Array[StandardMaterial3D]) -> void:
 	for pair in WorldData.RAMP_PAIRS_X:
-		_parapet(root, pair[0], pair[1], mat, true)
+		_parapet(root, pair[0], pair[1], mats, true)
 	for pair in WorldData.RAMP_PAIRS_Z:
-		_parapet(root, pair[0], pair[1], mat, false)
+		_parapet(root, pair[0], pair[1], mats, false)
 
 
 ## a は西/北側、b は東/南側のゾーン。
 ## 境界の座標に沿って柵を伸ばし、通してよい場所だけ開口を残す
-static func _parapet(root: Node3D, a: int, b: int, mat: Material, along_x: bool) -> void:
+static func _parapet(root: Node3D, a: int, b: int, mats: Array[StandardMaterial3D], along_x: bool) -> void:
 	var ya: float = WorldData.ZONE_GROUND[a]
 	var yb: float = WorldData.ZONE_GROUND[b]
 	if absf(ya - yb) < PARAPET_MIN_DROP:
 		return  # 1〜2m の段差は普通に飛び降りてよい
 	var hi := a if ya > yb else b
+	var mat: Material = mats[hi] if hi < mats.size() else null
 	var boundary := -WorldData.BAND if _low_side_index(a, along_x) == 0 else WorldData.BAND
 	# 柵の長さ方向は高い側のゾーンの幅いっぱい
 	var perp_idx: int = WorldData.ZONE_ROW[hi] if along_x else WorldData.ZONE_COL[hi]
@@ -638,8 +678,8 @@ static func _parapet_span(root: Node3D, tag: String, n: int, along_x: bool, boun
 ## 連結は滑り台なしで成立している必要がある（_assert_slide_fits を参照）。
 static func _build_slides(map_root: Node3D, gimmick_root: Node3D) -> Array:
 	var paths: Array = []
-	var deck_mat := pop_material(Color(0.62, 0.88, 1.0))
-	var rail_mat := pop_material(Color(1.0, 0.62, 0.86))
+	var deck_mat := pop_material(Color(0.30, 0.74, 0.98))
+	var rail_mat := pop_material(Color(0.98, 0.34, 0.70))
 	for i in WorldData.SLIDES.size():
 		var pts := _slide_path(WorldData.SLIDES[i])
 		_slide_body(map_root, i, pts, deck_mat, rail_mat)
@@ -827,9 +867,27 @@ static func _build_walls(root: Node3D, mat: Material) -> void:
 	_box(root, "WallE", Vector3(half + 0.5, cy, 0), Vector3(1.0, h, span), mat)
 
 
+## 外周4隅の直角を対角に切り落とす。壁が直角のままだと move_and_slide() が
+## 2枚の壁の法線を相殺してその場に詰まる（部屋の角にハマる典型例）。
+## 対角の壁1枚に置き換えて、90°の凹んだ角を2つの135°の角へ変える
+static func _build_wall_corners(root: Node3D, mat: Material) -> void:
+	var h := WorldData.WALL_HEIGHT
+	var half := WorldData.WORLD_HALF
+	var cy: float = WorldData.SLAB_BOTTOM + h * 0.5
+	var chamfer := WALL_CORNER_CHAMFER
+	var corners: Array[Vector2] = [
+		Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]
+	for i in corners.size():
+		var s: Vector2 = corners[i]
+		var mid := Vector2(s.x * (half - chamfer * 0.5), s.y * (half - chamfer * 0.5))
+		var yaw := atan2(s.y, s.x)
+		_box(root, "WallCorner%d" % i, Vector3(mid.x, cy, mid.y),
+			Vector3(chamfer * sqrt(2.0), h, 1.0), mat, Vector3(0, yaw, 0))
+
+
 ## 遮蔽ブロック。配置は固定シードの乱数なので全ピアで同一になる。
 ## 実際に置けた位置を返し、壁がその上に重ならないようにする
-static func _build_cover(root: Node3D, mat: Material, occupied: Array[Vector3],
+static func _build_cover(root: Node3D, mats: Array[StandardMaterial3D], occupied: Array[Vector3],
 		keepout: Array) -> Array[Vector3]:
 	var placed: Array[Vector3] = []
 	var rng := RandomNumberGenerator.new()
@@ -837,6 +895,7 @@ static func _build_cover(root: Node3D, mat: Material, occupied: Array[Vector3],
 	for idx in WorldData.ZONE_COUNT:
 		var center := WorldData.zone_center(idx)
 		var ext := WorldData.zone_extent(idx)
+		var mat: Material = mats[idx] if idx < mats.size() else null
 		# スロープの取り付け部にかからないよう内側にマージンを取る
 		var mx := ext.x * 0.5 - 13.0
 		var mz := ext.y * 0.5 - 13.0
@@ -900,7 +959,9 @@ static func _build_bumpers(root: Node3D, mats: Array[StandardMaterial3D],
 				break
 
 
-## 潰した球と、それを一回り覆う判定 Area。
+## 選択中の案を複合メッシュで組み立てる。
+## 見た目だけを替え、従来の潰した球コリジョンと
+## それを一回り覆う反発 Area はそのまま残す。
 ## 天面を塞ぐ Area（_top_guard）は付けない。上に乗ってもこの Area の中なので、
 ## 弾き返しがそのまま「上に立てない」を兼ねる
 static func _bumper(root: Node3D, node_name: String, pos: Vector3, mat: Material) -> void:
@@ -910,6 +971,13 @@ static func _bumper(root: Node3D, node_name: String, pos: Vector3, mat: Material
 		Vector3(BUMPER_D, BUMPER_H, BUMPER_D), mat, Shape.SPHERE, Vector3.ZERO, 8,
 		false, false)
 	body.add_to_group("cpu_bumpers")
+	# _solid が作るメッシュはコリジョン生成の基準として残し、表示だけ隠す。
+	# これにより外観を替えても物理形状は以前と完全に同じになる。
+	var collision_guide := body.get_node_or_null("Mesh") as MeshInstance3D
+	if collision_guide:
+		collision_guide.visible = false
+		collision_guide.name = "CollisionGuide"
+	_add_bumper_visual(body)
 	var area := Area3D.new()
 	area.name = "Hit"
 	area.collision_layer = 0
@@ -922,6 +990,204 @@ static func _bumper(root: Node3D, node_name: String, pos: Vector3, mat: Material
 	col.shape = shape
 	area.add_child(col)
 	body.add_child(area)
+
+
+static func _add_bumper_visual(body: StaticBody3D) -> void:
+	if BUMPER_VISUAL_STYLE == 7:
+		_add_bumper_visual_7(body)
+	else:
+		_add_bumper_visual_9(body)
+
+
+static func _add_bumper_visual_7(body: StaticBody3D) -> void:
+	var visual := Node3D.new()
+	visual.name = "Visual"
+	body.add_child(visual)
+
+	var lavender := soft_material(Color(0.72, 0.52, 0.82))
+	var lavender_dark := soft_material(Color(0.54, 0.39, 0.66))
+	var butter := soft_material(Color(0.95, 0.80, 0.40))
+	var mint := soft_material(Color(0.40, 0.72, 0.65))
+	var dark := soft_material(Color(0.31, 0.28, 0.38))
+
+	var base_mesh := CylinderMesh.new()
+	base_mesh.top_radius = 2.2
+	base_mesh.bottom_radius = 2.2
+	base_mesh.height = 0.28
+	base_mesh.radial_segments = 16
+	_add_bumper_mesh(visual, "Base", base_mesh, Vector3(0, -0.94, 0), mint)
+
+	# 接触時に潰れる部分。ベースと支柱を動かさず、クッション・バンド・バネをまとめる。
+	var bounce_visual := Node3D.new()
+	bounce_visual.name = "BounceVisual"
+	visual.add_child(bounce_visual)
+
+	# ベースとクッションの間に、低いバネと支柱を見せる。
+	for i in 4:
+		var angle := i * TAU / 4.0
+		var spring_pos := Vector3(cos(angle) * 1.55, 0, sin(angle) * 1.55)
+		for ring_i in 3:
+			var spring := TorusMesh.new()
+			spring.inner_radius = 0.12
+			spring.outer_radius = 0.28
+			spring.rings = 8
+			spring.ring_segments = 5
+			_add_bumper_mesh(bounce_visual, "Spring%d_%d" % [i, ring_i], spring,
+				spring_pos + Vector3(0, -0.75 + ring_i * 0.13, 0), dark)
+		var support_angle := angle + TAU / 8.0
+		var support := CylinderMesh.new()
+		support.top_radius = 0.13
+		support.bottom_radius = 0.13
+		support.height = 0.48
+		support.radial_segments = 8
+		_add_bumper_mesh(visual, "Support%d" % i, support,
+			Vector3(cos(support_angle) * 1.72, -0.60, sin(support_angle) * 1.72), dark)
+
+	var cushion := TorusMesh.new()
+	cushion.inner_radius = 0.70
+	cushion.outer_radius = 2.10
+	cushion.rings = 16
+	cushion.ring_segments = 8
+	_add_bumper_mesh(bounce_visual, "Cushion", cushion, Vector3(0, 0.30, 0), lavender)
+
+	# 中央は貫通穴にせず、少し低い柔らかなパッドで塞ぐ。
+	var center := CylinderMesh.new()
+	center.top_radius = 0.76
+	center.bottom_radius = 0.76
+	center.height = 0.22
+	center.radial_segments = 16
+	_add_bumper_mesh(bounce_visual, "CenterPad", center, Vector3(0, 0.34, 0), lavender_dark)
+
+	# 4方向の縦長カプセルをリングへ沿わせ、7番案の補強バンドを表現する。
+	var band_positions := [
+		[Vector3(1.63, 0.20, 0), Vector3(0, 0, deg_to_rad(25.0))],
+		[Vector3(-1.63, 0.20, 0), Vector3(0, 0, deg_to_rad(-25.0))],
+		[Vector3(0, 0.20, 1.63), Vector3(deg_to_rad(-25.0), 0, 0)],
+		[Vector3(0, 0.20, -1.63), Vector3(deg_to_rad(25.0), 0, 0)],
+	]
+	for i in band_positions.size():
+		var band := CapsuleMesh.new()
+		band.radius = 0.16
+		band.height = 1.25
+		band.radial_segments = 8
+		band.rings = 4
+		_add_bumper_mesh(bounce_visual, "Band%d" % i, band,
+			band_positions[i][0], butter, band_positions[i][1])
+
+
+## 9番案の、柔らかな透明ドームをバネで支えるバンパー。
+## 半透明部分の内側にもパッドを置き、どの角度から見ても反発装置だと分かるようにする。
+static func _add_bumper_visual_9(body: StaticBody3D) -> void:
+	var visual := Node3D.new()
+	visual.name = "Visual"
+	body.add_child(visual)
+
+	var lavender_glass := _bumper_frosted_material(Color(0.76, 0.61, 0.88, 0.48))
+	var coral := soft_material(Color(0.90, 0.46, 0.50))
+	var coral_dark := soft_material(Color(0.73, 0.34, 0.43))
+	var butter := soft_material(Color(0.96, 0.82, 0.48))
+	var mint := soft_material(Color(0.45, 0.76, 0.66))
+	var dark := soft_material(Color(0.31, 0.28, 0.38))
+
+	var base_mesh := CylinderMesh.new()
+	base_mesh.top_radius = 2.2
+	base_mesh.bottom_radius = 2.2
+	base_mesh.height = 0.28
+	base_mesh.radial_segments = 16
+	_add_bumper_mesh(visual, "Base", base_mesh, Vector3(0, -0.94, 0), coral)
+
+	var base_trim := TorusMesh.new()
+	base_trim.inner_radius = 1.72
+	base_trim.outer_radius = 2.16
+	base_trim.rings = 16
+	base_trim.ring_segments = 6
+	_add_bumper_mesh(visual, "BaseTrim", base_trim, Vector3(0, -0.79, 0), coral_dark)
+
+	# ドーム・内側のパッド・バネをまとめて潰し、固定ベースは動かさない。
+	var bounce_visual := Node3D.new()
+	bounce_visual.name = "BounceVisual"
+	visual.add_child(bounce_visual)
+
+	for i in 4:
+		var angle := i * TAU / 4.0
+		var spring_pos := Vector3(cos(angle) * 1.48, 0, sin(angle) * 1.48)
+		for ring_i in 3:
+			var spring := TorusMesh.new()
+			spring.inner_radius = 0.12
+			spring.outer_radius = 0.28
+			spring.rings = 8
+			spring.ring_segments = 5
+			_add_bumper_mesh(bounce_visual, "Spring%d_%d" % [i, ring_i], spring,
+				spring_pos + Vector3(0, -0.75 + ring_i * 0.13, 0), dark)
+
+		var support_angle := angle + TAU / 8.0
+		var support := CylinderMesh.new()
+		support.top_radius = 0.13
+		support.bottom_radius = 0.13
+		support.height = 0.48
+		support.radial_segments = 8
+		_add_bumper_mesh(visual, "Support%d" % i, support,
+			Vector3(cos(support_angle) * 1.70, -0.60, sin(support_angle) * 1.70), dark)
+
+	var inner_pad := CylinderMesh.new()
+	inner_pad.top_radius = 1.42
+	inner_pad.bottom_radius = 1.55
+	inner_pad.height = 0.28
+	inner_pad.radial_segments = 16
+	_add_bumper_mesh(bounce_visual, "InnerPad", inner_pad, Vector3(0, -0.48, 0), mint)
+
+	var dome := SphereMesh.new()
+	dome.radius = 1.96
+	dome.height = 3.92
+	dome.radial_segments = 20
+	dome.rings = 10
+	_add_bumper_mesh(bounce_visual, "Dome", dome, Vector3(0, 0.14, 0), lavender_glass,
+		Vector3.ZERO, Vector3(1.0, 0.43, 1.0))
+
+	var rim := TorusMesh.new()
+	rim.inner_radius = 1.66
+	rim.outer_radius = 2.08
+	rim.rings = 16
+	rim.ring_segments = 6
+	_add_bumper_mesh(bounce_visual, "Rim", rim, Vector3(0, -0.47, 0), coral)
+
+	# クリーム色の留め具を四方に置き、透明ドームと土台の接続を見せる。
+	for i in 4:
+		var angle := i * TAU / 4.0
+		var clip := CapsuleMesh.new()
+		clip.radius = 0.18
+		clip.height = 0.62
+		clip.radial_segments = 8
+		clip.rings = 4
+		var clip_pos := Vector3(cos(angle) * 1.83, -0.37, sin(angle) * 1.83)
+		var clip_rot := Vector3(0, 0, deg_to_rad(90.0))
+		if i % 2 == 1:
+			clip_rot = Vector3(deg_to_rad(90.0), 0, 0)
+		_add_bumper_mesh(bounce_visual, "Clip%d" % i, clip, clip_pos, butter, clip_rot)
+
+
+static func _bumper_frosted_material(color: Color) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.roughness = 0.90
+	material.metallic = 0.0
+	material.metallic_specular = 0.12
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return material
+
+
+static func _add_bumper_mesh(parent: Node3D, node_name: String, mesh: PrimitiveMesh,
+		pos: Vector3, material: Material, rot := Vector3.ZERO,
+		scale := Vector3.ONE) -> void:
+	mesh.material = material
+	var instance := MeshInstance3D.new()
+	instance.name = node_name
+	instance.mesh = mesh
+	instance.position = pos
+	instance.rotation = rot
+	instance.scale = scale
+	parent.add_child(instance)
 
 
 ## 視線を切る構造物。ゾーンごとに4象限へ配り、種類はそのゾーンのテーマから引く。
@@ -1104,6 +1370,7 @@ static func _wall_cap(body: StaticBody3D, wall_len: float, along_x: bool,
 	var size := Vector3(thick, WALL_CAP_HEIGHT, wall_len)
 	var prism := PrismMesh.new()
 	prism.size = size
+	_set_subdiv(prism, _subdiv(size.x), _subdiv(size.y), _subdiv(size.z))
 	prism.material = mat
 	var col := CollisionShape3D.new()
 	# メッシュから凸形状を起こすので、見た目と当たり判定が必ず一致する
@@ -1225,28 +1492,6 @@ static func _build_decor(root: Node3D) -> void:
 	# 走ると素通りしてしまい意味が無かった。実体のあるバンパー（_build_bumpers）に
 	# 置き換えてある
 
-	# コイン: ジャンプ台の上に弧を描いて「ここから跳べる」と示す
-	var coins: Array[Transform3D] = []
-	for e in WorldData.SPRING_PADS:
-		var base := WorldData.zone_point(e[0], e[1], e[2])
-		for k in 7:
-			var t := k / 6.0
-			coins.append(Transform3D(Basis.from_euler(Vector3(PI * 0.5, 0, 0)),
-				base + Vector3(0, 2.5 + sin(t * PI) * 5.5, (t - 0.5) * 9.0)))
-	for e in WorldData.WARP_PIPES:
-		var base := WorldData.zone_point(e[0], e[1], e[2])
-		for k in 8:
-			var a := TAU * k / 8.0
-			coins.append(Transform3D(Basis.from_euler(Vector3(PI * 0.5, a, 0)),
-				base + Vector3(cos(a) * 3.2, 3.4, sin(a) * 3.2)))
-	# コインは自転させる。「取れそう」に見えるのは動いている時だけ
-	var coin_phase: Array = []
-	for i in coins.size():
-		coin_phase.append(fmod(i * 0.37, 1.0))
-	var coin_mesh := _coin()
-	coin_mesh.material = float_material(Color(1, 0.78, 0.1), 0.9, 0.0, 0.3, 2.2, 1.4)
-	_multimesh(root, "Coins", coin_mesh, coins, 90.0, coin_phase, 1.0)
-
 	# チェッカー旗: 外壁沿いの目印
 	var flags: Array[Transform3D] = []
 	var half := WorldData.WORLD_HALF
@@ -1279,22 +1524,10 @@ static func _sphere(c: Color, emission := 0.6) -> Mesh:
 	var m := SphereMesh.new()
 	m.radius = 1.0
 	m.height = 2.0
-	m.radial_segments = 10
-	m.rings = 5
+	m.radial_segments = 16
+	m.rings = 8
 	var mat := pop_material(c)
 	mat.emission_energy_multiplier = emission
-	m.material = mat
-	return m
-
-
-static func _coin() -> Mesh:
-	var m := CylinderMesh.new()
-	m.top_radius = 0.42
-	m.bottom_radius = 0.42
-	m.height = 0.09
-	m.radial_segments = 12
-	var mat := pop_material(Color(1, 0.78, 0.1))
-	mat.emission_energy_multiplier = 0.9
 	m.material = mat
 	return m
 
@@ -1408,6 +1641,7 @@ static func _solid(root: Node3D, node_name: String, pos: Vector3, size: Vector3,
 		_:
 			var b := BoxMesh.new()
 			b.size = size
+			_set_subdiv(b, _subdiv(size.x), _subdiv(size.y), _subdiv(size.z))
 			mesh = b
 			var s := BoxShape3D.new()
 			s.size = size
@@ -1439,6 +1673,25 @@ static func _solid(root: Node3D, node_name: String, pos: Vector3, size: Vector3,
 	return body
 
 
+## 一辺の長さから分割数を決める。BoxMesh / PrismMesh の subdivide_* は
+## 「追加の切れ目の数」なので、n を返すと1辺あたり n+1 枚のクアッドになる。
+##
+## 分割が効くのはメッシュだけで、当たり判定とナビメッシュは動かない。
+## コリジョンは _solid() / _box() が同じ size から BoxShape3D を直接作るし、
+## ナビメッシュは静的コライダだけを見る（world.tscn の
+## geometry_parsed_geometry_type = 1）。だから通行・視線・CPU の経路は変わらない
+static func _subdiv(length: float) -> int:
+	return clampi(int(absf(length) / MESH_SEGMENT_M), 0, MESH_SEGMENT_MAX)
+
+
+## BoxMesh と PrismMesh は同じ3つのプロパティを持つが、共通の基底クラスが
+## PrimitiveMesh までしか無いので名前で代入する
+static func _set_subdiv(mesh: PrimitiveMesh, w: int, h: int, d: int) -> void:
+	mesh.set("subdivide_width", w)
+	mesh.set("subdivide_height", h)
+	mesh.set("subdivide_depth", d)
+
+
 ## 従来の呼び出し口。既存のコードは全てこちらを通る
 static func _box(root: Node3D, node_name: String, pos: Vector3, size: Vector3,
 		mat: Material, rot := Vector3.ZERO) -> StaticBody3D:
@@ -1449,6 +1702,7 @@ static func _box(root: Node3D, node_name: String, pos: Vector3, size: Vector3,
 	var mesh := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = size
+	_set_subdiv(box, _subdiv(size.x), _subdiv(size.y), _subdiv(size.z))
 	box.material = mat
 	mesh.mesh = box
 	body.add_child(mesh)

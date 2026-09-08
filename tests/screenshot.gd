@@ -17,6 +17,11 @@ const SHOTS: Array = [
 	# ？ブロック（emission 1.2）の寄り。glow_hdr_threshold=1.0 を超えるので、
 	# ここに滲みが出ていれば Compatibility レンダラで glow が効いている証拠
 	["glow", Vector3(45.5, 5.5, -55.0), Vector3(45.5, 5.5, -61.5)],
+	# マンホール（PIPE YARD の Manhole0 は (14, 2, -53.5)）の寄りと、
+	# 遠景から光柱が見つけられるか。地面と面一にした代わりの目印なので、
+	# 遠景で見えなくなっていたらマンホールの設計が破綻している
+	["manhole", Vector3(14.0, 3.4, -49.0), Vector3(14.0, 2.3, -53.5)],
+	["manhole_far", Vector3(0.0, 7.0, -8.0), Vector3(14.0, 9.0, -53.5)],
 ]
 
 
@@ -54,8 +59,12 @@ func _ready() -> void:
 		var img := get_viewport().get_texture().get_image()
 		var path: String = "%s/%s.png" % [out, shot[0]]
 		img.save_png(path)
-		print("saved %s  draw calls %d" % [path,
-			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)])
+		# 三角形数も出す。メッシュの分割を上げてもドローコールは増えない
+		# （集約先が MultiMesh のまま変わらない）ので、増えたぶんが
+		# 頂点だけに乗っているかはこの2つを並べないと分からない
+		print("saved %s  draw calls %d  primitives %d" % [path,
+			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+			Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)])
 	print("materials %d  objects %d" % [
 		Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),
 		Performance.get_monitor(Performance.OBJECT_NODE_COUNT)])

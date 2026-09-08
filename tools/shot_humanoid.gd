@@ -10,6 +10,14 @@ const POSES := [
 	["run_pass", "Run", 0.2, false, Color(0.35, 0.78, 0.45)],
 	["jump", "Jump", 0.33, false, Color(0.35, 0.78, 0.45)],
 	["dive", "Dive", 0.75, true, Color(0.9, 0.25, 0.25)],
+	["slip_fall", "Slip", 0.13, false, Color(0.35, 0.78, 0.45)],
+	["slip_land", "Slip", 0.40, false, Color(0.35, 0.78, 0.45)],
+	["slip_sit", "Slip", 0.87, false, Color(0.35, 0.78, 0.45)],
+	["slip_rise", "Slip", 1.25, false, Color(0.35, 0.78, 0.45)],
+	["nice_down", "Nice", 0.0, false, Color(0.35, 0.78, 0.45)],
+	["nice_up", "Nice", 0.3, false, Color(0.35, 0.78, 0.45)],
+	["come_out", "Come", 0.0, false, Color(0.9, 0.25, 0.25)],
+	["come_in", "Come", 0.167, false, Color(0.9, 0.25, 0.25)],
 ]
 
 var _out_dir := "user://"
