@@ -196,15 +196,49 @@ func _launch_tunnel() -> void:
 		return
 	if _tunnel_pid != -1 and OS.is_process_running(_tunnel_pid):
 		return
-	var script_path := ProjectSettings.globalize_path("res://tools/serve.ps1")
+	var script_path := _prepare_tunnel_script()
+	if script_path.is_empty():
+		return
 	var host_file := ProjectSettings.globalize_path(TUNNEL_HOST_FILE)
 	# 前回の記録が残っていると、今回まだ確立していないのに古いホスト名を拾ってしまう
 	if FileAccess.file_exists(TUNNEL_HOST_FILE):
 		DirAccess.remove_absolute(host_file)
 	# create_process は PID をそのまま返す（失敗時 -1）。辞書ではない
-	_tunnel_pid = OS.create_process("pwsh",
-		["-NoProfile", "-File", script_path, "-HostAddrFile", host_file], true)
+	# pwsh (PowerShell Core) が入っていない環境向けに、Windows PowerShell へフォールバックする
+	# (tools/serve.ps1 自体はどちらでも動く内容で書かれている)
+	var ps_args := ["-NoProfile", "-File", script_path, "-HostAddrFile", host_file]
+	_tunnel_pid = OS.create_process("pwsh", ps_args, true)
+	if _tunnel_pid == -1:
+		_tunnel_pid = OS.create_process("powershell", ps_args, true)
 	_start_tunnel_poll()
+
+
+## res://tools/serve.ps1 は（embed_pck の書き出し版では）PCK内の仮想パスで、
+## OS側の実ファイルではないため pwsh/powershell の -File には直接渡せない
+## （eos_credentials.cfg と違い、これは外部プロセスが直接開く必要があるため
+## include_filter でPCKに含めるだけでは足りない）。毎回 user:// に実ファイルとして
+## 書き出し、そちらの実パスを返す
+func _prepare_tunnel_script() -> String:
+	const EXTRACTED_PATH := "user://serve.ps1"
+	var src := FileAccess.open("res://tools/serve.ps1", FileAccess.READ)
+	if src == null:
+		push_warning("[NetworkManager] tools/serve.ps1 を読み込めませんでした。トンネルを起動できません")
+		return ""
+	var content := src.get_as_text()
+	src.close()
+	var dst := FileAccess.open(EXTRACTED_PATH, FileAccess.WRITE)
+	if dst == null:
+		push_warning("[NetworkManager] serve.ps1 の書き出しに失敗しました。トンネルを起動できません")
+		return ""
+	# store_string() は BOM を付けない。Windows PowerShell 5.1 は BOM 無し .ps1 を
+	# システムのANSIコードページとして読むため、日本語コメント/文字列が文字化けして
+	# パースエラーになる。UTF-8 BOM を明示的に先頭へ書いて防ぐ
+	dst.store_8(0xEF)
+	dst.store_8(0xBB)
+	dst.store_8(0xBF)
+	dst.store_string(content)
+	dst.close()
+	return ProjectSettings.globalize_path(EXTRACTED_PATH)
 
 
 ## ②cloudflared の起動には数秒かかる。tools/serve.ps1 がホスト名をファイルに

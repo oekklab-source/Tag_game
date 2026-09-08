@@ -68,8 +68,14 @@ if (-not $listening) {
 Write-Host "cloudflared を起動中 (localhost:$Port を公開)..." -ForegroundColor Cyan
 
 # quick tunnel の URL は標準エラーへバナーとして出るので、そこから拾う。
-# 2>&1 でマージすると PowerShell が ErrorRecord に包むため、文字列化してから照合する
+# 2>&1 でマージすると PowerShell が ErrorRecord に包むため、文字列化してから照合する。
+# $ErrorActionPreference='Stop' のままだと、cloudflared が起動時に出す通常のバナー
+# (起動失敗ではない) すら ErrorRecord として終端エラー扱いになり、肝心の
+# trycloudflare.com のホスト名行に到達する前にパイプラインが止まってしまう。
+# トンネルはこの後 Ctrl+C まで動き続け、この先で他のコマンドは走らないので
+# 元の値へ戻す必要はない
 $tunnelHost = $null
+$ErrorActionPreference = 'Continue'
 & $cloudflared tunnel --url "http://localhost:$Port" --no-autoupdate 2>&1 | ForEach-Object {
     $line = $_.ToString()
     Write-Host $line -ForegroundColor DarkGray
