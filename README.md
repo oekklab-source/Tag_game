@@ -934,6 +934,7 @@ autoload/game/version_gate.gd    GameManagerの子ノード。接続直後のプ
 autoload/game/host_migration.gd  GameManagerの子ノード。切断時のCPU代行判定とレーティング・ペナルティ報告
 autoload/ranking_manager.gd   非対称 Elo レーティング計算・ランキング管理
 autoload/profile_manager.gd   プレイヤー名・カスタムカラー・戦績・レートのローカル/EOS管理
+autoload/backend_config.gd    friend-api/commerce-api の URL と USE_LIVE_* フラグを一元管理
 scenes/main.tscn(.gd)         ロビー（HOST / JOIN）
 scenes/world.tscn(.gd)        シーンの骨組み（空・光・ナビ領域・スポーン管理）
 scenes/world_data.gd          マップとギミック配置の唯一の定義（定数テーブル）
@@ -950,7 +951,9 @@ assets/gimmicks/spring_pad.glb Blender 製のジャンプ台（Base/Coil/Pad、�
 scenes/beacon.gdshader        光柱と結晶の加算合成シェーダ
 scenes/gimmicks/              マンホール・ジャンプ台・ダッシュパネル・動く床・回転床・？ブロック
                               + 滑り台・バンパー・壁の天面ガード・バナナ・設置ブロック
-scenes/hud.tscn(.gd)          役割バッジ・円形タイマー・9ゾーンミニマップ・バフ・危険表示・目撃情報
+scenes/hud.tscn(.gd)          役割バッジ・円形タイマー・バフ・危険表示・目撃情報・リザルト（$MapPanel/$Lobbyへの薄い委譲を含む）
+scenes/hud/minimap.gd         hud.tscnの$MapPanel。9ゾーンミニマップとコンパス回転・距離表示
+scenes/hud/lobby_panel.gd     hud.tscnの$Lobby。ロビー名簿・定員変更・役割選択ボタン
 ui/pop_theme.tres             全体に適用される POP テーマ
 tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
 tools/blender/build_fallguy.py キャラを一から組み立てて glb へ書き出す（blender -b -P で実行）

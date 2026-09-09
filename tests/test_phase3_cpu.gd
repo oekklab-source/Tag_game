@@ -37,7 +37,7 @@ func _ready() -> void:
 
 	await _test_ai_state_transitions(world, cpu)
 	await _test_cpu_stun_trap(cpu)
-	await _test_cpu_navigation(cpu)
+	await _test_cpu_navigation(world, cpu)
 
 	cpu.queue_free()
 
@@ -54,13 +54,16 @@ func _ready() -> void:
 ## 1. CPU AI の状態遷移 (PATROL -> INVESTIGATE -> CHASE)
 func _test_ai_state_transitions(world: Node, cpu: CharacterBody3D) -> void:
 	print("\n--- [1] CPU AI 状態遷移 ---")
-	# Runner を壁の奥 (見えない位置: ゾーン1の奥) に配置
-	var spawns: Dictionary = {1: Vector3(0, 2, -60)}
+	# Runner をゾーン1の奥、CPUのCPU_SIGHT_RANGE(75m)より確実に遠い位置に配置。
+	# ゾーン内の壁は sight_system.gd の CPU_SIGHT_RANGE 判定より手前に必ずあるとは
+	# 限らない(壁はゾーン内にランダム配置される装飾物で、視線の直線上を塞ぐ保証は無い)ため、
+	# 「壁の陰」ではなく「射程外」で確実に見えないことを保証する
+	var spawns: Dictionary = {1: Vector3(0, 2, -75)}
 	GameManager._start_round(1, 1.0, 1, spawns, true)
 	GameManager.head_start_left = 0.0 # ヘッドスタート解除
 
 	var runner: CharacterBody3D = world.get_node("Players/1")
-	runner.global_position = Vector3(0, 2, -60)
+	runner.global_position = Vector3(0, 2, -75)
 
 	# (a) 情報なし (見失って20秒経過) -> PATROL (0)
 	GameManager._set_intel(-1, 0.0, false)
@@ -68,7 +71,7 @@ func _test_ai_state_transitions(world: Node, cpu: CharacterBody3D) -> void:
 	for i in 5:
 		await get_tree().physics_frame
 
-	_assert(cpu._mind == 0, "情報なし (遮蔽あり) -> PATROL (Mind=0)")
+	_assert(cpu._mind == 0, "情報なし (射程外) -> PATROL (Mind=0)")
 
 	# (b) ゾーン通報あり (未視認) -> INVESTIGATE (1)
 	GameManager._set_intel(4, 20.0, false)
@@ -93,7 +96,11 @@ func _test_cpu_stun_trap(cpu: CharacterBody3D) -> void:
 
 	_assert(is_equal_approx(cpu.stun_left, 1.5), "CPU バナナ被弾 -> stun_left == 1.5s")
 
-	# スタン中の移動停止を確認
+	# スタン中の移動停止を確認。直前の [1] CHASE テストで追跡中の速度が残っているので、
+	# バナナは地面で踏むものである以上「静止・接地した状態で踏んだ」を再現するために
+	# 速度を消して1フレーム設置させてから測る(着地の瞬間の慣性は判定対象外にする)
+	cpu.velocity = Vector3.ZERO
+	await get_tree().physics_frame
 	var start_p := cpu.global_position
 	for i in 10:
 		await get_tree().physics_frame
@@ -105,13 +112,20 @@ func _test_cpu_stun_trap(cpu: CharacterBody3D) -> void:
 
 
 ## 3. CPU のナビゲーション移動 (PATROL自律走行)
-func _test_cpu_navigation(cpu: CharacterBody3D) -> void:
+func _test_cpu_navigation(world: Node, cpu: CharacterBody3D) -> void:
 	print("\n--- [3] CPU のナビゲーション自律走行 ---")
 	GameManager.head_start_left = 0.0
 	GameManager._set_intel(-1, 0.0, false)
 	GameManager._seer_ids.clear()
 
+	# [1]のCHASEテストで runner がCPUのすぐ近くに残ったままなので、CPU_SIGHT_RANGE(75m)より
+	# 遠くへ退避させる(残しておくと自動視認でCHASEのままになり、追跡目標=ほぼ自分の位置で
+	# 「巡回」が一切発生しない状態になる。詳細は[1]の射程外コメントと同じ理由)
+	var runner: CharacterBody3D = world.get_node("Players/1")
+	runner.global_position = Vector3(0, 2, -80)
+
 	cpu.global_position = Vector3(0, 0, 0)
+	cpu._mind = 0  # PATROL。実視認が無ければ次フレームの再評価でも PATROL のまま維持される
 	cpu._repath_timer = 0.0
 	cpu._goal_timer = 0.0
 

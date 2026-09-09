@@ -92,3 +92,29 @@ Steamworks → EOS 移行はコード上は全フェーズ完了しているが�
 実際に成立し、そのままゲーム対戦まで繋がることを確認する。
 
 **完了条件**: 見ず知らずの2セッション間でロビーマッチング→ゲーム開始までが通る。
+
+## 5. friend-api / commerce-api の認証つきデプロイ（Phase 1・両 Worker）
+
+`service/friend-api` に EOS Connect ID Token 検証（`verifyIdToken()`）、`service/commerce-api` に
+購入の二重付与防止とレート制限を実装済み。ローカル `wrangler dev`（Miniflare）での動作確認は完了しているが、
+**本番デプロイはまだ行っていない**。
+
+認証付き Worker をデプロイした瞬間、旧バージョンの exe（`Authorization` ヘッダを送らないクライアント）は
+全リクエストが 401 で弾かれる。**Worker のデプロイと、新しい exe のビルド・配布は必ずセットで行う**
+（この2項目より前にある1〜4のデプロイ作業を先に済ませ、最後にこの2本を deploy する）。
+
+```sh
+cd service/friend-api && npx wrangler deploy
+cd ../commerce-api && npx wrangler deploy
+```
+
+**完了条件**: 別マシンから `curl` で `Authorization` ヘッダ無し・不正トークンでのリクエストが
+両 Worker とも 401 で弾かれることを確認できる。`wrangler tail` にエラーが出ない。
+
+## 6. EOS Client Policy の確認（Epic Developer Portal）
+
+exe に同梱される `client_id`（`eos_credentials.cfg`）の Client Policy が、Connect / Lobbies / P2P / PDS /
+Leaderboards など**必要最小限の権限のみ**になっているかを、Epic Developer Portal の画面で目視確認する。
+過剰な権限（例: 他プロダクトの管理系スコープ）が付いていないことを確認する。
+
+**完了条件**: Developer Portal のスクリーンショットで Client Policy の権限一覧を確認済み。
