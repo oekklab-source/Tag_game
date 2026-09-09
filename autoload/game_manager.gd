@@ -41,11 +41,11 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## 「ホストはEOSロビーで部屋作成、招待された側はDirectConnectで参加」のような
 ## 既存の招待フロー(friend_screen.gdのinvite_to_lobby)でピア間の判定が食い違いうる。
 ## ホストが一度だけ決めてRPC引数として全ピアへ配ることで、この不整合を防ぐ)
-const PROTOCOL_VERSION := 5
-## 参加者から版数の返事が来るのを待つ時間。古いビルドには ack_version 自体が
-## 無いので、無反応もまた「食い違っている」ことの手がかりになる。
-## ただし回線が遅いだけの可能性もあるので、無反応では蹴らず警告に留める
-const VERSION_ACK_TIMEOUT := 10.0
+## v6: game_manager.gd の構造分割で 索敵(_set_intel/_sync_intel)・バージョン確認
+## (check_version/ack_version)・ホストマイグレーション(_set_runner_cpu)のRPCを
+## GameManager本体から子ノード(autoload/game/*.gd)へ移した。ペイロード形式自体は
+## 変わっていないが、RPCの宛先ノードパスが変わるため上げる
+const PROTOCOL_VERSION := 6
 
 const ROUND_TIME := 180.0
 const RESULT_TIME := 5.0
@@ -72,33 +72,22 @@ const HUNTER_SPAWN_HEIGHT := 3.0
 ## --- 視界（索敵） -------------------------------------------------------
 ## 鬼は逃走者の位置を既定では一切知らない。誰か一人が「視認」した時だけ、
 ## 逃走者がいる**ゾーン**が全鬼へ共有される。
+## 定数・判定ロジックの実体は autoload/game/sight_system.gd(子ノード _sight)に
+## 集約してある。INTEL_TIME だけは外部(テスト等)から GameManager.INTEL_TIME で
+## 参照されているため、単一の定数を分裂させずにそのまま再エクスポートする。
+## class_name(SightSystem等)ではなくpreloadで参照するのは、class_nameのグローバル
+## 登録がheadless単体実行だと更新されておらず"not declared in the current scope"に
+## なるケースがあったため(エディタでプロジェクトを開いた後は問題にならないはずだが、
+## CIやheadlessテストでの再現性を優先してpreloadに統一する)
+const _SightSystemScript := preload("res://autoload/game/sight_system.gd")
+const _VersionGateScript := preload("res://autoload/game/version_gate.gd")
+const _HostMigrationScript := preload("res://autoload/game/host_migration.gd")
 
-## ゾーン幅(53〜54m)よりわずかに短い。ゾーン中心からそのゾーンをほぼ覆えるが、
-## 160mマップを見通すことは絶対にできない = 「自分のゾーンか隣接でなければ見えない」
-const SIGHT_RANGE := 48.0
-## 水平の全角。Camera3D は既定の垂直75°で 16:9 なら水平約107°なので、
-## 検出コーンを画面より意図的に狭くしてある（見えていないのに通報される方が悪い）
-const SIGHT_FOV_DEG := 100.0
-## CPU鬼だけの視界。CPUには画面が無く「見えていないのに通報される」不公平が
-## 起きないため、人間側(SIGHT_RANGE/SIGHT_FOV_DEG)を広げずにここだけを強くする。
-## 75m はゾーン間隔(53.5m)を超えるので隣接ゾーンまで見通せ、180°は
-## cpu_hunter.gd の首振り(SCAN_ANGLE 45°)と合わさって実効約270°になる
-const CPU_SIGHT_RANGE := 75.0
-const CPU_SIGHT_FOV_DEG := 180.0
-const SIGHT_EYE := 1.5
-## 頭と胴。どちらか通れば視認とする。単一レイだと ？ブロック1個で全身が隠れてしまう
-const SIGHT_TARGET_Y: Array[float] = [1.55, 0.85]
-## World(1) + Platform(8)。Character(2) を含めないので鬼同士や逃走者自身で自己遮蔽しない。
-## player.tscn の SpringArm3D.collision_mask と同じ値 = カメラアームが当たる物は視線も遮る
-const SIGHT_MASK := 9
-const SIGHT_TICK := 0.05    # 20Hz。発見からCHASE入りまでの遅延を詰める
-const INTEL_TIME := 16.0    # 見失ってからゾーン情報が消えるまで
+const INTEL_TIME := _SightSystemScript.INTEL_TIME
+
 const HUNTER_STAMINA_DEFAULT := 100.0
 const HUNTER_STAMINA_THREE_PLAYER := 120.0
 const HUNTER_STAMINA_TWO_PLAYER := 150.0
-## 視認が途切れてから spotted を落とすまでの猶予。これが無いと逃走者が柱の陰を
-## 横切るだけで 20Hz でばたつき、RPC を撒き散らしバナーも点滅する
-const SPOTTED_HOLD := 2.5
 
 var state: int = State.WAITING
 var runner_id := -1
@@ -127,15 +116,21 @@ var round_hunter_count := 0
 ## 揃えれば以後もずれない。
 var world_time := 0.0
 
-## 索敵の共有状態（全ピアが持つ）
-var spotted := false      # 今この瞬間、誰かが視認している
-var spotted_zone := -1    # 最後に目撃されたゾーン。-1 = 情報なし
-var intel_left := 0.0
+## 索敵の共有状態（全ピアが持つ）。実体は子ノード _sight(SightSystem)が持ち、
+## ここは外部の呼び出し規約(GameManager.spotted 等)を変えないための薄い転送
+var spotted: bool:
+	get: return _sight.spotted
+	set(v): _sight.spotted = v
+var spotted_zone: int:    # 最後に目撃されたゾーン。-1 = 情報なし
+	get: return _sight.spotted_zone
+	set(v): _sight.spotted_zone = v
+var intel_left: float:
+	get: return _sight.intel_left
+	set(v): _sight.intel_left = v
 
 ## ホストのロビーに出す警告（参加者のビルドが違う等）
 var peer_notice := ""
 var _peer_notice_left := 0.0
-var _awaiting_version := {}   # ホスト専用。peer_id -> 返事待ちの経過秒
 
 ## ②④ 他ピアのレート/ティア/コスチューム。peer_id -> {"name","rating","tier","costume","colors"}
 var peer_profiles := {}
@@ -146,9 +141,18 @@ var tier_lock_enabled := false
 ## R/Tab/Enterのロビーショートカットが誤爆しないようガードする
 var lobby_overlay_open := false
 
-var _sight_timer := 0.0
-var _seer_ids := {}       # ホスト専用。視認中の鬼の instance_id
-var _no_sight_for := 0.0
+## 視認中の鬼の instance_id。tests/test_phase3_cpu.gd が直接 .clear() するため、
+## コピーではなく _sight が持つ実体の参照をそのまま返す
+var _seer_ids: Dictionary:
+	get: return _sight._seer_ids
+
+## 子ノードとして分割したサブシステム(視界/バージョン確認/ホストマイグレーション)。
+## HunterSquad と同じ流儀でここでインスタンス化し、_ready() で add_child する
+## (@rpc を含むためNode派生。ノードパスを全ピアで一致させるためadd_child自体は
+## _ready()で行う必要があるが、インスタンス自体はここで作ってよい)
+var _sight := _SightSystemScript.new()
+var _version_gate := _VersionGateScript.new()
+var _host_migration := _HostMigrationScript.new()
 
 ## 鬼の連携（分担探索・張り込み・挟み込み）の共有状態。ホスト専用。
 ## CPU 鬼はここへ「自分の担当」を問い合わせるだけで、互いを直接見に行かない
@@ -156,6 +160,15 @@ var squad := HunterSquad.new()
 
 
 func _ready() -> void:
+	# 子ノードの name を明示することで、全ピアで同一の NodePath
+	# (/root/GameManager/SightSystem 等)になることを保証する
+	_sight.name = "SightSystem"
+	add_child(_sight)
+	_sight.spotted_changed.connect(func(is_spotted: bool): spotted_changed.emit(is_spotted))
+	_version_gate.name = "VersionGate"
+	add_child(_version_gate)
+	_host_migration.name = "HostMigration"
+	add_child(_host_migration)
 	# ロビー中にプロフィール設定（④コスチューム変更等）が変わったら、繋がっている
 	# 相手にも即座に反映する
 	ProfileManager.profile_updated.connect(_on_profile_updated)
@@ -180,7 +193,7 @@ func reset() -> void:
 	tagger_peer_id = -1
 	peer_notice = ""
 	_peer_notice_left = 0.0
-	_awaiting_version.clear()
+	_version_gate._awaiting_version.clear()
 	round_is_ranked = false
 	round_hunter_count = 0
 	lobby_overlay_open = false
@@ -190,15 +203,7 @@ func reset() -> void:
 
 
 func _clear_intel() -> void:
-	var was := spotted
-	spotted = false
-	spotted_zone = -1
-	intel_left = 0.0
-	_seer_ids.clear()
-	_no_sight_for = 0.0
-	_sight_timer = 0.0
-	if was:
-		spotted_changed.emit(false)
+	_sight._clear_intel()
 
 
 ## マップの色分けエリア判定（レイアウト定義は WorldData に一本化してある）
@@ -454,7 +459,7 @@ func _physics_process(delta: float) -> void:
 		return
 	# ヘッドスタート中も視認は成立させる（凍っていても目はある）。
 	# 検出が視界のみになった分の埋め合わせにもなる
-	_update_sight(delta)
+	_sight._update_sight(delta)
 	# 連携の割り当てもヘッドスタート中から更新する。凍結が明けた瞬間に
 	# 全員が担当ゾーンを持って散り始めるので、出だしの数秒を無駄にしない
 	squad.tick(delta, hunters(), get_runner(), spotted_zone)
@@ -477,93 +482,27 @@ func _physics_process(delta: float) -> void:
 
 
 ## --- 視界判定 -----------------------------------------------------------
+## 実装は autoload/game/sight_system.gd(子ノード _sight)に集約。GameManager は
+## 呼び出し側(cpu_hunter.gd / hud.gd / player.gd 等)の呼び出し規約を変えないための
+## 薄い委譲のみ持つ
 
-## hunter が target を「今」見ているか。
-##
-## 向きは**カメラではなくボディの -Z** を使う。player.gd は rotate_y() でボディ自体を
-## 回してピッチだけ SpringArm に渡すため、ボディの -Z が水平の視線方向になる。
-## 決定的なのはレプリケーションで、player.tscn は position と rotation だけを同期するので
-## サーバは各リモート鬼のヨーを持っている（カメラは同期されない）。
-## ヨーをボディから外すとこの仕組みは静かに壊れるので注意。
-##
-## 上下方向の判定は入れない。段丘マップは高低差が8mあり、垂直コーンや3D距離だと
-## CLOUD DECK(地面8m) から CASTLE COURT(0m) を見下ろす時に不可解な false negative が出る。
-##
-## CPU鬼だけ CPU_SIGHT_RANGE / CPU_SIGHT_FOV_DEG を使う。人間の鬼は自分の画面で
-## 判断できるので検出コーンを画面より狭く保つ必要があるが、CPUにはその制約が無い
 func can_see(hunter: Node3D, target: Node3D) -> bool:
-	if hunter == null or target == null:
-		return false
-	var is_cpu := hunter.is_in_group("cpu_hunters")
-	var sight_range := CPU_SIGHT_RANGE if is_cpu else SIGHT_RANGE
-	var sight_fov_deg := CPU_SIGHT_FOV_DEG if is_cpu else SIGHT_FOV_DEG
-	var to_target := target.global_position - hunter.global_position
-	var t2 := Vector2(to_target.x, to_target.z)
-	if t2.length() > sight_range:
-		return false
-	var fwd := -hunter.global_transform.basis.z
-	var f2 := Vector2(fwd.x, fwd.z)
-	if f2.length_squared() < 1e-6 or t2.length_squared() < 1e-6:
-		return false
-	if f2.normalized().dot(t2.normalized()) < cos(deg_to_rad(sight_fov_deg * 0.5)):
-		return false
-	# GameManager は Node なので get_world_3d() を持たない。空間は対象ノード側から取る。
-	# また intersect_ray は物理フレーム内から呼ぶこと（_process だと flushing エラー）
-	var space := hunter.get_world_3d().direct_space_state
-	var from := hunter.global_position + Vector3(0, SIGHT_EYE, 0)
-	for y in SIGHT_TARGET_Y:
-		var q := PhysicsRayQueryParameters3D.create(
-			from, target.global_position + Vector3(0, y, 0), SIGHT_MASK)
-		if space.intersect_ray(q).is_empty():
-			return true
-	return false
+	return _sight.can_see(hunter, target)
 
 
 ## CPU が「自分は見えているか」を問い合わせる窓口。
-## CPU 側で個別にレイを飛ばさせず、判定はここに一本化する
 func hunter_sees_runner(h: Node) -> bool:
-	return _seer_ids.has(h.get_instance_id())
+	return _sight.hunter_sees_runner(h)
 
 
-## ホストのみ。全鬼を走査して共有情報を更新する
-func _update_sight(delta: float) -> void:
-	var runner := get_runner()
-	if runner == null:
-		return
-	_sight_timer -= delta
-	if _sight_timer <= 0.0:
-		_sight_timer = SIGHT_TICK
-		# 鬼を tick 間で分散させない。一括評価の方が spotted_zone が一貫する
-		_seer_ids.clear()
-		for h in hunters():
-			if can_see(h, runner):
-				_seer_ids[h.get_instance_id()] = true
+## tests/test_phase1_rules.gd 等が RPC 経由ではなく直接呼んでいるため、
+## 呼び出し規約を変えない薄い委譲として残す(実際の@rpcは_sight側にある)
+func _set_intel(zone: int, left: float, live: bool) -> void:
+	_sight._set_intel(zone, left, live)
 
-	# 新しい値はローカルに組み立て、代入と signal は必ず _set_intel に通す。
-	# ここで直接 spotted を書き換えると、call_local の _set_intel が
-	# 「変化なし」と判断してホスト側だけ spotted_changed が飛ばなくなる
-	var new_zone := spotted_zone
-	var new_intel := intel_left
-	var new_live := spotted
-	if not _seer_ids.is_empty():
-		new_zone = zone_at(runner.global_position)
-		new_intel = INTEL_TIME
-		new_live = true
-		_no_sight_for = 0.0
-	else:
-		_no_sight_for += delta
-		new_live = spotted and _no_sight_for < SPOTTED_HOLD
-		new_intel = maxf(intel_left - delta, 0.0)
-		if new_intel == 0.0:
-			new_zone = -1
 
-	if new_zone != spotted_zone or new_live != spotted:
-		_set_intel.rpc(new_zone, new_intel, new_live)
-	else:
-		var prev_sec := ceili(intel_left)
-		intel_left = new_intel
-		if new_intel > 0.0 and ceili(new_intel) != prev_sec:
-			_sync_intel.rpc(new_intel)  # 1Hz の補正だけ
+func _sync_intel(left: float) -> void:
+	_sight._sync_intel(left)
 
 
 ## --- 置き物アイテム -----------------------------------------------------
@@ -627,8 +566,8 @@ func _process(delta: float) -> void:
 		_peer_notice_left = maxf(_peer_notice_left - delta, 0.0)
 		if _peer_notice_left == 0.0:
 			peer_notice = ""
-	if multiplayer.is_server() and not _awaiting_version.is_empty():
-		_tick_version_checks(delta)
+	if multiplayer.is_server() and not _version_gate._awaiting_version.is_empty():
+		_version_gate._tick_version_checks(delta)
 	# クライアント側はローカルで滑らかに減算し、毎秒の同期で補正する
 	if multiplayer.is_server() or state != State.PLAYING:
 		return
@@ -643,55 +582,11 @@ func _process(delta: float) -> void:
 			spotted_zone = -1
 
 
-## ホストのみ。接続直後に版数を送り、返事が来るまで見張る
+## ホストのみ。接続直後に版数を送り、返事が来るまで見張る。実装は
+## autoload/game/version_gate.gd(子ノード _version_gate)に集約
+## (PROTOCOL_VERSION定数のみ、単一の定数を分裂させないためGameManagerに残す)
 func begin_version_check(peer_id: int) -> void:
-	if not multiplayer.is_server():
-		return
-	_awaiting_version[peer_id] = 0.0
-	check_version.rpc_id(peer_id, PROTOCOL_VERSION)
-
-
-## ホスト -> 参加者。**この2つのシグネチャだけは絶対に変えないこと。**
-## 変えると照合そのものが食い違って、何も知らせられなくなる
-@rpc("authority", "reliable")
-func check_version(host_version: int) -> void:
-	ack_version.rpc_id(1, PROTOCOL_VERSION)
-	if host_version == PROTOCOL_VERSION:
-		return
-	NetworkManager.last_error = (
-		"ゲームのバージョンが違います（ホスト v%d / あなた v%d）。
-"
-		+ "ブラウザなら再読み込み（Ctrl+Shift+R）、PC なら最新版で起動しなおしてください。"
-	) % [host_version, PROTOCOL_VERSION]
-	NetworkManager.leave()
-
-
-## 参加者 -> ホスト
-@rpc("any_peer", "reliable")
-func ack_version(peer_version: int) -> void:
-	if not multiplayer.is_server():
-		return
-	var id := multiplayer.get_remote_sender_id()
-	_awaiting_version.erase(id)
-	if peer_version == PROTOCOL_VERSION:
-		return
-	# 食い違いが確定した場合だけ切る。放っておくと「つながっているのに
-	# 状態が同期しない」まま延々と続き、原因が分からない
-	notify_host("参加者のビルドが違います（あなた v%d / 相手 v%d）。
-Web 版を再デプロイして、ブラウザを再読み込みしてもらってください。"
-		% [PROTOCOL_VERSION, peer_version])
-	multiplayer.multiplayer_peer.disconnect_peer(id)
-
-
-## 返事が来ない参加者を見張る。回線が遅いだけのこともあるので蹴らず警告に留める
-func _tick_version_checks(delta: float) -> void:
-	for id in _awaiting_version.keys():
-		_awaiting_version[id] = _awaiting_version[id] + delta
-		if _awaiting_version[id] < VERSION_ACK_TIMEOUT:
-			continue
-		_awaiting_version.erase(id)
-		notify_host("参加者 %d から応答がありません。
-古いビルドで参加している可能性があります（Web 版の再デプロイと再読み込みを試してください）。" % id)
+	_version_gate.begin_version_check(peer_id)
 
 
 func notify_host(text: String) -> void:
@@ -778,12 +673,14 @@ func _sync_profiles(all: Dictionary) -> void:
 
 
 ## ⑦対戦中に切断した逃げる役をレーティング戦でだけCPU代行に切り替えるかどうか。
-## world.gd._on_peer_disconnected()がノードを実際に破棄する前に判定するために公開している
+## world.gd._on_peer_disconnected()がノードを実際に破棄する前に判定するために公開している。
+## 実装は autoload/game/host_migration.gd(子ノード _host_migration)に集約
 func should_cpu_takeover_runner(peer_id: int) -> bool:
-	return multiplayer.is_server() and state == State.PLAYING \
-		and peer_id == runner_id and round_is_ranked
+	return _host_migration.should_cpu_takeover_runner(peer_id)
 
 
+## バージョン確認・役割(wanted_runner)・プロフィール・汎用RPCと横断的に絡む
+## オーケストレータのため、無理に子ノードへは切り出さずここに残す
 func on_player_left(peer_id: int, cpu_took_over: bool = false) -> void:
 	if not multiplayer.is_server():
 		return
@@ -792,10 +689,10 @@ func on_player_left(peer_id: int, cpu_took_over: bool = false) -> void:
 	# (通信切断による不正な勝敗回避を防ぐため。鬼が抜けても試合継続に支障はないので
 	# CPU代行等の救済措置は不要で、ペナルティ記録のみ行う)
 	if cpu_took_over:
-		_report_participant_disconnect_penalty(peer_id, true)
+		_host_migration._report_participant_disconnect_penalty(peer_id, true)
 	elif round_is_ranked and state == State.PLAYING and peer_id != runner_id:
-		_report_participant_disconnect_penalty(peer_id, false)
-	_awaiting_version.erase(peer_id)
+		_host_migration._report_participant_disconnect_penalty(peer_id, false)
+	_version_gate._awaiting_version.erase(peer_id)
 	if peer_profiles.has(peer_id):
 		peer_profiles.erase(peer_id)
 		_sync_profiles.rpc(peer_profiles)
@@ -803,54 +700,15 @@ func on_player_left(peer_id: int, cpu_took_over: bool = false) -> void:
 	if wanted_runner == peer_id:
 		_set_wanted_runner.rpc(-1)
 	if cpu_took_over:
-		_set_runner_cpu.rpc()
+		_host_migration._set_runner_cpu.rpc()
 	elif state == State.PLAYING and peer_id == runner_id:
 		_end_round.rpc(false, EndReason.RUNNER_LEFT)
 
 
-## ⑦⑧切断した本人はその場で反映できないため、サーバー(friend-api)に敗北分の
-## レート変動を記録し、本人が次回ログインした際に自分で適用する
-## (RankingManager._on_eos_initialized()参照)。CPU AIは別途開発中のため、
-## 「最強CPU」は既存のcpu_runner.gdをそのまま流用する暫定実装。
-## was_runner=falseの場合(鬼切断)はcalculate_rating_delta内のis_runner==is_winner
-## 正規化により survival が MAX_TIME 扱いになり、「逃げ切られた」前提の最大ペナルティになる
-func _report_participant_disconnect_penalty(peer_id: int, was_runner: bool) -> void:
-	var puid := String(peer_profiles.get(peer_id, {}).get("puid", ""))
-	if puid.is_empty():
-		return
-	var self_rating := int(peer_profiles.get(peer_id, {}).get("rating", 1500))
-	var survival := ROUND_TIME - time_left
-	var delta := RankingManager.calculate_rating_delta(
-		was_runner, false, survival, round_hunter_count, false, self_rating, 1500)
-	FriendManager.report_disconnect_penalty(puid, delta)
-
-
 ## ⑨ホスト(peer_id==1)自身がPLAYING中に切断した場合の敗北精算に使うスナップショットを取る。
-## NetworkManagerがserver_disconnected検知直後、まだローカルのレプリケート済み状態
-## (peer_profiles/runner_id/time_left等)が生きている間に呼ぶ。呼び出し元は死んだ
-## ホストではなく生存クライアント自身なので、on_player_left系と違いis_server()は問わない
+## 実装は autoload/game/host_migration.gd(子ノード _host_migration)に集約
 func snapshot_for_host_disconnect_penalty() -> Dictionary:
-	const HOST_PEER_ID := 1
-	if state != State.PLAYING or not round_is_ranked:
-		return {}
-	var puid := String(peer_profiles.get(HOST_PEER_ID, {}).get("puid", ""))
-	if puid.is_empty():
-		return {}
-	return {
-		"puid": puid,
-		"was_runner": runner_id == HOST_PEER_ID,
-		"self_rating": int(peer_profiles.get(HOST_PEER_ID, {}).get("rating", 1500)),
-		"survival": ROUND_TIME - time_left,
-		"hunter_count": round_hunter_count,
-	}
-
-
-## ⑦レーティング戦で逃げる役が切断した際、既存の(暫定)cpu_runner.gdへ操作を
-## 引き継がせる。CPU_RUNNER_IDは元々ソロ練習のデバッグモード用に使われている
-## 「鬼が人間、逃げる役がCPU」のセンチネル値で、get_runner()がそのまま流用できる
-@rpc("authority", "call_local", "reliable")
-func _set_runner_cpu() -> void:
-	runner_id = CPU_RUNNER_ID
+	return _host_migration.snapshot_for_host_disconnect_penalty()
 
 
 ## リザルトを見せ終えたら WAITING に戻して**止める**。
@@ -946,23 +804,6 @@ func _back_to_waiting() -> void:
 	state_changed.emit(state)
 	if multiplayer.is_server():
 		_clear_cpu_characters()
-
-
-## 目撃ゾーンや「見られている」状態が変わった瞬間だけ送る（毎フレームは送らない）
-@rpc("authority", "call_local", "reliable")
-func _set_intel(zone: int, left: float, live: bool) -> void:
-	spotted_zone = zone
-	intel_left = left
-	var was := spotted
-	spotted = live
-	if was != live:
-		spotted_changed.emit(live)
-
-
-## 残り秒の補正。_sync_time / _sync_head と同じ 1Hz unreliable
-@rpc("authority", "call_local", "unreliable")
-func _sync_intel(left: float) -> void:
-	intel_left = left
 
 
 @rpc("authority", "call_remote", "reliable")

@@ -2,8 +2,11 @@ name = "tag-game-commerce-api"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
-# KVは Stripe Checkout SessionのID -> {pack_id, granted_gems, status} の
-# 冪等性ストアとして使う。status は Stripe Webhook が唯一の更新経路。
+# KVスキーマ:
+#   <session_id>   -> {packId, grantedGems, status, claimedAt?}
+#     status は pending -> paid(Stripe Webhookのみが遷移させる) -> claimed
+#     (/purchase-statusが初回にpaidを返すと同時に自動遷移、二重付与防止)の一方向。
+#   rl:<ip>:<date> -> カウント文字列(TTL2日)  (/create-checkout-sessionのレート制限)
 # `wrangler kv namespace create COMMERCE_TXNS` で作成し、id をここに設定する
 [[kv_namespaces]]
 binding = "COMMERCE_TXNS"

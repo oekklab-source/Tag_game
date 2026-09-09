@@ -29,11 +29,16 @@ const PACKS: Record<string, { gems: number; priceId: string }> = {
 };
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
+const CHECKOUT_RATE_LIMIT_PER_DAY = 20;
+// /purchase-statusがpaidを返した後、通信断で受け取れなかったクライアントを救済するための猶予期間。
+// この間はclaimed後も同じgranted:trueを返し続ける(二重付与はclaimedへの一方向遷移で防ぐ)
+const CLAIM_GRACE_PERIOD_MS = 5 * 60 * 1000;
 
 interface TxnRecord {
 	packId: string;
 	grantedGems: number;
-	status: "pending" | "paid" | "expired";
+	status: "pending" | "paid" | "claimed" | "expired";
+	claimedAt?: number;
 }
 
 export default {
@@ -65,6 +70,11 @@ async function handleCreateCheckoutSession(request: Request, env: Env): Promise<
 	const pack = PACKS[packId];
 	if (!pack) {
 		return json({ reason: "invalid_request" }, 400);
+	}
+
+	const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+	if (!(await checkAndBumpRateLimit(env, ip))) {
+		return json({ reason: "rate_limited" }, 429);
 	}
 
 	const origin = new URL(request.url).origin;
@@ -115,11 +125,26 @@ async function handlePurchaseStatus(request: Request, env: Env): Promise<Respons
 		return json({ status: "unknown" }, 404);
 	}
 	const record: TxnRecord = JSON.parse(stored);
-	return json({
-		status: record.status,
-		granted: record.status === "paid",
-		granted_gems: record.grantedGems,
-	});
+
+	if (record.status === "paid") {
+		// 初回のみ"paid"を返すと同時にclaimedへ遷移させる(二重付与防止)
+		record.status = "claimed";
+		record.claimedAt = Date.now();
+		await env.COMMERCE_TXNS.put(orderId, JSON.stringify(record), { expirationTtl: 60 * 60 * 24 });
+		return json({ status: "paid", granted: true, granted_gems: record.grantedGems });
+	}
+
+	if (record.status === "claimed") {
+		// 通信断でクライアントが受け取れなかった場合の救済猶予(二重付与にはならない: 遷移は一方向)
+		const withinGrace = record.claimedAt !== undefined && Date.now() - record.claimedAt < CLAIM_GRACE_PERIOD_MS;
+		return json({
+			status: withinGrace ? "paid" : "claimed",
+			granted: withinGrace,
+			granted_gems: record.grantedGems,
+		});
+	}
+
+	return json({ status: record.status, granted: false, granted_gems: record.grantedGems });
 }
 
 async function handleWebhook(request: Request, env: Env): Promise<Response> {
@@ -222,6 +247,19 @@ function handleReturn(url: URL): Response {
 		`<!doctype html><html><head><meta charset="utf-8"><title>Tag Game</title></head>` +
 		`<body style="font-family: sans-serif; text-align: center; padding: 3rem;"><p>${message}</p></body></html>`;
 	return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+/** 1日あたりのIP単位カウンタをインクリメントし、上限以下ならtrueを返す(friend-api/src/index.tsと同方式) */
+async function checkAndBumpRateLimit(env: Env, ip: string): Promise<boolean> {
+	const day = new Date().toISOString().slice(0, 10);
+	const key = `rl:${ip}:${day}`;
+	const raw = await env.COMMERCE_TXNS.get(key);
+	const count = raw ? parseInt(raw, 10) : 0;
+	if (count >= CHECKOUT_RATE_LIMIT_PER_DAY) {
+		return false;
+	}
+	await env.COMMERCE_TXNS.put(key, String(count + 1), { expirationTtl: 60 * 60 * 48 });
+	return true;
 }
 
 async function safeJson(request: Request): Promise<any> {

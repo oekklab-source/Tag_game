@@ -3,61 +3,64 @@ class_name FriendBackendClient
 ## service/friend-api/ の各エンドポイントを呼ぶ薄いラッパー。Worker URLの知識は
 ## このファイルだけに閉じ込める(stripe_purchase_provider.gdがcommerce-api/の
 ## URLを一手に引き受けるのと同じ方針)。
+##
+## 認証: 呼び出し元の身元はbodyのpuidではなく、EosManager.get_id_token()が返す
+## EOS Connect ID Token(JWT)をAuthorizationヘッダで送って証明する。Workerは
+## トークンを検証し、そこに含まれるPUID(subクレーム)だけを本人のPUIDとして扱う
+## (詳細はservice/friend-api/src/index.tsのverifyIdToken())。
 
-const FRIEND_API_BASE_URL := "https://tag-game-friend-api.oekklab.workers.dev/"
+## 値の実体は autoload/backend_config.gd に集約してある(設定を一元化するため)。
+## ここに残すのは既存の参照箇所(このファイル内)を書き換えないための転送のみ
+const FRIEND_API_BASE_URL := BackendConfig.FRIEND_API_BASE_URL
 
 
-static func sync(host: Node, puid: String, display_name: String) -> Dictionary:
+static func _auth_headers() -> PackedStringArray:
+	return PackedStringArray(["Authorization: Bearer " + EosManager.get_id_token()])
+
+
+static func sync(host: Node, display_name: String) -> Dictionary:
 	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "sync", {
-		"puid": puid,
 		"display_name": display_name,
-	})
+	}, _auth_headers())
 
 
-static func send_request(host: Node, puid: String, code: String) -> Dictionary:
+static func send_request(host: Node, code: String) -> Dictionary:
 	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "send-request", {
-		"puid": puid,
 		"code": code,
-	})
+	}, _auth_headers())
 
 
-static func list_requests(host: Node, puid: String) -> Dictionary:
-	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "list-requests", {
-		"puid": puid,
-	})
+static func list_requests(host: Node) -> Dictionary:
+	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "list-requests", {}, _auth_headers())
 
 
-static func respond_request(host: Node, puid: String, request_id: String, accept: bool) -> Dictionary:
+static func respond_request(host: Node, request_id: String, accept: bool) -> Dictionary:
 	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "respond-request", {
-		"puid": puid,
 		"request_id": request_id,
 		"action": "accept" if accept else "decline",
-	})
+	}, _auth_headers())
 
 
-static func list_friends(host: Node, puid: String) -> Dictionary:
-	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "list-friends", {
-		"puid": puid,
-	})
+static func list_friends(host: Node) -> Dictionary:
+	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "list-friends", {}, _auth_headers())
 
 
-static func remove_friend(host: Node, puid: String, friend_puid: String) -> Dictionary:
+static func remove_friend(host: Node, friend_puid: String) -> Dictionary:
 	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "remove-friend", {
-		"puid": puid,
 		"friend_puid": friend_puid,
-	})
+	}, _auth_headers())
 
 
-## ⑦レーティング戦の逃走者切断時のCPU代行(暫定実装)用。ホストが切断検知時に呼ぶ
-static func report_penalty(host: Node, puid: String, rating_delta: int) -> Dictionary:
+## ⑦レーティング戦の逃走者切断時のCPU代行(暫定実装)用。ホストが切断検知時に呼ぶ。
+## target_puidは切断した相手の自己申告PUID(peer_profiles由来、未検証)ーー
+## 呼び出し元自身の身元はAuthorizationヘッダのトークンで証明する
+static func report_penalty(host: Node, target_puid: String, rating_delta: int) -> Dictionary:
 	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "report-penalty", {
-		"puid": puid,
+		"puid": target_puid,
 		"rating_delta": rating_delta,
-	})
+	}, _auth_headers())
 
 
 ## ⑦本人クライアントが起動時に一度だけ呼ぶ。取得と同時にサーバー側で削除される
-static func consume_penalty(host: Node, puid: String) -> Dictionary:
-	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "consume-penalty", {
-		"puid": puid,
-	})
+static func consume_penalty(host: Node) -> Dictionary:
+	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "consume-penalty", {}, _auth_headers())

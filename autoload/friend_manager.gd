@@ -13,14 +13,22 @@ extends Node
 ## PurchaseManager.USE_LIVE_PURCHASESと同じ「デプロイ・動作確認が済むまでfalse」
 ## のロールアウト規約。
 
-const USE_LIVE_FRIEND_BACKEND := true
+## 値の実体は autoload/backend_config.gd に集約してある。ここに残すのは
+## 既存の参照箇所(このファイル内、tests/test_friend_backend_mock.gd)を
+## 書き換えないための転送のみ
+const USE_LIVE_FRIEND_BACKEND := BackendConfig.USE_LIVE_FRIEND_BACKEND
+
+
+## 8箇所で繰り返される「実バックエンドを使ってよいか」の判定を1つに畳む
+func _live() -> bool:
+	return USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available
 
 
 ## ⑤自分のフレンドコードを取得/生成する。フレンド画面が開いた際に呼ぶ。
 ## 失敗時は空文字列を返す(クラッシュしない)
 func sync_with_backend() -> String:
-	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
-		var res := await FriendBackendClient.sync(self, EosManager.product_user_id, ProfileManager.player_name)
+	if _live():
+		var res := await FriendBackendClient.sync(self, ProfileManager.player_name)
 		if not res.get("api_ok", false):
 			return ""
 		return String(res.get("friend_code", ""))
@@ -30,8 +38,8 @@ func sync_with_backend() -> String:
 ## ⑤フレンド一覧を返す。各要素: {id: String(PUID), name, online}
 ## online は現時点では常にfalse(v1では在席状況を追跡しない、friend-api/README.md参照)
 func get_friends() -> Array[Dictionary]:
-	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
-		var res := await FriendBackendClient.list_friends(self, EosManager.product_user_id)
+	if _live():
+		var res := await FriendBackendClient.list_friends(self)
 		if not res.get("api_ok", false):
 			return []
 		var out: Array[Dictionary] = []
@@ -43,8 +51,8 @@ func get_friends() -> Array[Dictionary]:
 
 ## ⑤自分に届いている保留中のフレンドリクエスト一覧
 func get_pending_requests() -> Array[Dictionary]:
-	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
-		var res := await FriendBackendClient.list_requests(self, EosManager.product_user_id)
+	if _live():
+		var res := await FriendBackendClient.list_requests(self)
 		if not res.get("api_ok", false):
 			return []
 		var out: Array[Dictionary] = []
@@ -62,8 +70,8 @@ func get_pending_requests() -> Array[Dictionary]:
 func send_friend_request(code: String) -> Dictionary:
 	if code.is_empty():
 		return {"ok": false, "target_name": "", "reason": "invalid_code"}
-	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
-		var res := await FriendBackendClient.send_request(self, EosManager.product_user_id, code)
+	if _live():
+		var res := await FriendBackendClient.send_request(self, code)
 		if not res.get("api_ok", false):
 			return {"ok": false, "target_name": "", "reason": String(res.get("reason", "network_error"))}
 		return {"ok": true, "target_name": String(res.get("target_name", "")), "reason": ""}
@@ -72,16 +80,16 @@ func send_friend_request(code: String) -> Dictionary:
 
 ## ⑤フレンドリクエストに応答する(承諾/拒否)
 func respond_to_request(request_id: String, accept: bool) -> bool:
-	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
-		var res := await FriendBackendClient.respond_request(self, EosManager.product_user_id, request_id, accept)
+	if _live():
+		var res := await FriendBackendClient.respond_request(self, request_id, accept)
 		return res.get("api_ok", false) and res.get("ok", false)
 	return true
 
 
 ## ⑤フレンドを解除する(双方向)
 func remove_friend(friend_puid: String) -> bool:
-	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
-		var res := await FriendBackendClient.remove_friend(self, EosManager.product_user_id, friend_puid)
+	if _live():
+		var res := await FriendBackendClient.remove_friend(self, friend_puid)
 		return res.get("api_ok", false) and res.get("ok", false)
 	return true
 
@@ -106,15 +114,15 @@ func invite_to_lobby() -> bool:
 ## 報告する(暫定実装)。本人はオフラインのため次回ログイン時にconsume_pending_penalty()
 ## で本人自身が適用する。失敗しても対戦継続には影響しないためfire-and-forgetでよい
 func report_disconnect_penalty(puid: String, rating_delta: int) -> void:
-	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
+	if _live():
 		await FriendBackendClient.report_penalty(self, puid, rating_delta)
 
 
 ## ⑦自分宛ての保留中ペナルティがあれば取得し、同時にサーバー側から削除する。
 ## 戻り値: {"pending": bool, "rating_delta": int}
 func consume_pending_penalty() -> Dictionary:
-	if USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available:
-		var res := await FriendBackendClient.consume_penalty(self, EosManager.product_user_id)
+	if _live():
+		var res := await FriendBackendClient.consume_penalty(self)
 		if not res.get("api_ok", false) or not res.get("pending", false):
 			return {"pending": false}
 		return {"pending": true, "rating_delta": int(res.get("rating_delta", 0))}

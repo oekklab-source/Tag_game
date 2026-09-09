@@ -3,14 +3,23 @@ main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
 # KVスキーマ:
-#   puid:<puid>      -> {display_name, code}                         (/sync)
-#   code:<code>      -> <puid>                                       (/sync, フレンドコードからの逆引き専用)
-#   requests:<puid>  -> [{request_id, from_puid, from_name, created_at}]  (/send-request, /respond-request)
-#   friends:<puid>   -> [{puid, name}]                                (/respond-request accept, /remove-friend)
-#   rl:<ip>:<date>   -> カウント文字列(TTL2日)                        (/send-requestのレート制限)
+#   puid:<puid>          -> {display_name, code}                         (/sync)
+#   code:<code>          -> <puid>                                       (/sync, フレンドコードからの逆引き専用)
+#   requests:<puid>      -> [{request_id, from_puid, from_name, created_at}]  (/send-request, /respond-request)
+#   friends:<puid>       -> [{puid, name}]                                (/respond-request accept, /remove-friend)
+#   penalty:<puid>       -> {rating_delta, reason, created_at}            (/report-penalty, /consume-penalty)
+#   rl:<ip>:<date>       -> カウント文字列(TTL2日)                        (/send-requestのレート制限)
+#   rlpenalty:<puid>:<date> -> カウント文字列(TTL2日)                     (/report-penaltyのレート制限、報告者PUID単位)
+#   jwks_cache           -> Epic JWKSの生JSON(TTL1時間)                  (verifyIdToken()のキャッシュ)
 # `wrangler kv namespace create FRIEND_KV` で作成し、id をここに設定する
 [[kv_namespaces]]
 binding = "FRIEND_KV"
 id = "0271ea03be114f18bcca6289e62cac57"
 
-# secretsは不要(v1: 外部API呼び出し・Webhook署名検証がないため)
+# EOS_CLIENT_IDは秘密ではない(エクスポート済みexeのeos_credentials.cfgに平文同梱される値と同じ)。
+# verifyIdToken()がトークンのaudクレームと一致するか検査するために使う
+[vars]
+EOS_CLIENT_ID = "xyza7891Y8hf8lR6EoUUo3FqGlAPT6gp"
+
+# secrets(client_secret等)は不要: JWT検証はEpicの公開JWKSのみで完結し、
+# 外部API呼び出し・Webhook署名検証も行わないため

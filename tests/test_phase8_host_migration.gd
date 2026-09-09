@@ -47,7 +47,7 @@ func _ready() -> void:
 func _test_hunter_disconnect_no_longer_free() -> void:
 	print("\n--- [1] 鬼役がランク戦中に切断してもクラッシュせず処理が完走する ---")
 	var spawns: Dictionary = {99: Vector3.ZERO}
-	GameManager._start_round(99, 1.0, spawns, true)
+	GameManager._start_round(99, 1.0, 1, spawns, true)
 	GameManager.round_is_ranked = true
 	# puidを設定しない(空文字) -> _report_participant_disconnect_penaltyが早期returnし、
 	# FriendManager.report_disconnect_penalty()(実バックエンド通信)を呼ばせない
@@ -62,7 +62,7 @@ func _test_hunter_disconnect_no_longer_free() -> void:
 func _test_hunter_disconnect_does_not_end_round() -> void:
 	print("\n--- [2] 鬼役の切断はRUNNER_LEFT等でラウンドを終了させない ---")
 	var spawns: Dictionary = {99: Vector3.ZERO}
-	GameManager._start_round(99, 1.0, spawns, true)
+	GameManager._start_round(99, 1.0, 1, spawns, true)
 	GameManager.round_is_ranked = true
 	GameManager.peer_profiles[7] = {"name": "Hunter7", "rating": 1500}
 
@@ -78,7 +78,7 @@ func _test_snapshot_for_host_disconnect_penalty() -> void:
 
 	# 3-1: 非ランク戦では空辞書
 	var spawns: Dictionary = {1: Vector3.ZERO}
-	GameManager._start_round(1, 1.0, spawns, true)
+	GameManager._start_round(1, 1.0, 1, spawns, true)
 	GameManager.round_is_ranked = false
 	_assert(GameManager.snapshot_for_host_disconnect_penalty().is_empty(),
 		"非ランク戦のPLAYING中は空辞書")

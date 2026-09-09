@@ -928,7 +928,10 @@ CPU 逃走者も取る。置き物が出る**自分の背後＝追ってくる�
 
 ```text
 autoload/network_manager.gd   WebSocket 接続・切断・シーン遷移・アドレス解決（ws / wss）
-autoload/game_manager.gd      役割抽選・速度補正・タイマー・タッチ判定・視界判定と情報共有・共有時計
+autoload/game_manager.gd      役割抽選・速度補正・タイマー・タッチ判定・共有時計（子ノードへの薄い委譲を含む）
+autoload/game/sight_system.gd    GameManagerの子ノード。視界判定（距離/視野角/情報の寿命）と共有状態
+autoload/game/version_gate.gd    GameManagerの子ノード。接続直後のプロトコル版数照合
+autoload/game/host_migration.gd  GameManagerの子ノード。切断時のCPU代行判定とレーティング・ペナルティ報告
 autoload/ranking_manager.gd   非対称 Elo レーティング計算・ランキング管理
 autoload/profile_manager.gd   プレイヤー名・カスタムカラー・戦績・レートのローカル/EOS管理
 scenes/main.tscn(.gd)         ロビー（HOST / JOIN）
@@ -1016,6 +1019,14 @@ export_presets.cfg            Web エクスポート設定（CI が使うので�
   そこで Area3D の重なりを判定している
 - 動く床の位相は `GameManager.world_time`（ラウンド開始で全ピア同時にリセット）から求める。
   物理 delta は全ピアで固定値なので、以後もずれない
+- `GameManager` は視界(索敵)・バージョン確認・ホストマイグレーションのロジックを
+  `autoload/game/sight_system.gd`(`$SightSystem`) / `version_gate.gd`(`$VersionGate`) /
+  `host_migration.gd`(`$HostMigration`) の3つの子ノードへ分割してある(`_ready()` で
+  `add_child` し、全ピアで同一の NodePath になる)。**これらの子ノードに定義した
+  `@rpc` メソッドのノードパスを変える(別のノードへ移す/ノード名を変える)場合も、
+  `GameManager.PROTOCOL_VERSION` を上げること**(v5→v6はこの分割自体が理由)。
+  `GameManager.spotted` / `can_see()` 等の既存の呼び出し規約は薄い委譲で維持しているので、
+  呼び出し側(`cpu_hunter.gd` 等)を書き換える必要は無い
 - **視界判定はホストが一元的に行う**。CPU 側で個別にレイを飛ばさない
   （`GameManager.hunter_sees_runner()` に問い合わせる）
 - 視線の向きは**カメラではなくボディの -Z**。`player.tscn` が同期するのは

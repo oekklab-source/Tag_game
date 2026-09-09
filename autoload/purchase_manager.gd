@@ -17,8 +17,11 @@ const REASON_PURCHASE_TIMEOUT := "purchase_timeout"
 
 ## service/commerce-api/ のデプロイ・実機決済確認(成功/拒否/強制終了リカバリ)が
 ## 2026-09-07に完了したため true。Stripeにはローカルで起動時判定できるSDKが無いため、
-## is_eos_available相当の自動判定ではなく、明示フラグでプロバイダを切り替える
-const USE_LIVE_PURCHASES := true
+## is_eos_available相当の自動判定ではなく、明示フラグでプロバイダを切り替える。
+## 値の実体は autoload/backend_config.gd に集約してある。ここに残すのは
+## 既存の参照箇所(このファイル内、tests/test_phase5_persistence.gd)を
+## 書き換えないための転送のみ
+const USE_LIVE_PURCHASES := BackendConfig.USE_LIVE_PURCHASES
 
 var _provider: PurchaseProvider
 

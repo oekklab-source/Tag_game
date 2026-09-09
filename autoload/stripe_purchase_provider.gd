@@ -12,7 +12,9 @@ extends PurchaseProvider
 ## PurchaseProviderはRefCountedでツリーに属さないため、HTTPRequestノードの追加先・
 ## SceneTreeタイマー取得先としてPurchaseManager(Node)自身をコンストラクタで受け取る。
 
-const COMMERCE_API_BASE_URL := "https://tag-game-commerce-api.oekklab.workers.dev/"
+## 値の実体は autoload/backend_config.gd に集約してある(設定を一元化するため)。
+## ここに残すのは既存の参照箇所(このファイル内)を書き換えないための転送のみ
+const COMMERCE_API_BASE_URL := BackendConfig.COMMERCE_API_BASE_URL
 const POLL_INTERVAL := 5.0
 const POLL_TIMEOUT := 1860.0 # Checkout Sessionのexpires_at最小値(30分)に余裕を足した値
 const PENDING_PURCHASE_PATH := "user://pending_purchase.json"

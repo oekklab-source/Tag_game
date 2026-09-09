@@ -67,7 +67,7 @@ func _run() -> void:
 	# ホスト側も相手の版数の違いに気づいて警告を出すはず
 	if not is_host and OS.get_cmdline_user_args().has("badack"):
 		# 古いビルドの参加者を演じる（違う版数を返す）
-		GameManager.ack_version.rpc_id(1, 99)
+		GameManager._version_gate.ack_version.rpc_id(1, 99)
 		await _sleep(5.0)
 		print("[CLIENT] 戻り先=%s" % (get_tree().current_scene.name
 			if get_tree().current_scene else "<null>"))
@@ -81,7 +81,7 @@ func _run() -> void:
 		get_tree().quit()
 		return
 	if is_host and OS.get_cmdline_user_args().has("badver"):
-		GameManager.check_version.rpc_id(multiplayer.get_peers()[0], 99)
+		GameManager._version_gate.check_version.rpc_id(multiplayer.get_peers()[0], 99)
 		await _sleep(3.0)
 		print("[HOST] 警告=%s / 残りピア=%s" % [
 			GameManager.peer_notice.replace("

@@ -12,13 +12,15 @@ class_name HttpJsonClient
 const REQUEST_TIMEOUT_SEC := 10.0
 
 
-static func post_json(host: Node, url: String, body: Dictionary) -> Dictionary:
+static func post_json(host: Node, url: String, body: Dictionary, extra_headers: PackedStringArray = []) -> Dictionary:
 	var http := HTTPRequest.new()
 	http.timeout = REQUEST_TIMEOUT_SEC
 	host.add_child(http)
+	var headers := PackedStringArray(["Content-Type: application/json"])
+	headers.append_array(extra_headers)
 	var err := http.request(
 		url,
-		["Content-Type: application/json"],
+		headers,
 		HTTPClient.METHOD_POST,
 		JSON.stringify(body)
 	)

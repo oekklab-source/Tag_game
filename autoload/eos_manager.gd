@@ -119,6 +119,17 @@ func _load_credentials() -> HCredentials:
 	return credentials
 
 
+## EOS Connectが発行したID Token(JWT)を取得する。サーバー(friend-api等)への
+## リクエスト認証に使う。呼ぶたびにEOSから取り直す(同期呼び出しなのでコストは低く、
+## 有効期限管理の複雑さを避けるためキャッシュしない)。EOS未初期化時は空文字を返す
+func get_id_token() -> String:
+	if not is_eos_available:
+		return ""
+	var result: Dictionary = EOS.Connect.ConnectInterface.copy_id_token(EOS.Connect.CopyIdTokenOptions.new())
+	var id_token: Dictionary = result.get("id_token", {})
+	return id_token.get("json_web_token", "")
+
+
 # --- ロビー/マッチメイキング(Phase 2) ---
 # EOS Lobbies Interface(HLobbies/HLobby、addons/epic-online-services-godot/heos/)で実装。
 # 旧Steam実装と同じシグナル形状を維持しているが、ロビーIDはEOSではStringのため
