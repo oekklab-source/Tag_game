@@ -37,6 +37,50 @@ var _current_lobby: HLobby = null
 var _search_results: Dictionary = {}  # String lobby_id -> HLobby
 var _is_searching_lobbies: bool = false
 
+# --- ネイティブ呼び出しハングに対する最終防波堤(watchdog) ---
+# 下の各所にあるcreate_timer()ベースのタイムアウトは「メインループが回り続けている」ことが
+# 前提の協調的なものであり、Phase3実機検証で確認した「プロセス全体が完全停止する」真の
+# フリーズ(CPU使用率ほぼ0%、physics_frame停止)には無力(タイマー自体が発火しない)。
+#
+# 【設計変更履歴】最初は同一プロセス内のGodot Threadで壁時計を監視する案を実装したが、
+# 実機再現検証で21分間(CPU時間はわずか6.5秒)無応答のまま生き続け、Thread側のwatchdogは
+# 一度も発火しないことを確認した。フリーズはプロセス全体(独立Threadも含め)を巻き込む
+# 真のブロックであり、同一プロセス内のThreadでは原理的に保護できないと判断し、
+# プロセス外部の独立したOSプロセス(PowerShell)による監視に変更した。別プロセスなので
+# Godot/EOSSDK側のロック・スレッド状態に一切依存せず、OSレベルでの強制終了を保証できる
+# (Windowsのタスクマネージャ「タスクの終了」が常にフリーズしたアプリに効くのと同じ原理)。
+#
+## 指定秒後に自分自身(このGodotプロセス)を強制終了する監視用PowerShellプロセスを起動する
+## (既存のソフトタイムアウトに上乗せするハードタイムアウト)。戻り値の監視プロセスPIDを
+## 保持しておき、処理が(ハングせず)完了したら_disarm_watchdog()に渡して止めること。
+func _arm_watchdog(label: String, timeout_sec: float) -> int:
+	var cmd := "Start-Sleep -Seconds %d; Stop-Process -Id %d -Force -ErrorAction SilentlyContinue" \
+			% [int(ceil(timeout_sec)), OS.get_process_id()]
+	var watcher_pid := OS.create_process(
+		"powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", cmd], false)
+	if watcher_pid <= 0:
+		printerr("[EosManager][watchdog] '%s' 用の監視プロセス起動に失敗。このハードタイムアウトは無効です。" % label)
+	return watcher_pid
+
+
+## _arm_watchdog()が返した監視プロセスPIDを渡し、期限前に監視プロセスを止める(武装解除)。
+func _disarm_watchdog(watcher_pid: int) -> void:
+	if watcher_pid > 0:
+		OS.kill(watcher_pid)
+
+
+## 実機再現検証で判明: 個別のEOS呼び出し(PDS同期/ロビー検索/リーダーボード取得)が
+## すべて成功していても、その後のエンジン終了処理(quit()呼び出し→ノードツリー解体→
+## ネイティブGDExtension側の後始末)でプロセスが無期限に残留する場合がある
+## (EOS未使用のオフライン実行では一度も再現せず、EOSのネイティブ層に何らかの
+## ネットワーク活動があった場合にのみ発生することを実機で確認済み)。個別呼び出し単位の
+## watchdogでは終了処理そのものに潜むこのハングを検出できないため、ノードツリー解体開始時点
+## (_exit_tree())でも独立して武装する。正常終了する場合はプロセスが先に消えるため
+## 監視プロセスのkillは的外れ(無害)になるだけで、明示的な解除は不要。
+func _exit_tree() -> void:
+	if Engine.has_singleton("IEOS"):
+		_arm_watchdog("engine_shutdown", 8.0)
+
 
 func _ready() -> void:
 	_init_eos()
@@ -189,7 +233,8 @@ func request_lobby_list() -> void:
 			return
 		_is_searching_lobbies = true
 		var state := {"done": false}
-		_request_lobby_list_worker(state)
+		var watchdog_pid := _arm_watchdog("request_lobby_list", LOBBY_SEARCH_TIMEOUT_SEC + 5.0)
+		_request_lobby_list_worker(state, watchdog_pid)
 		var elapsed := 0.0
 		while not state["done"] and elapsed < LOBBY_SEARCH_TIMEOUT_SEC:
 			await get_tree().create_timer(0.5).timeout
@@ -224,12 +269,13 @@ func _get_lobby_attr_ci(lobby: HLobby, key: String) -> Dictionary:
 	return {}
 
 
-func _request_lobby_list_worker(state: Dictionary) -> void:
+func _request_lobby_list_worker(state: Dictionary, watchdog_pid: int) -> void:
 	var results = await HLobbies.search_by_attribute_async([
 		{"key": "game", "value": "Tag_Game", "comparison": EOS.ComparisonOp.Equal},
 		{"key": "version", "value": str(GameManager.PROTOCOL_VERSION), "comparison": EOS.ComparisonOp.Equal},
 	])
 	state["done"] = true
+	_disarm_watchdog(watchdog_pid)
 	_is_searching_lobbies = false
 	_search_results.clear()
 	if results == null:
@@ -448,7 +494,8 @@ func _resolve_leaderboard_id() -> String:
 func request_leaderboard(_start_rank: int = 1, _end_rank: int = 20) -> void:
 	if is_eos_available:
 		var state := {"done": false}
-		_request_leaderboard_worker(state)
+		var watchdog_pid := _arm_watchdog("request_leaderboard", LEADERBOARD_QUERY_TIMEOUT_SEC + 5.0)
+		_request_leaderboard_worker(state, watchdog_pid)
 		var elapsed := 0.0
 		while not state["done"] and elapsed < LEADERBOARD_QUERY_TIMEOUT_SEC:
 			await get_tree().create_timer(0.5).timeout
@@ -467,15 +514,17 @@ func request_leaderboard(_start_rank: int = 1, _end_rank: int = 20) -> void:
 		leaderboard_loaded.emit(mock_entries)
 
 
-func _request_leaderboard_worker(state: Dictionary) -> void:
+func _request_leaderboard_worker(state: Dictionary, watchdog_pid: int) -> void:
 	var leaderboard_id := await _resolve_leaderboard_id()
 	if leaderboard_id.is_empty():
 		print("[EosManager] Leaderboard定義が見つかりません(stat_name=%s)。Developer Portal側の設定を確認してください。" % LEADERBOARD_STAT_NAME)
 		state["done"] = true
+		_disarm_watchdog(watchdog_pid)
 		leaderboard_loaded.emit([])
 		return
 	var records = await HLeaderboards.get_leaderboard_records_async(leaderboard_id)
 	state["done"] = true
+	_disarm_watchdog(watchdog_pid)
 	if records == null:
 		leaderboard_loaded.emit([])
 		return
@@ -534,9 +583,11 @@ func cloud_file_timestamp() -> int:
 ## 起動フローはそれを待たずに先へ進む。
 func _sync_profile_with_cloud_bounded() -> void:
 	var state := {"done": false}
+	var watchdog_pid := _arm_watchdog("sync_profile_with_cloud", SYNC_PROFILE_TIMEOUT_SEC + 5.0)
 	var run := func() -> void:
 		await sync_profile_with_cloud()
 		state["done"] = true
+		_disarm_watchdog(watchdog_pid)
 	run.call()
 	var elapsed := 0.0
 	while not state["done"] and elapsed < SYNC_PROFILE_TIMEOUT_SEC:
