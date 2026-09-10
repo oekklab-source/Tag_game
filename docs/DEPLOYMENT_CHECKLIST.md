@@ -23,6 +23,13 @@ Steamworks → EOS 移行はコード上は全フェーズ完了しているが�
 
 詳細手順: [service/commerce-api/README.md](../service/commerce-api/README.md)
 
+**2026-09-10 時点の状況**: 1〜6・8 は完了済み（Price ID は test モードの実値が
+`currency_pack_catalog.gd`/`service/commerce-api/src/index.ts` に設定済み、KV namespace
+`COMMERCE_TXNS` 作成済み、`STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` とも設定済み、
+`USE_LIVE_PURCHASES = true`、二重付与防止＋レート制限入りの現行コードで
+`npx wrangler deploy` 実施済み）。**未実施は 7 のみ**（テストカードでの実際の
+購入フロー確認）— Phase 4 の実機検証項目6・7で行う。
+
 1. Stripe（テストモード）で3商品（small / medium / large）の Price を作成する。
 2. 発行された Price ID を以下2箇所の `price_REPLACE_WITH_REAL_*` に上書きする:
    - [autoload/currency_pack_catalog.gd](../autoload/currency_pack_catalog.gd)（`PACKS` 内3箇所）
@@ -63,6 +70,12 @@ Steamworks → EOS 移行はコード上は全フェーズ完了しているが�
 ## 3. フレンド機能（Phase 5・`service/friend-api`）
 
 詳細手順: [service/friend-api/README.md](../service/friend-api/README.md)
+
+**2026-09-10 時点の状況**: 1〜3・5 は完了済み（KV namespace `FRIEND_KV` 作成済み、
+EOS Connect ID Token 認証（`verifyIdToken()`）入りの現行コードで `npx wrangler deploy`
+実施済み、`Authorization` ヘッダ無し／不正トークンで 401 になることを curl で確認済み、
+`USE_LIVE_FRIEND_BACKEND = true`）。**未実施は 4 のみ**（2アカウントでの実機確認）—
+Phase 4 の実機検証項目8で行う。
 
 1. ```sh
    cd service/friend-api
@@ -107,6 +120,14 @@ Steamworks → EOS 移行はコード上は全フェーズ完了しているが�
 cd service/friend-api && npx wrangler deploy
 cd ../commerce-api && npx wrangler deploy
 ```
+
+**2026-09-10 実施済み**: 両 Worker を現行コード（Phase 1 の認証・レート制限・二重付与防止入り）で
+デプロイ済み（friend-api Version ID `e9672fee-175f-42b1-8bab-5f408d33c948`、commerce-api
+`5b9aa8ae-aa77-443c-88bd-ab5e7a269128`）。同時に `export/windows/TagGame.exe` も現行 HEAD
+（`3be4c5c`、EOSネイティブ層使用後のプロセス残留=Critical修正込み）から再ビルド済み。
+`curl` で friend-api がトークン無し／不正トークンとも 401 を返すことを確認済み
+（デプロイ前は旧コードのため 400 だった）。commerce-api も不正リクエストで 500 にならず
+適切な 400 を返すことを確認済み（Stripe secrets 設定済み）。
 
 **完了条件**: 別マシンから `curl` で `Authorization` ヘッダ無し・不正トークンでのリクエストが
 両 Worker とも 401 で弾かれることを確認できる。`wrangler tail` にエラーが出ない。
