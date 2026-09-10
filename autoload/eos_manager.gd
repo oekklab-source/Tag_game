@@ -415,6 +415,11 @@ func _on_lobby_owner_changed() -> void:
 	if _current_lobby == null:
 		return
 	is_host = _current_lobby.is_owner()
+	# ⑨join_lobby()経由(=元は参加者)でマイグレーション昇格した場合はcreate_lobby()を
+	# 通らないため、ここで配線しないと新ホストのトンネル確立後もhost_addr属性が
+	# 更新されず誰も再接続できなくなる(実機検証で確認した重大バグ)
+	if is_host and not NetworkManager.public_address_ready.is_connected(_on_public_address_ready):
+		NetworkManager.public_address_ready.connect(_on_public_address_ready)
 	host_migrated.emit(_current_lobby.owner_product_user_id, is_host)
 
 

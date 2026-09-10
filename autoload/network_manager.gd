@@ -418,8 +418,11 @@ func _report_pending_host_penalty() -> void:
 		return
 	var s: Dictionary = _pending_host_penalty
 	_pending_host_penalty = {}
+	# 固定値1500ではなく、reset()前にsnapshot_for_host_disconnect_penalty()が
+	# 確保しておいた実際の相手陣営レートを使う(apply_match_end()と同じ修正)
 	var delta := RankingManager.calculate_rating_delta(
-		s.was_runner, false, s.survival, s.hunter_count, false, s.self_rating, 1500)
+		s.was_runner, false, s.survival, s.hunter_count, false, s.self_rating,
+		int(s.get("opponent_avg_rating", 1500)))
 	FriendManager.report_disconnect_penalty(s.puid, delta)
 
 

@@ -44,6 +44,13 @@ func buy_pack(pack_id: StringName) -> Dictionary:
 	var elapsed := 0.0
 	while elapsed < POLL_TIMEOUT:
 		if _cancel_requested:
+			# ポーリング間隔(5秒)の分だけ検知が遅れるため、キャンセル操作の直前に
+			# 決済が実際には成立している可能性がある。確定させる前に最終確認し、
+			# 既に paid ならキャンセルを無視してジェムを付与する（黙って未付与にしない）
+			var final_res := await _call_api("purchase-status", {"order_id": order_id})
+			if final_res.get("api_ok", false) and String(final_res.get("status", "pending")) == "paid":
+				_clear_pending()
+				return {"ok": true, "granted_gems": int(final_res.get("granted_gems", 0)), "reason": ""}
 			_clear_pending()
 			return {"ok": false, "granted_gems": 0, "reason": "user_cancelled"}
 		await _host.get_tree().create_timer(POLL_INTERVAL).timeout

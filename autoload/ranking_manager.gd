@@ -207,6 +207,28 @@ static func calculate_all_rating_changes(
 	}
 
 
+## GameManager.peer_profiles（report_profile/_sync_profiles で各ピアから届く自己申告値。
+## tier_lock の判定にも使っているのと同じ信頼境界）から相手陣営の実レート平均を算出する。
+## 対応する申告が無い相手（CPU代行など）は母数から除外し、1人も見つからなければ
+## apply_match_end() 側のデフォルトと揃えて 1500 にフォールバックする
+func opponent_avg_rating(is_runner: bool) -> int:
+	var target_ids: Array[int] = []
+	if is_runner:
+		for id in GameManager.player_ids():
+			if id != GameManager.runner_id:
+				target_ids.append(id)
+	else:
+		target_ids.append(GameManager.runner_id)
+	var sum := 0
+	var n := 0
+	for id in target_ids:
+		var p: Dictionary = GameManager.peer_profiles.get(id, {})
+		if p.has("rating"):
+			sum += int(p["rating"])
+			n += 1
+	return int(round(float(sum) / n)) if n > 0 else 1500
+
+
 ## 単一プレイヤー向けのレート変動量計算（HUD / クライアント用ラッパー）
 ## - is_runner: 自身が Runner だったか
 ## - is_winner: 自身が勝利したか
@@ -271,12 +293,16 @@ func calculate_rating_delta(
 
 
 ## 試合終了時に呼び出し、ProfileManager および EosManager に反映する
+## opponent_avg_rating: 相手陣営の実レート平均（GameManager.peer_profiles から呼び出し側が
+## 算出して渡す）。未指定時のデフォルト1500は相手情報が無い異常系のフォールバックであり、
+## 通常の対人戦では必ず実値を渡すこと（固定1500を使うとレート差がある対戦でゼロサムが崩れる）
 func apply_match_end(
 	is_runner: bool,
 	is_winner: bool,
 	survival_time: float,
 	hunter_count: int,
-	is_tagger: bool = false
+	is_tagger: bool = false,
+	opponent_avg_rating: int = 1500
 ) -> int:
 	# ①CPU戦（round_is_ranked==false）は呼び出し漏れがあってもここで二重に防ぐ
 	if not GameManager.round_is_ranked:
@@ -291,7 +317,7 @@ func apply_match_end(
 		hunter_count,
 		is_tagger,
 		old_r,
-		1500 # 簡易平均
+		opponent_avg_rating
 	)
 	
 	ProfileManager.apply_match_result(delta, is_winner, is_runner)

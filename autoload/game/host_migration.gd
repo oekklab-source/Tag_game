@@ -24,8 +24,11 @@ func _report_participant_disconnect_penalty(peer_id: int, was_runner: bool) -> v
 		return
 	var self_rating := int(GameManager.peer_profiles.get(peer_id, {}).get("rating", 1500))
 	var survival := GameManager.ROUND_TIME - GameManager.time_left
+	# 固定値1500ではなく実際の相手陣営レートを使う(apply_match_end()と同じ修正)。
+	# ホストはこの時点でまだpeer_profilesが生きているため直接算出できる
+	var opponent_rating := RankingManager.opponent_avg_rating(was_runner)
 	var delta := RankingManager.calculate_rating_delta(
-		was_runner, false, survival, GameManager.round_hunter_count, false, self_rating, 1500)
+		was_runner, false, survival, GameManager.round_hunter_count, false, self_rating, opponent_rating)
 	FriendManager.report_disconnect_penalty(puid, delta)
 
 
@@ -40,10 +43,13 @@ func snapshot_for_host_disconnect_penalty() -> Dictionary:
 	var puid := String(GameManager.peer_profiles.get(HOST_PEER_ID, {}).get("puid", ""))
 	if puid.is_empty():
 		return {}
+	var was_runner := GameManager.runner_id == HOST_PEER_ID
 	return {
 		"puid": puid,
-		"was_runner": GameManager.runner_id == HOST_PEER_ID,
+		"was_runner": was_runner,
 		"self_rating": int(GameManager.peer_profiles.get(HOST_PEER_ID, {}).get("rating", 1500)),
+		# GameManager.reset()でpeer_profilesが消える前に、相手陣営の実レートもここで確保しておく
+		"opponent_avg_rating": RankingManager.opponent_avg_rating(was_runner),
 		"survival": GameManager.ROUND_TIME - GameManager.time_left,
 		"hunter_count": GameManager.round_hunter_count,
 	}

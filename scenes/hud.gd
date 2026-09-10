@@ -631,8 +631,9 @@ func _on_state_changed(new_state: int) -> void:
 				var won := (is_runner and GameManager.result_runner_won) or (not is_runner and not GameManager.result_runner_won)
 				var survival := GameManager.ROUND_TIME - GameManager.time_left
 				var is_tagger := (my_id == GameManager.tagger_peer_id)
+				var opp_rating := RankingManager.opponent_avg_rating(is_runner)
 				_last_rating_delta = RankingManager.apply_match_end(
-					is_runner, won, survival, GameManager.round_hunter_count, is_tagger)
+					is_runner, won, survival, GameManager.round_hunter_count, is_tagger, opp_rating)
 			elif not GameManager.round_is_ranked:
 				# 離脱中断（オンライン）はどちらの戦績にも数えない。CPU戦のみ練習回数に加算
 				ProfileManager.record_casual_match()
