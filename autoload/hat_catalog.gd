@@ -57,7 +57,7 @@ const HATS: Dictionary = {
 		"price": 400,
 		"unlock": &"shop",
 		"scene": preload("res://assets/character/hats/hat_wizard.glb"),
-		"offset": Vector3(0.0, 0.46, 0.0),
+		"offset": Vector3(0.0, 0.56, 0.0),
 		"rotation_degrees": Vector3.ZERO,
 	},
 	&"crown": {
@@ -66,7 +66,7 @@ const HATS: Dictionary = {
 		"price": 600,
 		"unlock": &"shop",
 		"scene": preload("res://assets/character/hats/hat_crown.glb"),
-		"offset": Vector3(0.0, 0.44, 0.0),
+		"offset": Vector3(0.0, 0.57, 0.0),
 		"rotation_degrees": Vector3.ZERO,
 	},
 	&"cat_ears": {
@@ -75,7 +75,7 @@ const HATS: Dictionary = {
 		"price": 250,
 		"unlock": &"shop",
 		"scene": preload("res://assets/character/hats/hat_cat_ears.glb"),
-		"offset": Vector3(0.0, 0.42, 0.0),
+		"offset": Vector3(0.0, 0.58, 0.0),
 		"rotation_degrees": Vector3.ZERO,
 	},
 }
