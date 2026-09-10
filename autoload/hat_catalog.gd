@@ -51,6 +51,33 @@ const HATS: Dictionary = {
 		"offset": Vector3(0.0, 0.50, 0.0),
 		"rotation_degrees": Vector3.ZERO,
 	},
+	&"wizard": {
+		"name": "まほうつかいの帽子",
+		"rarity": &"epic",
+		"price": 400,
+		"unlock": &"shop",
+		"scene": preload("res://assets/character/hats/hat_wizard.glb"),
+		"offset": Vector3(0.0, 0.46, 0.0),
+		"rotation_degrees": Vector3.ZERO,
+	},
+	&"crown": {
+		"name": "王冠",
+		"rarity": &"legendary",
+		"price": 600,
+		"unlock": &"shop",
+		"scene": preload("res://assets/character/hats/hat_crown.glb"),
+		"offset": Vector3(0.0, 0.44, 0.0),
+		"rotation_degrees": Vector3.ZERO,
+	},
+	&"cat_ears": {
+		"name": "ネコミミビーニー",
+		"rarity": &"rare",
+		"price": 250,
+		"unlock": &"shop",
+		"scene": preload("res://assets/character/hats/hat_cat_ears.glb"),
+		"offset": Vector3(0.0, 0.42, 0.0),
+		"rotation_degrees": Vector3.ZERO,
+	},
 }
 
 const DEFAULT_ID: StringName = &"none"

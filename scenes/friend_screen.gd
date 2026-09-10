@@ -19,6 +19,7 @@ signal closed
 
 @onready var back_btn: Button = $TopBar/BackButton
 @onready var shop_btn: Button = $TopBar/ShopButton
+@onready var refresh_btn: Button = $TopBar/RefreshButton
 @onready var main_vbox: VBoxContainer = $ContentMargin/Scroll/MainVBox
 @onready var online_list: VBoxContainer = $ContentMargin/Scroll/MainVBox/OnlineSection/List
 @onready var offline_list: VBoxContainer = $ContentMargin/Scroll/MainVBox/OfflineSection/List
@@ -35,6 +36,7 @@ var _pending_remove_name: String = ""
 func _ready() -> void:
 	back_btn.pressed.connect(_on_back_pressed)
 	shop_btn.pressed.connect(_on_shop_pressed)
+	refresh_btn.pressed.connect(refresh)
 	# オーバーレイ埋め込み時はショップへのシーン遷移が待機中の部屋を巻き込んで壊すため
 	# 導線ごと隠す(閉じてからhud側の「ショップ」ボタンで開き直せば良い)
 	if get_tree().current_scene != self:

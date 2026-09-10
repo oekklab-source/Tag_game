@@ -45,7 +45,9 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## (check_version/ack_version)・ホストマイグレーション(_set_runner_cpu)のRPCを
 ## GameManager本体から子ノード(autoload/game/*.gd)へ移した。ペイロード形式自体は
 ## 変わっていないが、RPCの宛先ノードパスが変わるため上げる
-const PROTOCOL_VERSION := 6
+## v7: tier_lock不一致で拒否する際、disconnect_peer()の前に理由を伝える
+## notify_rejected RPCを追加したため
+const PROTOCOL_VERSION := 7
 
 const ROUND_TIME := 180.0
 const RESULT_TIME := 5.0
@@ -659,10 +661,24 @@ func report_profile(payload: Dictionary) -> void:
 		var peer_rating := int(payload.get("rating", 1500))
 		if not RankingManager.is_rating_compatible(ProfileManager.rating, peer_rating, 0):
 			notify_host("レート帯が違う参加者の接続を許可しませんでした（このロビーは同じレート帯のみ）。")
+			# ⑤disconnect_peer()の前に理由を伝える。何も伝えずに切ると、EOSロビー経由の
+			# 参加者側は_on_server_disconnected()がただの拒否をホストロスト扱いしてしまい、
+			# 実際には存在しないホストマイグレーション探索UIが誤って出る
+			notify_rejected.rpc_id(id, "このロビーは同じレート帯のみ参加できます（レート帯が一致しません）。")
 			multiplayer.multiplayer_peer.disconnect_peer(id)
 			return
 	peer_profiles[id] = payload
 	_sync_profiles.rpc(peer_profiles)
+
+
+## ホスト -> 拒否した参加者。disconnect_peer()より前に呼ぶことで、切断理由を本人にも伝える。
+## 受け取った参加者は自発的にleave()し、_on_server_disconnected()のホストマイグレーション
+## 判定(_should_attempt_migration())を経由させない
+## (autoload/game/version_gate.gdのcheck_versionと同じ狙い・同じパターン)
+@rpc("authority", "reliable")
+func notify_rejected(reason: String) -> void:
+	NetworkManager.last_error = reason
+	NetworkManager.leave()
 
 
 ## ホスト -> 全ピア

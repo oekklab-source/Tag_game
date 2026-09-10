@@ -244,6 +244,17 @@ func _on_send_gift_pressed(friend_puid: String, friend_name: String) -> void:
 	var id := _pending_gift_id
 	_close_gift_picker()
 
+	# ⑥ジェムを消費する前に、相手が既に所持していないか問い合わせて確認する
+	# (ギフト配信自体が既にP2P・オンライン限定なので、この確認だけ新しい制約が増えるわけではない)
+	status_label.text = "%s さんの所持状況を確認中..." % friend_name
+	var check: Dictionary = await GiftManager.query_owned(friend_puid, kind, id)
+	if not check.get("reachable", false):
+		status_label.text = "%s さんに届けられませんでした（相手が起動していないか接続できませんでした）。" % friend_name
+		return
+	if check.get("owned", false):
+		status_label.text = "%s さんは既にこのアイテムを持っています。" % friend_name
+		return
+
 	if not PurchaseManager.spend_for_gift(kind, id):
 		status_label.text = "ジェムが足りません"
 		return

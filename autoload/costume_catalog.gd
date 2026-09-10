@@ -93,6 +93,53 @@ const COSTUMES: Dictionary = {
 			{"part": "Costume", "index": 4, "albedo": Color(0.83, 0.68, 0.21), "metallic": 0.8},
 		],
 	},
+	&"camo": {
+		"name": "めいさい",
+		"rarity": &"common",
+		"price": 0,
+		"unlock": &"rating",
+		"color_slots": 1,
+		"surfaces": [
+			{"part": "Body", "index": 0, "slot": 0, "role_tint": true},
+			{"part": "Costume", "index": 0, "albedo": Color(0.35, 0.40, 0.22)},  # Skin -> オリーブ
+			{"part": "Costume", "index": 1, "albedo": Color(0.22, 0.28, 0.16)},  # SpikePurple -> 濃緑
+			{"part": "Costume", "index": 2, "albedo": Color(0.45, 0.42, 0.30)},  # Claw -> 土色
+			{"part": "Costume", "index": 3, "albedo": Color(0.30, 0.34, 0.20)},  # SpikeYellow -> 暗緑
+			{"part": "Costume", "index": 4, "albedo": Color(0.40, 0.38, 0.26)},  # SpikeBlue -> カーキ
+		],
+	},
+	&"sakura": {
+		"name": "さくら",
+		"rarity": &"rare",
+		"price": 300,
+		"unlock": &"shop",
+		"color_slots": 1,
+		"surfaces": [
+			{"part": "Body", "index": 0, "slot": 0, "role_tint": true},
+			{"part": "Costume", "index": 0, "albedo": Color(1.0, 0.85, 0.88)},   # Skin -> 淡ピンク
+			{"part": "Costume", "index": 1, "albedo": Color(0.95, 0.65, 0.72)},  # SpikePurple -> 濃いめピンク
+			{"part": "Costume", "index": 2, "albedo": Color(0.55, 0.35, 0.30)},  # Claw -> 木の枝色
+			{"part": "Costume", "index": 3, "albedo": Color(1.0, 0.90, 0.93)},   # SpikeYellow -> 極淡ピンク
+			{"part": "Costume", "index": 4, "albedo": Color(0.95, 0.65, 0.72)},  # SpikeBlue -> 濃いめピンク
+			{"part": "Face", "index": 0, "albedo": Color(1.0, 0.95, 0.96)},
+		],
+	},
+	&"shadow": {
+		"name": "シャドウ",
+		"rarity": &"epic",
+		"price": 400,
+		"unlock": &"shop",
+		"color_slots": 1,
+		"surfaces": [
+			{"part": "Body", "index": 0, "slot": 0, "role_tint": true},
+			{"part": "Costume", "index": 0, "albedo": Color(0.05, 0.05, 0.07)},  # Skin -> 黒
+			{"part": "Costume", "index": 1, "slot": 0, "emission": true},        # SpikePurple -> 発光アクセント
+			{"part": "Costume", "index": 2, "albedo": Color(0.03, 0.03, 0.04)},  # Claw -> 黒
+			{"part": "Costume", "index": 3, "slot": 0, "emission": true},        # SpikeYellow -> 発光アクセント
+			{"part": "Costume", "index": 4, "albedo": Color(0.03, 0.03, 0.04)},  # SpikeBlue -> 黒
+			{"part": "Face", "index": 0, "albedo": Color(0.15, 0.15, 0.18)},
+		],
+	},
 }
 
 const DEFAULT_ID: StringName = &"default"

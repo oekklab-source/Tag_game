@@ -146,6 +146,11 @@ func _build_lobby_row(lobby: Dictionary, my_rating: int) -> Control:
 	var join_btn := Button.new()
 	join_btn.text = "参加"
 	var lobby_id := String(lobby.get("id", ""))
+	# ②tier_lock部屋はホスト側でもレート帯不一致を拒否するが、参加してから弾かれるより
+	# ここで先に止めた方が体験がよい(拒否RPCは「フィルタをすり抜けた場合の保険」として残る)
+	if lobby.get("tier_lock", false) and not RankingManager.is_rating_compatible(host_rating, my_rating, 0):
+		join_btn.disabled = true
+		join_btn.tooltip_text = "このロビーは同じレート帯のみ参加できます"
 	join_btn.pressed.connect(func():
 		status_label.text = "ロビーに参加中..."
 		EosManager.join_lobby(lobby_id)

@@ -8,6 +8,9 @@
     assets/character/hats/hat_party.glb      パーティハット
     assets/character/hats/hat_cap.glb        キャップ
     assets/character/hats/hat_propeller.glb  プロペラ帽
+    assets/character/hats/hat_wizard.glb     まほうつかいの帽子
+    assets/character/hats/hat_crown.glb      王冠
+    assets/character/hats/hat_cat_ears.glb   ネコミミビーニー
 
 帽子は Chest ボーンへ BoneAttachment3D 経由で剛体アタッチする前提（scenes/humanoid.gd
 apply_hat() 参照）なので、頂点グループ（スキニング）は付けない。原点(0,0,0)がだいたい
@@ -206,10 +209,113 @@ def build_propeller_hat():
     return dome
 
 
+def build_wizard_hat():
+    """つばの広い魔法使いの帽子 + 先端に光る飾り(球体)。"""
+    # ゆるやかにカーブして先端が細くなる円錐のプロファイル
+    pts = [
+        (0.00, 0.00),  # 底面の中心(穴を塞ぐ)
+        (0.00, 0.28),  # つばの外縁
+        (0.01, 0.28),  # つばの厚み
+        (0.015, 0.15), # つばの根本(少し持ち上がる)
+        (0.10, 0.13),  # 円錐の中間1
+        (0.20, 0.08),  # 円錐の中間2
+        (0.35, 0.00)   # 先端
+    ]
+    hat = lathe("WizardBase", pts, segments=24)
+    hat.data.materials.append(make_mat("WizardPurple", (0.15, 0.05, 0.25)))
+
+    # 先端の星(丸っこい球体として表現)
+    tip = ball("WizardTip", (0.0, 0.0, 0.35), (0.04, 0.04, 0.04))
+    tip.data.materials.append(make_mat("WizardStar", (0.95, 0.85, 0.15), emission=0.8))
+
+    join_into(hat, [tip])
+    cleanup(hat)
+    hat.name = "HatWizard"
+    return hat
+
+
+def build_crown():
+    """円柱状の土台 + 周囲に複数の円錐と光る宝石を配置した王冠。"""
+    # 王冠の土台部分（中が空洞にならないように厚みを持たせる）
+    pts = [
+        (0.00, 0.00), # 外部の底中心
+        (0.00, 0.16), # 底の外縁
+        (0.08, 0.18), # 上に広がる外側
+        (0.08, 0.16), # 内側へ折り返し
+        (0.01, 0.14), # 内側の底付近
+        (0.01, 0.00), # 内部の底中心
+    ]
+    crown = lathe("CrownBase", pts, segments=24)
+    mat_gold = make_mat("CrownGold", (0.90, 0.70, 0.10), roughness=0.3, metallic=0.8)
+    crown.data.materials.append(mat_gold)
+
+    spikes = []
+    spike_count = 6
+    for i in range(spike_count):
+        a = 2.0 * math.pi * i / spike_count
+
+        # トゲ(円錐)
+        spike = cone(f"CrownSpike{i}", base_r=0.03, height=0.08, segments=8, sink=0.2)
+        spike.data.materials.append(mat_gold)
+        # 縁の傾きに合わせて外側に傾ける(Y軸まわり0.2)、さらに円周上に配置(Z軸まわりa)
+        bake(spike,
+             loc=(math.cos(a) * 0.17, math.sin(a) * 0.17, 0.07),
+             rot=(0.0, 0.2, a))
+
+        # トゲの先端に乗せる宝石(球体)
+        gem = ball(f"CrownGem{i}", (0.0, 0.0, 0.08), (0.015, 0.015, 0.015))
+        mat_gem = make_mat("CrownGemRed", (0.90, 0.10, 0.20), emission=1.0)
+        gem.data.materials.append(mat_gem)
+        # トゲと全く同じ変換を適用することで、ローカルZ(0.08)にある球体が先端へ正確に配置される
+        bake(gem,
+             loc=(math.cos(a) * 0.17, math.sin(a) * 0.17, 0.07),
+             rot=(0.0, 0.2, a))
+
+        spikes.extend([spike, gem])
+
+    join_into(crown, spikes)
+    cleanup(crown)
+    crown.name = "HatCrown"
+    return crown
+
+
+def build_cat_ears():
+    """ドーム型のニット帽ベース + ピンと立った平たい三角形のネコミミ。"""
+    # ドーム型のベース(キャップやプロペラ帽と同じ手法)
+    dome = ball("CatDome", (0.0, 0.0, 0.08), (0.21, 0.21, 0.14))
+    mat_main = make_mat("CatMain", (0.15, 0.15, 0.15)) # 黒猫風
+    dome.data.materials.append(mat_main)
+
+    ears = []
+    mat_inner = make_mat("CatInner", (0.85, 0.35, 0.45)) # 耳の内側(ピンク)
+
+    for i, sign in enumerate([-1.0, 1.0]):
+        # 外側の耳(黒)
+        ear = cone(f"CatEarOuter{i}", base_r=0.07, height=0.12, segments=12, sink=0.2)
+        ear.data.materials.append(mat_main)
+        # Y軸方向にスケールを0.5に潰すことで、ネコミミっぽく平たくする
+        bake(ear, loc=(0.12 * sign, 0.0, 0.16), rot=(0.0, 0.3 * sign, 0.0), scale=(1.0, 0.5, 1.0))
+
+        # 内側の耳(ピンク)。少し小さくし、Y方向(前)にずらして重ねる
+        inner = cone(f"CatEarInner{i}", base_r=0.04, height=0.08, segments=10, sink=0.1)
+        inner.data.materials.append(mat_inner)
+        bake(inner, loc=(0.12 * sign, -0.02, 0.17), rot=(0.0, 0.3 * sign, 0.0), scale=(1.0, 0.4, 1.0))
+
+        ears.extend([ear, inner])
+
+    join_into(dome, ears)
+    cleanup(dome)
+    dome.name = "HatCatEars"
+    return dome
+
+
 HAT_BUILDERS = {
     "hat_party": build_party_hat,
     "hat_cap": build_cap,
     "hat_propeller": build_propeller_hat,
+    "hat_wizard": build_wizard_hat,
+    "hat_crown": build_crown,
+    "hat_cat_ears": build_cat_ears,
 }
 
 

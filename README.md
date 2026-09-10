@@ -1030,6 +1030,12 @@ export_presets.cfg            Web エクスポート設定（CI が使うので�
   `GameManager.PROTOCOL_VERSION` を上げること**(v5→v6はこの分割自体が理由)。
   `GameManager.spotted` / `can_see()` 等の既存の呼び出し規約は薄い委譲で維持しているので、
   呼び出し側(`cpu_hunter.gd` 等)を書き換える必要は無い
+- ホストが意図的に参加者を切る場合(tier_lock不一致など)は、`disconnect_peer()` の**前**に
+  `notify_rejected` RPC で理由を本人へ伝える(`autoload/game/version_gate.gd` の
+  `check_version` と同じパターン)。何も伝えずに切ると、EOSロビー経由の参加者側は
+  `NetworkManager._on_server_disconnected()` がただの拒否をホストロストと区別できず、
+  実際には存在しないホストマイグレーション探索UIを誤って出してしまう
+  （v6→v7はこのRPC追加が理由）
 - **視界判定はホストが一元的に行う**。CPU 側で個別にレイを飛ばさない
   （`GameManager.hunter_sees_runner()` に問い合わせる）
 - 視線の向きは**カメラではなくボディの -Z**。`player.tscn` が同期するのは

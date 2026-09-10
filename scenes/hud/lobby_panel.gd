@@ -14,6 +14,12 @@ signal open_overlay_requested(key: String)
 const COLOR_RUNNER := Color(0.35, 1.0, 0.55)
 const COLOR_HUNTER := Color(1.0, 0.45, 0.4)
 
+## ⑥参加者一覧の見た目プレビュー。着せ替え/ショップ画面と同じ3Dプレビュー部品を再利用する。
+## SubViewportContainer.stretch(costume_preview.tscn側で有効)により、内部の描画解像度も
+## このコンテナの実サイズへ自動追従するので、別途レンダリング解像度を落とす必要はない
+const COSTUME_PREVIEW_SCENE := preload("res://scenes/costume_preview.tscn")
+const PREVIEW_SIZE := 64
+
 @onready var status: Label = $Box/Col/Status
 @onready var list: VBoxContainer = $Box/Col/ListBox/List
 @onready var role_button: Button = $Box/Col/RoleButton
@@ -143,10 +149,16 @@ func _on_max_members_apply_pressed() -> void:
 		max_members_spin.value = EosManager.get_current_lobby_max_members()
 
 
-## 一覧は毎フレーム作り直さず、中身が変わったときだけ組み直す
+## 一覧は毎フレーム作り直さず、中身が変わったときだけ組み直す。
+## ②⑥GameManager.peer_profiles(レート/コスチューム/帽子)はプロフィール到着とids/名前の
+## 変化が同フレームとは限らないため、キーにも含めて到着後の再構築を保証する
+## (含めないと profiles_changed を購読していないこの関数は後から届いたプロフィールに
+## 気づけず、レートバッジ/見た目プレビューが空のまま固まって見えることがある)
 func _rebuild_roster(ids: Array[int], me: int, is_host: bool, is_eos_matched: bool) -> void:
 	var names := ids.map(func(id): return _display_name(id, me))
-	var key := "%s|%s|%d|%d|%d" % [ids, names, GameManager.wanted_runner, int(is_host), int(is_eos_matched)]
+	var profile_stamp := ids.map(func(id): return GameManager.peer_profiles.get(id, {}))
+	var key := "%s|%s|%d|%d|%d|%s" % [ids, names, GameManager.wanted_runner, int(is_host),
+		int(is_eos_matched), profile_stamp]
 	if key == _roster_key:
 		return
 	_roster_key = key
@@ -172,6 +184,7 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	row.add_theme_stylebox_override("panel", _sb_row)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 12)
+	h.add_child(_roster_preview(id))
 	var name_label := Label.new()
 	name_label.text = _display_name(id, me)
 	name_label.add_theme_font_size_override("font_size", 19)
@@ -202,6 +215,34 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	btn.set_anchors_preset(Control.PRESET_FULL_RECT)
 	row.add_child(btn)
 	return row
+
+
+## ⑥見た目プレビュー(costume_preview.tscnの小型埋め込み)。peer_profilesが届くまでは
+## きほん姿のまま表示する(player.gd._apply_peer_costume()と同じフォールバック先)。
+## ドラッグ回転は行の役割指名クリックと競合するため無効化し、固定アングルで静止させる
+func _roster_preview(id: int) -> Control:
+	var preview: Control = COSTUME_PREVIEW_SCENE.instantiate()
+	preview.custom_minimum_size = Vector2(PREVIEW_SIZE, PREVIEW_SIZE)
+	preview.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	preview.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
+	var costume_id := CostumeCatalog.DEFAULT_ID
+	var colors := CostumeCatalog.default_colors(costume_id)
+	var hat_id := HatCatalog.DEFAULT_ID
+	if GameManager.peer_profiles.has(id):
+		var info: Dictionary = GameManager.peer_profiles[id]
+		costume_id = StringName(info.get("costume", costume_id))
+		colors = ProfileManager.colors_from_html(info.get("colors", []))
+		hat_id = StringName(info.get("hat", hat_id))
+
+	# ②この時点ではまだシーンツリーに未接続(_rebuild_roster側でlist.add_child(row)するまで、
+	# rowもhもこのpreviewも宙に浮いた状態)。costume_preview.gdの@onready参照は
+	# _ready()(ツリー接続時)で解決されるため、ここで直接呼ぶと_viewport_container/_humanoid
+	# がまだnullでクラッシュする。call_deferredで1フレーム遅らせ、接続後に実行させる
+	preview.call_deferred("set_interactive", false)
+	preview.call_deferred("show_costume", costume_id, colors)
+	preview.call_deferred("show_hat", hat_id)
+	return preview
 
 
 ## ローカルニックネーム(GameManager.nickname_for)を優先し、未設定なら

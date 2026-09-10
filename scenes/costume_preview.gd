@@ -20,6 +20,7 @@ const CAMERA_LOOK_AT := Vector3(0.0, 0.85, 0.0)
 
 var _dragging := false
 var _time_since_drag := 0.0
+var _interactive := true
 
 
 func _ready() -> void:
@@ -32,11 +33,19 @@ func _ready() -> void:
 ## ダイアログが非表示の間は回転計算もレンダリングも止め、README のドローコール
 ## 意識(グロー/シャドウを先に切る、常時レンダリングを避ける)に沿って負荷を抑える
 func _process(delta: float) -> void:
-	if not is_visible_in_tree() or _dragging:
+	if not is_visible_in_tree() or _dragging or not _interactive:
 		return
 	_time_since_drag += delta
 	if _time_since_drag > IDLE_RESUME_DELAY:
 		_turntable.rotation.y += AUTO_SPIN_SPEED * delta
+
+
+## ⑥ロビー一覧の小型プレビュー等、ドラッグ回転や毎フレーム自動回転が不要な埋め込み用途向け。
+## 無効化するとクリックをそのまま下(ロビー行の役割指名ボタン等)へ透過させ、
+## 固定アングルのまま静止させる(常時レンダリングの負荷も抑える狙い)
+func set_interactive(enabled: bool) -> void:
+	_interactive = enabled
+	_viewport_container.mouse_filter = MOUSE_FILTER_PASS if enabled else MOUSE_FILTER_IGNORE
 
 
 func _on_gui_input(event: InputEvent) -> void:

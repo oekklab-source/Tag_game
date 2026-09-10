@@ -23,6 +23,7 @@ const ACK_POLL_INTERVAL := 0.25
 
 var _gift_peer: EOSGMultiplayerPeer = null
 var _pending_acks: Dictionary = {} # nonce(String) -> bool(受信済みか)
+var _pending_inventory: Dictionary = {} # nonce(String) -> null(未着) / Dictionary(受信した回答)
 
 
 func _ready() -> void:
@@ -105,6 +106,52 @@ func send_gift(friend_puid: String, kind: StringName, id: StringName) -> bool:
 	return false
 
 
+## ⑥ギフト送信前に、相手(EOS PUID)が指定アイテムを既に所持しているか問い合わせる。
+## send_gift()と同じmesh peer接続/pollループ・タイムアウトの形を踏襲する。
+## 戻り値: {"reachable": bool, "owned": bool}。reachable=falseは相手がオフライン等で
+## 到達できなかった場合(ギフト送信自体が既に同じ「オンラインのみ」制約を持つため、
+## この問い合わせだけの新たな制約ではない)
+func query_owned(friend_puid: String, kind: StringName, id: StringName) -> Dictionary:
+	if _gift_peer == null or friend_puid.is_empty():
+		return {"reachable": false, "owned": false}
+
+	if not _gift_peer.has_user_id(friend_puid):
+		_gift_peer.add_mesh_peer(friend_puid)
+
+	var nonce := "%d_%s" % [Time.get_ticks_usec(), friend_puid]
+	var payload := {
+		"type": "inventory_query",
+		"kind": String(kind),
+		"id": String(id),
+		"nonce": nonce,
+	}
+	var bytes := JSON.stringify(payload).to_utf8_buffer()
+
+	_pending_inventory[nonce] = null
+	var sent := false
+	var elapsed := 0.0
+	while elapsed < ACK_TIMEOUT:
+		_gift_peer.poll()
+		_drain_incoming_packets()
+
+		if not sent:
+			var pid: int = _gift_peer.get_peer_id(friend_puid)
+			if pid != 0:
+				_gift_peer.set_target_peer(pid)
+				sent = _gift_peer.put_packet(bytes) == OK
+
+		var reply = _pending_inventory.get(nonce)
+		if reply != null:
+			_pending_inventory.erase(nonce)
+			return {"reachable": true, "owned": bool(reply.get("owned", false))}
+
+		await get_tree().create_timer(ACK_POLL_INTERVAL).timeout
+		elapsed += ACK_POLL_INTERVAL
+
+	_pending_inventory.erase(nonce)
+	return {"reachable": false, "owned": false}
+
+
 func _handle_packet(sender_pid: int, data: PackedByteArray) -> void:
 	var json := JSON.new()
 	if json.parse(data.get_string_from_utf8()) != OK:
@@ -120,6 +167,12 @@ func _handle_packet(sender_pid: int, data: PackedByteArray) -> void:
 			var nonce := str(payload.get("nonce", ""))
 			if _pending_acks.has(nonce):
 				_pending_acks[nonce] = true
+		"inventory_query":
+			_on_inventory_query(sender_pid, payload)
+		"inventory_reply":
+			var reply_nonce := str(payload.get("nonce", ""))
+			if _pending_inventory.has(reply_nonce):
+				_pending_inventory[reply_nonce] = payload
 
 
 func _on_gift_packet(sender_pid: int, payload: Dictionary) -> void:
@@ -151,3 +204,21 @@ func _send_ack(sender_pid: int, payload: Dictionary) -> void:
 	var ack := {"type": "gift_ack", "nonce": payload.get("nonce", "")}
 	_gift_peer.set_target_peer(sender_pid)
 	_gift_peer.put_packet(JSON.stringify(ack).to_utf8_buffer())
+
+
+## ⑥フレンドからの所持確認問い合わせに応答する。所持リスト全体ではなく問い合わせ対象
+## 1件のみ返すことで、フレンドの所持品全体を覗けてしまうプライバシー面の拡大を避ける
+func _on_inventory_query(sender_pid: int, payload: Dictionary) -> void:
+	if _gift_peer == null:
+		return
+	var kind := StringName(str(payload.get("kind", "")))
+	var id := StringName(str(payload.get("id", "")))
+	var owned := false
+	match kind:
+		&"costume":
+			owned = ProfileManager.owns_costume(id)
+		&"hat":
+			owned = ProfileManager.owns_hat(id)
+	var reply := {"type": "inventory_reply", "nonce": payload.get("nonce", ""), "owned": owned}
+	_gift_peer.set_target_peer(sender_pid)
+	_gift_peer.put_packet(JSON.stringify(reply).to_utf8_buffer())
