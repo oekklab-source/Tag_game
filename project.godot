@@ -37,7 +37,6 @@ HP2P="*res://addons/epic-online-services-godot/heos/hp2p.gd"
 HSessions="*res://addons/epic-online-services-godot/heos/hsessions.gd"
 HPlayerDataStorage="*res://addons/epic-online-services-godot/heos/hplayerdatastorage.gd"
 EosManager="*res://autoload/eos_manager.gd"
-PlayerPrefs="*res://autoload/player_prefs.gd"
 
 [display]
 

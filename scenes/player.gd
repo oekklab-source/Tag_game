@@ -155,7 +155,8 @@ var _stuck_kick_left := 0.0
 ## 速度は権威ピアだけが正確に知っているので、素直に配るのが一番確実で安い
 @export var sync_speed := 0.0
 @export var sync_air := false
-## 味方ハンターの頭上ラベルに使うニックネーム。権威ピアが PlayerPrefs から一度だけ書く
+## 味方ハンターの頭上ラベルに使うニックネーム。権威ピアが ProfileManager.player_name から書く
+## (profile_updated を購読して追従するので、ラウンド中の変更も反映される)
 @export var sync_nickname := ""
 ## 出しているエモート（Emote の値）。0 = 出していない。
 ## 終わるたび必ず 0 を挟むので、同じエモートを繰り返しても ON_CHANGE の同期が発火する
@@ -182,7 +183,8 @@ func _ready() -> void:
 	if is_multiplayer_authority():
 		sync_position = position
 		sync_yaw = rotation.y
-		sync_nickname = PlayerPrefs.nickname
+		sync_nickname = ProfileManager.player_name
+		ProfileManager.profile_updated.connect(_on_profile_updated_for_nickname)
 		camera.current = true
 		spring_arm.add_excluded_object(get_rid())
 		# ④自分のコスチュームを反映する。他ピア分は GameManager.peer_profiles の
@@ -711,6 +713,12 @@ func _apply_peer_costume() -> void:
 	var colors := ProfileManager.colors_from_html(info.get("colors", []))
 	humanoid.apply_costume(StringName(info.get("costume", "default")), colors)
 	humanoid.apply_hat(StringName(info.get("hat", "none")))
+
+
+## 着せ替え画面での名前変更をロビー待機中/対戦中でも即座に追従させる。
+## sync_nickname は同期プロパティなので、書き込むだけで他ピアへも伝わる
+func _on_profile_updated_for_nickname() -> void:
+	sync_nickname = ProfileManager.player_name
 
 
 ## 頭上の名前ラベル。逃走者には見せない（味方ハンター同士にのみ表示する）。

@@ -18,9 +18,32 @@ static func _auth_headers() -> PackedStringArray:
 	return PackedStringArray(["Authorization: Bearer " + EosManager.get_id_token()])
 
 
-static func sync(host: Node, display_name: String) -> Dictionary:
-	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "sync", {
-		"display_name": display_name,
+## statsは任意(空辞書なら送らない)。フレンドにのみ公開する戦績/レート/スキンの
+## 自己申告アップロード(autoload/friend_manager.gd._upload_my_stats_now()から渡される)
+static func sync(host: Node, display_name: String, stats: Dictionary = {}) -> Dictionary:
+	var body := {"display_name": display_name}
+	if not stats.is_empty():
+		body["stats"] = stats
+	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "sync", body, _auth_headers())
+
+
+## コード完全一致 or 表示名完全一致でユーザーを検索する(mode: "code" | "name")
+static func search_user(host: Node, query: String, mode: String) -> Dictionary:
+	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "search-user", {
+		"query": query,
+		"mode": mode,
+	}, _auth_headers())
+
+
+## オンライン在席の生存通知。autoload/friend_manager.gdが一定間隔で呼ぶ
+static func heartbeat(host: Node) -> Dictionary:
+	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "heartbeat", {}, _auth_headers())
+
+
+## フレンド1人の詳細(オンライン状態・戦績・レート・最終ログイン・スキン)
+static func friend_profile(host: Node, friend_puid: String) -> Dictionary:
+	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "friend-profile", {
+		"friend_puid": friend_puid,
 	}, _auth_headers())
 
 

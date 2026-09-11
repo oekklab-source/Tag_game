@@ -166,3 +166,35 @@ PRは常に `MERGEABLE`）。本番デプロイは本チェックリストの手
 
 **完了条件**: 新規コミットに対して「Workers Builds: tag-game」チェックが失敗表示されなくなる
 （成功する、またはGit連携を削除してチェック自体が出なくなる）。
+
+## 8. フレンド検索・オンライン状態・戦績公開の追加エンドポイント（未デプロイ）
+
+実機テストで見つかった要望への対応として、`service/friend-api/src/index.ts` に
+`/search-user`・`/heartbeat`・`/friend-profile` を新規追加し、`/sync`・`/list-friends`
+を拡張した（このセッションの作業）。**このセッションでは `npx wrangler deploy` を
+実行していない**。ローカル `wrangler dev`(Miniflare)で全シナリオ(検索/申請/承諾/
+ハートビート/一覧のオンライン状態/詳細取得/フレンド外からのアクセス拒否)を確認済み。
+
+デプロイする際の手順:
+
+1. ```sh
+   cd service/friend-api
+   npx tsc --noEmit   # 型チェック(このセッションで実施済み、変更を追加した場合は再実行)
+   npx wrangler deploy
+   ```
+
+2. 本番URL(`autoload/backend_config.gd` の `FRIEND_API_BASE_URL`)は変更不要
+   （既存Workerへのコード追加のみで、URLも `USE_LIVE_FRIEND_BACKEND` も変わらない）。
+3. **KV書き込み予算の実測**: ハートビート(既定120秒間隔、`autoload/friend_manager.gd`
+   の `HEARTBEAT_INTERVAL_SEC`)は無料枠(1日1,000件書き込み、全ユーザー合計)を
+   最も消費する新規要素。デプロイ後、Cloudflareダッシュボードの
+   Workers & Pages → `tag-game-friend-api` → Metrics → KV書き込み数を数日分観測し、
+   同時プレイ人数に対して余裕があるか確認する。厳しければ
+   `HEARTBEAT_INTERVAL_SEC` を伸ばす、または有料プラン($5/月、KV書き込み上限が
+   大幅に緩和)への移行を検討する。
+4. 検索(`/search-user`)・詳細情報(`/friend-profile`)の実機確認: 2アカウントで
+   フレンド未成立の状態から検索→追加→承諾→フレンド一覧のオンライン表示→詳細ダイアログ、
+   の一連の流れを実際にクリックして確認する（`service/friend-api/README.md`参照）。
+
+**完了条件**: 本番デプロイ後、2アカウント間で検索→追加→オンライン状態表示→詳細情報表示が
+実際に動作し、KV書き込み量が無料枠に対して余裕があることを確認する。

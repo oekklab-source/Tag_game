@@ -6,7 +6,8 @@ extends Node
 ## EOS純正のFriends APIは使わない: Epic Account Services(EAS)ログインが必須で、
 ## Steam/itch.io経由でプレイする大多数のプレイヤーはEpicアカウントを持っていない
 ## ため。代わりにサーバー側生成の不透明なフレンドコードで1:1追加する方式にし、
-## PUID自体は列挙・検索できないようにしてある(詳細はfriend-api/README.md)。
+## PUID自体は一覧・列挙できないようにしてある。表示名の完全一致検索(search_user)は
+## 追加したが、前方一致・部分一致・一覧列挙は構造的に不可能なまま(詳細はfriend-api/README.md)。
 ##
 ## EosManagerと同じ方針(バックエンド無効時はモックデータで
 ## フォールバックし、クラッシュを防ぐ)に倣う。USE_LIVE_FRIEND_BACKENDは
@@ -18,10 +19,86 @@ extends Node
 ## 書き換えないための転送のみ
 const USE_LIVE_FRIEND_BACKEND := BackendConfig.USE_LIVE_FRIEND_BACKEND
 
+## クライアントからのオンライン生存通知の間隔。friend-api側のONLINE_THRESHOLD_MS(5分)は
+## この2.5倍に取ってあるので、1〜2回の欠落は許容される
+const HEARTBEAT_INTERVAL_SEC := 120.0
+## 着せ替え画面の保存操作は name/costume/hat の最大3回 profile_updated を発火させるため、
+## 1回の保存につきアップロードを1回にまとめる待ち時間
+const STATS_UPLOAD_DEBOUNCE_SEC := 2.0
+
+var _heartbeat_timer: Timer
+var _stats_debounce_timer: Timer
+
+
+func _ready() -> void:
+	EosManager.eos_initialized.connect(_on_eos_initialized)
+	ProfileManager.profile_updated.connect(_on_profile_updated_for_stats)
+
 
 ## 8箇所で繰り返される「実バックエンドを使ってよいか」の判定を1つに畳む
 func _live() -> bool:
 	return USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available
+
+
+## EOS初期化(成功時のみ)を機にハートビートを開始する。失敗時(オフライン)は
+## _live()がfalseのままなので、以降のheartbeat呼び出しは全て無音で無視される。
+## ヘッドレス実行(tests/*.tscn)はEOS credentials設定済みの開発機だと毎回ここまで
+## 到達してしまい、テスト実行のたびに本番friend-apiへハートビート/戦績アップロードの
+## 実HTTPが飛んでKV書き込み予算(無料枠1日1,000件)を消費する。
+## network_manager.gd._launch_tunnel()・profile_manager.gd._acquire_instance_lock()と
+## 同じ理由・同じガードで、ヘッドレスでは開始しない
+func _on_eos_initialized(success: bool) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if not success or not USE_LIVE_FRIEND_BACKEND:
+		return
+	if _heartbeat_timer == null:
+		_heartbeat_timer = Timer.new()
+		_heartbeat_timer.wait_time = HEARTBEAT_INTERVAL_SEC
+		_heartbeat_timer.timeout.connect(_send_heartbeat)
+		add_child(_heartbeat_timer)
+		_heartbeat_timer.start()
+	_send_heartbeat()
+	# EOS初期化前に発火したprofile_updated分の戦績も、ここで一度アップロードしておく
+	_upload_my_stats_now()
+
+
+func _send_heartbeat() -> void:
+	if _live():
+		await FriendBackendClient.heartbeat(self)
+
+
+## ⑤⑦名前変更だけでなく戦績・スキン変更でも発火するため、デバウンスして
+## 1回の操作につきアップロードを1回にまとめる。_on_eos_initialized()と同じ理由で
+## ヘッドレス実行では開始しない(tests/net_roles.gd等がProfileManager.profile_updated
+## を直接emitするテストがあり、ガードが無いと本番へ実HTTPが飛ぶ)
+func _on_profile_updated_for_stats() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if not _live():
+		return
+	if _stats_debounce_timer == null:
+		_stats_debounce_timer = Timer.new()
+		_stats_debounce_timer.one_shot = true
+		_stats_debounce_timer.timeout.connect(_upload_my_stats_now)
+		add_child(_stats_debounce_timer)
+	_stats_debounce_timer.start(STATS_UPLOAD_DEBOUNCE_SEC)
+
+
+func _upload_my_stats_now() -> void:
+	if not _live():
+		return
+	var stats := {
+		"rating": ProfileManager.rating,
+		"matches_played": ProfileManager.matches_played,
+		"runner_wins": ProfileManager.runner_wins,
+		"hunter_wins": ProfileManager.hunter_wins,
+		"highest_rating": ProfileManager.highest_rating,
+		"costume_id": String(ProfileManager.costume_id),
+		"costume_colors": ProfileManager.colors_to_html(ProfileManager.costume_colors),
+		"hat_id": String(ProfileManager.hat_id),
+	}
+	await FriendBackendClient.sync(self, ProfileManager.player_name, stats)
 
 
 ## ⑤自分のフレンドコードを取得/生成する。フレンド画面が開いた際に呼ぶ。
@@ -36,7 +113,7 @@ func sync_with_backend() -> String:
 
 
 ## ⑤フレンド一覧を返す。各要素: {id: String(PUID), name, online}
-## online は現時点では常にfalse(v1では在席状況を追跡しない、friend-api/README.md参照)
+## online はサーバー側のハートビート(_send_heartbeat)による在席判定の実データ
 func get_friends() -> Array[Dictionary]:
 	if _live():
 		var res := await FriendBackendClient.list_friends(self)
@@ -44,9 +121,47 @@ func get_friends() -> Array[Dictionary]:
 			return []
 		var out: Array[Dictionary] = []
 		for f in res.get("friends", []):
-			out.append({"id": String(f.get("puid", "")), "name": String(f.get("name", "Friend")), "online": false})
+			out.append({"id": String(f.get("puid", "")), "name": String(f.get("name", "Friend")),
+				"online": bool(f.get("online", false))})
 		return out
 	return _mock_friends()
+
+
+## ⑤コード完全一致 or 表示名完全一致でユーザーを検索する(mode: "code" | "name")。
+## 戻り値: {found: bool, matches: [{code, name}], reason}(PUIDは含まない。追加はコードで行う)。
+## reasonは失敗時のみ("rate_limited"等)、UIが特別な文言を出したければ使える
+func search_user(query: String, mode: String) -> Dictionary:
+	if query.is_empty():
+		return {"found": false, "matches": [], "reason": "invalid_request"}
+	if _live():
+		var res := await FriendBackendClient.search_user(self, query, mode)
+		if not res.get("api_ok", false):
+			return {"found": false, "matches": [], "reason": "network_error"}
+		if not res.get("ok", true):
+			return {"found": false, "matches": [], "reason": String(res.get("reason", ""))}
+		return {"found": res.get("found", false), "matches": res.get("matches", []), "reason": ""}
+	return {"found": true, "matches": [{"code": "DEV12345", "name": query}], "reason": ""}
+
+
+## ⑤フレンド1人の詳細(オンライン状態・戦績・レート・最終ログイン・スキン)。
+## 戻り値: {ok: bool, reason(失敗時), name, online, last_seen, stats_available,
+## [rating, matches_played, runner_wins, hunter_wins, highest_rating, costume_id,
+## costume_colors, hat_id]}
+func get_friend_profile(friend_puid: String) -> Dictionary:
+	if _live():
+		var res := await FriendBackendClient.friend_profile(self, friend_puid)
+		if not res.get("api_ok", false):
+			return {"ok": false, "reason": "network_error"}
+		if not res.get("ok", false):
+			return {"ok": false, "reason": String(res.get("reason", ""))}
+		return res
+	return {
+		"ok": true, "name": "MockFriend", "online": true,
+		"last_seen": int(Time.get_unix_time_from_system() * 1000),
+		"stats_available": true, "rating": 1550, "matches_played": 12,
+		"runner_wins": 5, "hunter_wins": 4, "highest_rating": 1600,
+		"costume_id": "default", "costume_colors": [], "hat_id": "none",
+	}
 
 
 ## ⑤自分に届いている保留中のフレンドリクエスト一覧

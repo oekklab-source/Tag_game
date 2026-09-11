@@ -13,6 +13,7 @@ const CAMERA_POS := Vector3(1.8, 1.5, -2.6)
 const CAMERA_LOOK_AT := Vector3(0.0, 0.85, 0.0)
 
 @onready var _viewport_container: SubViewportContainer = $SubViewportContainer
+@onready var _viewport: SubViewport = $SubViewportContainer/SubViewport
 @onready var _camera: Camera3D = $SubViewportContainer/SubViewport/Camera3D
 @onready var _turntable: Node3D = $SubViewportContainer/SubViewport/Turntable
 @onready var _humanoid: Node3D = $SubViewportContainer/SubViewport/Turntable/Humanoid
@@ -46,6 +47,15 @@ func _process(delta: float) -> void:
 func set_interactive(enabled: bool) -> void:
 	_interactive = enabled
 	_viewport_container.mouse_filter = MOUSE_FILTER_PASS if enabled else MOUSE_FILTER_IGNORE
+
+
+## ⑥常時レンダリングを避けたい静止用途(ロビー一覧等)向け。show_costume/show_hat
+## 適用後に呼ぶと、その1フレームだけ描いてレンダリングを止める(見た目は最新のまま、
+## GPU負荷ゼロ)。SubViewportの既定(render_target_update_mode=3、costume_preview.tscn)は
+## 親が可視である限り毎フレーム再レンダリングし続けるため、静止画表示ではこれが無駄になる。
+## 見た目を変える(再度show_costume等を呼ぶ)場合は、もう一度これも呼び直すこと
+func request_static_render() -> void:
+	_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
 func _on_gui_input(event: InputEvent) -> void:

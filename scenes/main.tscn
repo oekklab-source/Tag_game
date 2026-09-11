@@ -60,7 +60,7 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(320, 56)
 layout_mode = 2
 placeholder_text = "ニックネーム"
-max_length = 12
+max_length = 16
 
 [node name="HostButton" type="Button" parent="CenterContainer/VBox" unique_id=135365812]
 custom_minimum_size = Vector2(320, 56)

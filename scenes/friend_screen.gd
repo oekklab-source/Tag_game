@@ -11,6 +11,10 @@ extends Control
 
 const TITLE_SCENE := "res://scenes/title.tscn"
 const SHOP_SCENE := "res://scenes/shop_screen.tscn"
+## ⑥フレンド詳細ダイアログのスキンプレビュー。scenes/hud/lobby_panel.gdの
+## _roster_preview()と同じ部品・同じ静止表示の流儀(request_static_render)を使う
+const COSTUME_PREVIEW_SCENE := preload("res://scenes/costume_preview.tscn")
+const DETAIL_PREVIEW_SIZE := 96
 
 ## hud.gdがロビー待機中にオーバーレイとして埋め込んだ場合に、閉じる操作の代わりに発火する。
 ## タイトルから専用シーンとして開かれた場合(get_tree().current_scene == self)は
@@ -32,6 +36,17 @@ var _remove_confirm_dialog: ConfirmationDialog
 var _pending_remove_puid: String = ""
 var _pending_remove_name: String = ""
 
+var _search_mode: OptionButton
+var _search_input: LineEdit
+var _search_results: VBoxContainer
+var _detail_dialog: AcceptDialog
+var _detail_preview: Control
+var _detail_name_lbl: Label
+var _detail_online_lbl: Label
+var _detail_rating_lbl: Label
+var _detail_record_lbl: Label
+var _detail_last_seen_lbl: Label
+
 
 func _ready() -> void:
 	back_btn.pressed.connect(_on_back_pressed)
@@ -42,8 +57,10 @@ func _ready() -> void:
 	if get_tree().current_scene != self:
 		shop_btn.hide()
 	_build_code_section()
+	_build_search_section()
 	_build_requests_section()
 	_build_remove_confirm_dialog()
+	_build_friend_detail_dialog()
 	await _sync_my_code()
 	await refresh()
 
@@ -113,6 +130,87 @@ func _build_code_section() -> void:
 	main_vbox.move_child(section, 0)
 
 
+## ⑤フレンド検索セクション。名前完全一致/コード完全一致の2モードで、検索結果の
+## 行から個別に追加できる。元の設計(friend-api)が意図的に列挙・部分一致を許さないため、
+## 検索結果は「一致した本人」に限られる(見つからない場合はその旨を表示するだけ)
+func _build_search_section() -> void:
+	var section := VBoxContainer.new()
+	section.add_theme_constant_override("separation", 10)
+	var title := Label.new()
+	title.text = "フレンドを検索"
+	title.add_theme_color_override("font_color", Color(1, 0.85, 0.4, 1))
+	title.add_theme_font_size_override("font_size", 20)
+	section.add_child(title)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	_search_mode = OptionButton.new()
+	_search_mode.add_item("名前で検索")
+	_search_mode.add_item("コードで検索")
+	row.add_child(_search_mode)
+	_search_input = LineEdit.new()
+	_search_input.placeholder_text = "名前 or コードを入力(完全一致)"
+	_search_input.custom_minimum_size = Vector2(220, 0)
+	row.add_child(_search_input)
+	var search_btn := Button.new()
+	search_btn.text = "検索"
+	search_btn.pressed.connect(_on_search_pressed)
+	row.add_child(search_btn)
+	section.add_child(row)
+
+	_search_results = VBoxContainer.new()
+	_search_results.add_theme_constant_override("separation", 10)
+	section.add_child(_search_results)
+
+	main_vbox.add_child(section)
+	main_vbox.move_child(section, 1)
+
+
+func _on_search_pressed() -> void:
+	for c in _search_results.get_children():
+		c.queue_free()
+	var query := _search_input.text.strip_edges()
+	if query.is_empty():
+		return
+	var mode := "name" if _search_mode.selected == 0 else "code"
+	var res := await FriendManager.search_user(query, mode)
+	if not res.get("found", false):
+		var reason := String(res.get("reason", ""))
+		var msg := "検索回数の上限に達しました。しばらくしてから試してください。" \
+			if reason == "rate_limited" else "見つかりませんでした。"
+		_search_results.add_child(_build_empty_label(msg))
+		return
+	for m in res.get("matches", []):
+		_search_results.add_child(_build_search_result_row(m))
+
+
+## 検索結果1件の行。表示名は入力側の呼称(相手が変更していても検索クエリのまま)なので
+## nameモードでの複数一致時は「コード表記」で本人を見分けてもらう
+func _build_search_result_row(m: Dictionary) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	var name_lbl := Label.new()
+	name_lbl.text = "%s（コード: %s）" % [String(m.get("name", "")), String(m.get("code", ""))]
+	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_lbl)
+	var add_btn := Button.new()
+	add_btn.text = "追加"
+	var code := String(m.get("code", ""))
+	add_btn.pressed.connect(_on_add_from_search_pressed.bind(code, add_btn))
+	row.add_child(add_btn)
+	return row
+
+
+func _on_add_from_search_pressed(code: String, source_btn: Button) -> void:
+	var res := await FriendManager.send_friend_request(code)
+	if res.get("ok", false):
+		status_label.text = "%s さんにリクエストを送りました。" % String(res.get("target_name", "フレンド"))
+		source_btn.disabled = true
+		source_btn.text = "送信済み"
+	else:
+		status_label.text = "リクエストの送信に失敗しました。"
+
+
 func _sync_my_code() -> void:
 	var code := await FriendManager.sync_with_backend()
 	_my_code_label.text = code if not code.is_empty() else "取得失敗"
@@ -131,7 +229,7 @@ func _build_requests_section() -> void:
 	section.add_child(_requests_list)
 
 	main_vbox.add_child(section)
-	main_vbox.move_child(section, 1)
+	main_vbox.move_child(section, 2)
 
 
 ## 削除ボタン押下時に出す「本当に削除しますか？」確認ダイアログ。
@@ -143,6 +241,98 @@ func _build_remove_confirm_dialog() -> void:
 	_remove_confirm_dialog.cancel_button_text = "キャンセル"
 	_remove_confirm_dialog.confirmed.connect(_on_remove_confirmed)
 	add_child(_remove_confirm_dialog)
+
+
+## ⑤⑥フレンド1人の詳細(オンライン状態・戦績・レート・最終ログイン・スキン)を見る
+## ダイアログ。1つ使い回し、_show_friend_detail_dialog()が内容を書き換えて開く
+func _build_friend_detail_dialog() -> void:
+	_detail_dialog = AcceptDialog.new()
+	_detail_dialog.title = "フレンド情報"
+	_detail_dialog.ok_button_text = "閉じる"
+
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	col.custom_minimum_size = Vector2(320, 0)
+
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 16)
+	_detail_preview = COSTUME_PREVIEW_SCENE.instantiate()
+	_detail_preview.custom_minimum_size = Vector2(DETAIL_PREVIEW_SIZE, DETAIL_PREVIEW_SIZE)
+	head.add_child(_detail_preview)
+	var head_col := VBoxContainer.new()
+	_detail_name_lbl = Label.new()
+	_detail_name_lbl.add_theme_font_size_override("font_size", 20)
+	head_col.add_child(_detail_name_lbl)
+	_detail_online_lbl = Label.new()
+	head_col.add_child(_detail_online_lbl)
+	_detail_last_seen_lbl = Label.new()
+	_detail_last_seen_lbl.add_theme_color_override("font_color", Color(0.7, 0.7, 0.75))
+	head_col.add_child(_detail_last_seen_lbl)
+	head.add_child(head_col)
+	col.add_child(head)
+
+	_detail_rating_lbl = Label.new()
+	col.add_child(_detail_rating_lbl)
+	_detail_record_lbl = Label.new()
+	col.add_child(_detail_record_lbl)
+
+	_detail_dialog.add_child(col)
+	add_child(_detail_dialog)
+
+
+func _on_show_detail_pressed(friend_puid: String) -> void:
+	var profile := await FriendManager.get_friend_profile(friend_puid)
+	if not profile.get("ok", false):
+		status_label.text = "フレンド情報の取得に失敗しました。"
+		return
+	_detail_name_lbl.text = String(profile.get("name", "Friend"))
+	var online := bool(profile.get("online", false))
+	_detail_online_lbl.text = "オンライン" if online else "オフライン"
+	_detail_online_lbl.add_theme_color_override("font_color",
+		Color(0.4, 0.9, 0.5) if online else Color(0.6, 0.6, 0.65))
+	_detail_last_seen_lbl.text = _format_last_seen(int(profile.get("last_seen", 0)), online)
+
+	if profile.get("stats_available", false):
+		var rating := int(profile.get("rating", 1500))
+		_detail_rating_lbl.text = "レート: [%s] %d Pt" % [RankingManager.tier_name(rating), rating]
+		var matches := int(profile.get("matches_played", 0))
+		_detail_record_lbl.text = "戦績: %d戦（にげる勝ち %d / おに勝ち %d）" % \
+			[matches, int(profile.get("runner_wins", 0)), int(profile.get("hunter_wins", 0))]
+		var costume_id := StringName(profile.get("costume_id", "default"))
+		var colors := ProfileManager.colors_from_html(profile.get("costume_colors", []))
+		var hat_id := StringName(profile.get("hat_id", "none"))
+		_detail_preview.call_deferred("set_interactive", false)
+		_detail_preview.call_deferred("show_costume", costume_id, colors)
+		_detail_preview.call_deferred("show_hat", hat_id)
+		_detail_preview.call_deferred("request_static_render")
+	else:
+		_detail_rating_lbl.text = "戦績データがまだありません。"
+		_detail_record_lbl.text = ""
+		# ダイアログは使い回しなので、前回開いた別のフレンドの見た目が残らないよう
+		# きほん姿にリセットする
+		_detail_preview.call_deferred("set_interactive", false)
+		_detail_preview.call_deferred("show_costume", CostumeCatalog.DEFAULT_ID,
+			CostumeCatalog.default_colors(CostumeCatalog.DEFAULT_ID))
+		_detail_preview.call_deferred("show_hat", HatCatalog.DEFAULT_ID)
+		_detail_preview.call_deferred("request_static_render")
+
+	_detail_dialog.popup_centered()
+
+
+## last_seenは-api側のミリ秒UNIX時刻。オンライン中/未取得(0)は個別に文言を出す
+func _format_last_seen(last_seen_ms: int, online: bool) -> String:
+	if online:
+		return ""
+	if last_seen_ms <= 0:
+		return "最終ログイン: 不明"
+	var elapsed_sec := int(Time.get_unix_time_from_system()) - int(last_seen_ms / 1000)
+	if elapsed_sec < 60:
+		return "最終ログイン: たった今"
+	if elapsed_sec < 3600:
+		return "最終ログイン: %d分前" % (elapsed_sec / 60)
+	if elapsed_sec < 86400:
+		return "最終ログイン: %d時間前" % (elapsed_sec / 3600)
+	return "最終ログイン: %d日前" % (elapsed_sec / 86400)
 
 
 func _refresh_requests() -> void:
@@ -208,6 +398,11 @@ func _build_friend_row(f: Dictionary) -> Control:
 		invite_btn.disabled = EosManager.current_lobby_id.is_empty()
 		invite_btn.pressed.connect(_on_invite_pressed.bind(String(f.get("name", "Friend"))))
 		row.add_child(invite_btn)
+
+	var detail_btn := Button.new()
+	detail_btn.text = "詳細"
+	detail_btn.pressed.connect(_on_show_detail_pressed.bind(String(f.get("id", ""))))
+	row.add_child(detail_btn)
 
 	var remove_btn := Button.new()
 	remove_btn.text = "削除"

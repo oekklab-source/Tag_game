@@ -35,6 +35,8 @@ func _ready() -> void:
 		await _test_respond_to_request()
 		await _test_remove_friend()
 		await _test_invite_to_lobby()
+		await _test_search_user()
+		await _test_get_friend_profile()
 
 	print("==================================================")
 	print("Friend Backend Mock 結果: PASS=%d, FAIL=%d" % [passed_count, failed_count])
@@ -103,3 +105,30 @@ func _test_invite_to_lobby() -> void:
 		EosManager.leave_lobby()
 	else:
 		print("EOS利用可能環境のため、実ロビー作成を伴う招待検証はスキップします")
+
+
+func _test_search_user() -> void:
+	print("\n--- [8] search_user() Offline/Fallback ---")
+	var empty_res: Dictionary = await FriendManager.search_user("", "name")
+	_assert(empty_res.get("found") == false, "空クエリでの検索は found == false")
+
+	var name_res: Dictionary = await FriendManager.search_user("Someone", "name")
+	_assert(name_res.get("found") == true, "非空クエリでの名前検索は found == true (モック)")
+	var matches: Array = name_res.get("matches", [])
+	_assert(matches.size() == 1, "モックの検索結果は1件")
+	if not matches.is_empty():
+		_assert(matches[0].has("code") and matches[0].has("name"), "検索結果の要素がcode/nameキーを持つ")
+		_assert(not matches[0].has("puid"), "検索結果にPUIDを含めない")
+
+	var code_res: Dictionary = await FriendManager.search_user("ANYCODE", "code")
+	_assert(code_res.get("found") == true, "非空クエリでのコード検索は found == true (モック)")
+
+
+func _test_get_friend_profile() -> void:
+	print("\n--- [9] get_friend_profile() Offline/Fallback ---")
+	var profile: Dictionary = await FriendManager.get_friend_profile("mock-puid-1")
+	_assert(profile.get("ok") == true, "get_friend_profile(モック)は ok == true")
+	_assert(typeof(profile.get("online")) == TYPE_BOOL, "online が bool 型")
+	_assert(profile.get("stats_available") == true, "モックは stats_available == true")
+	for key in ["rating", "matches_played", "runner_wins", "hunter_wins", "highest_rating"]:
+		_assert(profile.has(key), "戦績フィールド %s を含む" % key)

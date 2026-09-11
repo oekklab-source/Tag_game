@@ -50,6 +50,7 @@ func _on_leaderboard_loaded(entries: Array) -> void:
 		var rank = int(entry.get("rank", 0))
 		var p_name = str(entry.get("name", "Unknown"))
 		var score = int(entry.get("score", 0))
+		var entry_puid = str(entry.get("puid", ""))
 		
 		var row := HBoxContainer.new()
 		row.theme_override_constants.separation = 16
@@ -70,8 +71,15 @@ func _on_leaderboard_loaded(entries: Array) -> void:
 		tier_lbl.text = "[%s]" % RankingManager.tier_name(score)
 		tier_lbl.add_theme_color_override("font_color", RankingManager.tier_color(score))
 
+		# 着せ替え画面での名前変更はEOS Connectのログイン済みDisplayNameへ次回ログインまで
+		# 反映されない(autoload/eos_manager.gd:_on_profile_updated_for_display_nameのコメント参照)。
+		# そのためリーダーボードのnameは古いままの場合があり、自分の行の表示だけは常に
+		# 最新の ProfileManager.player_name で上書きする
+		var is_my_entry := not entry_puid.is_empty() and entry_puid == EosManager.product_user_id
+		var display_name: String = ProfileManager.player_name if is_my_entry else p_name
+
 		var name_lbl := Label.new()
-		name_lbl.text = p_name
+		name_lbl.text = display_name
 		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 		var score_lbl := Label.new()
@@ -84,8 +92,10 @@ func _on_leaderboard_loaded(entries: Array) -> void:
 		row.add_child(name_lbl)
 		row.add_child(score_lbl)
 
-		# 自身のデータならハイライト
-		if p_name == ProfileManager.player_name:
+		# 自身のデータか判定: puidが両方に入っていればそれで判定する(表示名の鮮度に
+		# 依存しないため確実)。オフラインモック(puidが無い)では名前一致にフォールバックする
+		var is_me := is_my_entry or (entry_puid.is_empty() and p_name == ProfileManager.player_name)
+		if is_me:
 			my_rank_val.text = "#%d" % rank
 			my_rank_found = true
 			var style := StyleBoxFlat.new()

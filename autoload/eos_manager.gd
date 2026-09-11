@@ -33,6 +33,11 @@ var product_user_id: String = ""
 var current_lobby_id: String = ""
 var is_host: bool = false
 
+## EOS Connectへ最後に送った表示名。_on_profile_updated_for_display_name() が
+## 変化の有無を判定するのに使う(profile_updated は名前以外の変更でも発火するため、
+## 変化が無いのに毎回再ログインを試みるのを防ぐ)
+var _last_synced_display_name: String = ""
+
 var _current_lobby: HLobby = null
 var _search_results: Dictionary = {}  # String lobby_id -> HLobby
 var _is_searching_lobbies: bool = false
@@ -84,6 +89,7 @@ func _exit_tree() -> void:
 
 func _ready() -> void:
 	_init_eos()
+	ProfileManager.profile_updated.connect(_on_profile_updated_for_display_name)
 
 
 ## EOS Platform の初期化 + EOS Connect(匿名 Device ID 認証)
@@ -117,6 +123,7 @@ func _init_eos() -> void:
 
 	is_eos_available = true
 	product_user_id = HAuth.product_user_id
+	_last_synced_display_name = ProfileManager.player_name
 	print("[EosManager] EOS initialized successfully. product_user_id=%s" % product_user_id)
 
 	# EAS(Epic Account Services)へは一切ログインしない匿名Device ID認証のみの構成のため、
@@ -130,6 +137,20 @@ func _init_eos() -> void:
 	await _sync_profile_with_cloud_bounded()
 
 	eos_initialized.emit(true)
+
+
+## 着せ替え画面での名前変更をEOS Connect側にも反映しようとするベストエフォート処理。
+## login_anonymous_async()の再呼び出しがサーバー側のDisplayNameを実際に更新するかは
+## addon側にも保証コメントが無く実機でしか確認できないため、これが効かなくても
+## _request_leaderboard_worker()/ranking_dialog.gdのpuidベースの自分判定・表示名上書きで
+## 「自分の行が見つからない」症状自体は別途解消している(そちらが本命)
+func _on_profile_updated_for_display_name() -> void:
+	if not is_eos_available:
+		return
+	if ProfileManager.player_name == _last_synced_display_name:
+		return
+	_last_synced_display_name = ProfileManager.player_name
+	await HAuth.login_anonymous_async(ProfileManager.player_name)
 
 
 ## eos_credentials.cfg を読み込み HCredentials を構築する。
@@ -527,6 +548,9 @@ func request_leaderboard(_start_rank: int = 1, _end_rank: int = 20) -> void:
 			{"rank": 1, "name": "SpeedMaster", "score": 2150},
 			{"rank": 2, "name": "Ninja_Shadow", "score": 1980},
 			{"rank": 3, "name": "TagKing", "score": 1840},
+			# puidを付けない: is_eos_available==falseのオフラインモックでは
+			# EosManager.product_user_idも空文字のままなので、ranking_dialog.gd側は
+			# 名前一致にフォールバックして自分の行を見つける
 			{"rank": 4, "name": ProfileManager.player_name, "score": ProfileManager.rating},
 			{"rank": 5, "name": "ChillRunner", "score": 1420},
 		]
@@ -552,7 +576,11 @@ func _request_leaderboard_worker(state: Dictionary, watchdog_pid: int) -> void:
 		var name_val: String = r.get("user_display_name", "")
 		if name_val.is_empty():
 			name_val = "Player"
-		entries.append({"rank": r.get("rank", 0), "name": name_val, "score": r.get("score", 0)})
+		# puid(user_id)を含めておく。表示名はEOS Connectログイン時点の値で固まっており
+		# 後からの名前変更を追わないため(_on_profile_updated_for_display_nameのコメント参照)、
+		# ranking_dialog.gd はここのnameではなくpuidで自分の行を判定する
+		entries.append({"rank": r.get("rank", 0), "name": name_val, "score": r.get("score", 0),
+			"puid": r.get("user_id", "")})
 	leaderboard_loaded.emit(entries)
 
 

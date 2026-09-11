@@ -18,7 +18,7 @@ const COLOR_HUNTER := Color(1.0, 0.45, 0.4)
 ## SubViewportContainer.stretch(costume_preview.tscn側で有効)により、内部の描画解像度も
 ## このコンテナの実サイズへ自動追従するので、別途レンダリング解像度を落とす必要はない
 const COSTUME_PREVIEW_SCENE := preload("res://scenes/costume_preview.tscn")
-const PREVIEW_SIZE := 64
+const PREVIEW_SIZE := 96
 
 @onready var status: Label = $Box/Col/Status
 @onready var list: VBoxContainer = $Box/Col/ListBox/List
@@ -194,19 +194,24 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	name_label.text = _display_name(id, me)
 	name_label.add_theme_font_size_override("font_size", 19)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	# ②相手のレート帯バッジ（peer_profiles が届くまでは表示しない）
+	# ②相手のレート帯バッジ・生数値（peer_profiles が届くまでは両方とも表示しない）
 	var tier_badge := Label.new()
+	var rating_label := Label.new()
 	if GameManager.peer_profiles.has(id):
 		var rating := int(GameManager.peer_profiles[id].get("rating", 1500))
 		tier_badge.text = "[%s]" % RankingManager.tier_name(rating)
 		tier_badge.modulate = RankingManager.tier_color(rating)
 		tier_badge.add_theme_font_size_override("font_size", 15)
+		rating_label.text = "%d Pt" % rating
+		rating_label.add_theme_font_size_override("font_size", 15)
+		rating_label.modulate = Color(1, 1, 1, 0.7)
 	var badge := Label.new()
 	badge.text = "にげる" if is_runner else "おに"
 	badge.add_theme_font_size_override("font_size", 19)
 	badge.modulate = COLOR_RUNNER if is_runner else COLOR_HUNTER
 	h.add_child(name_label)
 	h.add_child(tier_badge)
+	h.add_child(rating_label)
 	h.add_child(badge)
 	row.add_child(h)
 	if not is_host or is_eos_matched:
@@ -247,11 +252,18 @@ func _roster_preview(id: int) -> Control:
 	preview.call_deferred("set_interactive", false)
 	preview.call_deferred("show_costume", costume_id, colors)
 	preview.call_deferred("show_hat", hat_id)
+	# ⑥見た目反映後の1フレームだけ描いて止める(静止画なのに毎フレーム再レンダリングされる
+	# render_target_update_mode=3の既定動作を避け、拡大後のGPU負荷を抑える)
+	preview.call_deferred("request_static_render")
 	return preview
 
 
-## ローカルニックネーム(GameManager.nickname_for)を優先し、未設定なら
-## ②GameManager.peer_profiles のEOSプロフィール名、それも無ければ id 表示にする
+## GameManager.nickname_for(sync_nickname)を優先し、未到着なら
+## ②GameManager.peer_profiles の名前、それも無ければ id 表示にする。
+## 両者とも出どころは同じ ProfileManager.player_name で、到着経路が違うだけ
+## (sync_nickname はスポーン時の同期プロパティ、peer_profiles は report_profile の RPC)。
+## 前者が先に届くことが多いため優先し、後者はまだ Player ノードが居ない/未到着の間の
+## フォールバックとして残している
 func _display_name(id: int, me: int) -> String:
 	var nickname := GameManager.nickname_for(id)
 	var has_nickname := nickname != "プレイヤー %d" % id
