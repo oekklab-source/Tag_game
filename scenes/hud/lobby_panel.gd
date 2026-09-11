@@ -46,6 +46,11 @@ func _ready() -> void:
 	open_shop_button.pressed.connect(func(): open_overlay_requested.emit("shop"))
 	open_friend_button.pressed.connect(func(): open_overlay_requested.emit("friend"))
 	debug_cpu_runner_button.toggled.connect(GameManager.set_debug_cpu_runner)
+	# Enterキーはworld.gdの独自アクション"start_round"にも直接バインドされている。
+	# このボタンがキーボードフォーカスを持ったままだと、Enter一発で
+	# 標準ui_accept(ボタン発火)と独自アクション(_unhandled_input)の二重発火になり、
+	# request_start_round()が1回の入力で2回走ってCPU鬼が二重湧きする
+	start_button.focus_mode = Control.FOCUS_NONE
 	start_button.pressed.connect(GameManager.request_start_round)
 	max_members_apply_button.pressed.connect(_on_max_members_apply_pressed)
 	# なかま待ち中は接続を切ってタイトルへ戻れる唯一の手段。

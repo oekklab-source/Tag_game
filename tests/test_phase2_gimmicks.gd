@@ -109,7 +109,7 @@ func _test_moving_platform(player: CharacterBody3D) -> void:
 ## 4. ？ブロックのアイテム抽選と復活周期 (12秒) 検証
 func _test_question_block(player: CharacterBody3D) -> void:
 	print("\n--- [4] ？ブロック (Question Block) ---")
-	var qblock: StaticBody3D = load("res://scenes/gimmicks/question_block.tscn").instantiate()
+	var qblock: Area3D = load("res://scenes/gimmicks/question_block.tscn").instantiate()
 	get_tree().current_scene.add_child(qblock)
 	qblock.global_position = Vector3(0, 0, 0)
 	await get_tree().physics_frame

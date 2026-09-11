@@ -112,6 +112,8 @@ func _apply_data(data: Dictionary) -> void:
 	# ②ジェム: schema<4（フィールドが存在しない旧セーブ）は 0 で初期化する
 	if schema >= 4:
 		premium_currency = int(data.get("premium_currency", premium_currency))
+	else:
+		premium_currency = 0
 
 	# ⑥クラウド同期用タイムスタンプ: schema<5（フィールドが存在しない旧セーブ）は 0 で初期化する
 	if schema >= 5:
