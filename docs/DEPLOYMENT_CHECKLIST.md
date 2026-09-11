@@ -139,3 +139,30 @@ Leaderboards など**必要最小限の権限のみ**になっているかを、
 過剰な権限（例: 他プロダクトの管理系スコープ）が付いていないことを確認する。
 
 **完了条件**: Developer Portal のスクリーンショットで Client Policy の権限一覧を確認済み。
+
+## 7. Cloudflare Workers Builds（Git連携）のチェック失敗（任意・非ブロッキング）
+
+GitHub PR上の「Workers Builds: tag-game」チェックは、2026-08-27の初回導入コミット以降
+一度も成功していない。ただし **マージのブロッカーではない**（`main` に必須チェック設定なし、
+PRは常に `MERGEABLE`）。本番デプロイは本チェックリストの手動 `npx wrangler deploy`
+経由で完結しており、このCI連携とは無関係。
+
+原因は本リポジトリの2つのworker（`tag-game-friend-api`/`service/friend-api`、
+`tag-game-commerce-api`/`service/commerce-api`）のいずれとも名前が一致しない
+「tag-game」というWorkers Buildsプロジェクトが、Cloudflareダッシュボード上でGit連携
+されていること（ルートディレクトリ未設定、または対象workerの取り違えの可能性）。
+
+修正するには（Cloudflareダッシュボード側の作業、コード変更は不要）:
+
+1. Cloudflare dashboard → Workers & Pages → 該当の「tag-game」プロジェクト → Settings → Build
+   を開き、現在の Root directory / 対象 Worker 設定を確認する。
+2. 次のいずれかを選ぶ:
+   - `service/friend-api` または `service/commerce-api` のどちらかを Root directory に
+     設定し、対象 Worker 名を `wrangler.toml` の `name` と一致させる
+     （2 worker構成のため、このプロジェクト1つではどちらか片方しかビルドできない）。
+   - もしくは、実デプロイは既に手動 `wrangler deploy` で完結しており本連携が不要であれば、
+     この Git 連携（Workers Builds プロジェクト）自体を削除し、PRへの赤バツ表示を止める。
+3. 次回コミットで対象PRのチェックが消える、または成功することを確認する。
+
+**完了条件**: 新規コミットに対して「Workers Builds: tag-game」チェックが失敗表示されなくなる
+（成功する、またはGit連携を削除してチェック自体が出なくなる）。
