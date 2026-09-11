@@ -205,7 +205,12 @@ func create_lobby(lobby_type: int = 0, max_members: int = 8, lobby_name: String 
 		lobby.add_attribute("host_rating", str(ProfileManager.rating))
 		lobby.add_attribute("tier", String(RankingManager.tier_id(ProfileManager.rating)))
 		lobby.add_attribute("tier_lock", "1" if GameManager.tier_lock_enabled else "0")
-		lobby.add_attribute("host_addr", NetworkManager.public_address)
+		# ここでNetworkManager.public_addressをそのまま書かない。start_host()はこの
+		# 関数の呼び出し元(lobby_created経由)より後に走るため、まだ前回ホストした時の
+		# 値(古いトンネルのホスト名やLAN IP)が残っている可能性があり、それを新しい
+		# ロビーの最終値として誤って公開してしまう。空にしておき、この直後に繋ぐ
+		# public_address_ready経由で今回のセッションの値に更新させる
+		lobby.add_attribute("host_addr", "")
 		if not await lobby.update_async():
 			print("[EosManager] Failed to write initial lobby attributes.")
 		if not NetworkManager.public_address_ready.is_connected(_on_public_address_ready):
@@ -363,14 +368,23 @@ func get_lobby_data(lobby_id: String, key: String) -> String:
 	return String(_get_lobby_attr_ci(lobby, key).get("value", ""))
 
 
-## 参加者が実際に繋げるアドレスを待つ(EOS無効時は常に空文字)
-func await_host_addr(lobby_id: String, retries: int = 5, interval: float = 0.4) -> String:
+## 参加者が実際に繋げるアドレスを待つ(EOS無効時は常に空文字)。
+##
+## host_addr は最初LAN内IPで埋まり、Cloudflare Tunnelが確立し次第トンネルの
+## ホスト名へ更新される(create_lobby()参照)。LAN内IPは「非公開・確立前の仮の値」
+## である可能性があるため、非空というだけでは確定と見なさない。ホスト名（IPでない
+## 文字列）が来るまで待ち、来なければ最後に見えていた値(LAN内IPでも)で妥協する。
+## retries*interval はホスト側の待ち時間(NetworkManager.TUNNEL_POLL_TIMEOUT=30秒)と揃えてある
+func await_host_addr(lobby_id: String, retries: int = 60, interval: float = 0.5) -> String:
+	var last_addr := ""
 	for i in retries:
 		var addr := get_lobby_data(lobby_id, "host_addr")
 		if not addr.is_empty():
-			return addr
+			last_addr = addr
+			if not addr.is_valid_ip_address():
+				return addr  # ホスト名 = トンネル確立済みの最終値
 		await get_tree().create_timer(interval).timeout
-	return ""
+	return last_addr
 
 
 ## Cloudflare Tunnelのホスト名が解決した後、ロビーのhost_addr属性を更新する

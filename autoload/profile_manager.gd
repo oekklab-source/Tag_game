@@ -7,6 +7,12 @@ signal profile_updated
 
 const SAVE_PATH := "user://profile.json"
 const SCHEMA_VERSION := 5
+## 多重起動防止用ロックファイル。SAVE_PATHは同一PC上の全プロセス共通の1ファイルなので、
+## 2つ目のプロセスが後からsave_profile()すると1つ目の変更(プレゼント受領等)を
+## 丸ごと上書きして消してしまう(実機で発生: 接続トラブル対応中に多重起動し、
+## 友達から届いたプレゼントが消えた)。_ready()で他プロセスの生存を確認して防ぐ
+const INSTANCE_LOCK_PATH := "user://instance.lock"
+var _holds_instance_lock := false
 
 var player_name: String = "Player"
 ## ④現在選択中のコスチュームの色見本1つ目のミラー。costume_colors[0] と常に一致させ、
@@ -42,7 +48,43 @@ var last_modified_unix: int = 0
 
 
 func _ready() -> void:
+	if not _acquire_instance_lock():
+		return
 	load_profile()
+
+
+func _exit_tree() -> void:
+	# 自分が持っているロックだけを消す。多重起動で弾かれた側(ロックを書いていない)が
+	# 終了時に正規プロセスのロックを消してしまうと、以後の多重起動チェックが無効になる
+	if _holds_instance_lock and FileAccess.file_exists(INSTANCE_LOCK_PATH):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(INSTANCE_LOCK_PATH))
+
+
+## Web版は複数タブが同じuser://を共有する形がOSプロセスの多重起動とは違う
+## (PIDで生死を判定する手段が無い)ため対象外。前回のロックが残っていても、
+## そのPIDが既に終了していれば(前回クラッシュ等)古いロックとみなして起動を許可する。
+## ヘッドレス(tests/)も対象外: net_anim.tscn等は同一プロジェクトを
+## `-- host` / `-- client` で意図的に複数プロセス同時起動する(README参照)ため、
+## ここで弾くとテストが軒並み動かなくなる
+func _acquire_instance_lock() -> bool:
+	if OS.has_feature("web") or DisplayServer.get_name() == "headless":
+		return true
+	if FileAccess.file_exists(INSTANCE_LOCK_PATH):
+		var f := FileAccess.open(INSTANCE_LOCK_PATH, FileAccess.READ)
+		var prev_pid := int(f.get_as_text()) if f else -1
+		if prev_pid > 0 and OS.is_process_running(prev_pid):
+			OS.alert(
+				"Tag_Game は既に起動しています。\n"
+				+ "二重に起動すると、セーブデータ（プレゼントの受け取り等）が正しく保存されないことがあります。\n"
+				+ "先に起動しているウィンドウを閉じてから、もう一度起動してください。",
+				"多重起動を検出しました")
+			get_tree().quit()
+			return false
+	var out := FileAccess.open(INSTANCE_LOCK_PATH, FileAccess.WRITE)
+	if out:
+		out.store_string(str(OS.get_process_id()))
+		_holds_instance_lock = true
+	return true
 
 
 ## プロフィールの読み込み

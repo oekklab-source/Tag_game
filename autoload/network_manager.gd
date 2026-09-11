@@ -215,6 +215,11 @@ func _launch_tunnel() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	if _tunnel_pid != -1 and OS.is_process_running(_tunnel_pid):
+		# 前のトンネルを使い回す場合、poll は再始動しない（既に止まっている）ため、
+		# ここで改めて emit しないと新しく作ったロビーの host_addr がLAN内IPのまま
+		# 更新されず止まる（await_host_addr はホスト名が来るまで待ち続けるため）
+		if not public_address.is_empty():
+			public_address_ready.emit(public_address)
 		return
 	var script_path := _prepare_tunnel_script()
 	if script_path.is_empty():
