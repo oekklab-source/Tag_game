@@ -11,6 +11,11 @@ const SCHEMA_VERSION := 5
 ## 2つ目のプロセスが後からsave_profile()すると1つ目の変更(プレゼント受領等)を
 ## 丸ごと上書きして消してしまう(実機で発生: 接続トラブル対応中に多重起動し、
 ## 友達から届いたプレゼントが消えた)。_ready()で他プロセスの生存を確認して防ぐ
+##
+## 既知の許容リスク(意図的に未対策): OSがPIDを再利用した場合、既に終了した旧プロセスの
+## PIDを別の無関係なプロセスが引き継いでいると誤って「起動中」と判定しうる。発生には
+## 旧プロセスのクラッシュ直後に他プロセスがPID空間を一巡するほど大量に起動される必要があり
+## 確率は極めて低いため、プロセス開始時刻の照合(WMI/PowerShell呼び出しが必要)までは行わない
 const INSTANCE_LOCK_PATH := "user://instance.lock"
 var _holds_instance_lock := false
 
@@ -69,22 +74,36 @@ func _exit_tree() -> void:
 func _acquire_instance_lock() -> bool:
 	if OS.has_feature("web") or DisplayServer.get_name() == "headless":
 		return true
-	if FileAccess.file_exists(INSTANCE_LOCK_PATH):
-		var f := FileAccess.open(INSTANCE_LOCK_PATH, FileAccess.READ)
-		var prev_pid := int(f.get_as_text()) if f else -1
-		if prev_pid > 0 and OS.is_process_running(prev_pid):
-			OS.alert(
-				"Tag_Game は既に起動しています。\n"
-				+ "二重に起動すると、セーブデータ（プレゼントの受け取り等）が正しく保存されないことがあります。\n"
-				+ "先に起動しているウィンドウを閉じてから、もう一度起動してください。",
-				"多重起動を検出しました")
-			get_tree().quit()
-			return false
+	if _other_instance_holds_lock():
+		OS.alert(
+			"Tag_Game は既に起動しています。\n"
+			+ "二重に起動すると、セーブデータ（プレゼントの受け取り等）が正しく保存されないことがあります。\n"
+			+ "先に起動しているウィンドウを閉じてから、もう一度起動してください。",
+			"多重起動を検出しました")
+		get_tree().quit()
+		return false
 	var out := FileAccess.open(INSTANCE_LOCK_PATH, FileAccess.WRITE)
 	if out:
 		out.store_string(str(OS.get_process_id()))
-		_holds_instance_lock = true
+		out.close()
+	# TOCTOU対策: 直前の_other_instance_holds_lock()チェックとこの書き込みの間には
+	# 排他が無いため、ほぼ同時に別プロセスが起動しているとお互いの存在確認をすり抜けて
+	# 両方とも書き込みに進んでしまいうる。書き込み直後に読み直し、自分のPIDのままか
+	# (=最後に書いたのが自分か)を確認することでこのレースの窓を大きく縮める
+	# (ファイルロック等を使わない簡易ロックのため、理論上完全な排他ではない)
+	if _other_instance_holds_lock():
+		return false
+	_holds_instance_lock = true
 	return true
+
+
+## ロックファイルが自分以外の生存プロセスのPIDを指しているか
+func _other_instance_holds_lock() -> bool:
+	if not FileAccess.file_exists(INSTANCE_LOCK_PATH):
+		return false
+	var f := FileAccess.open(INSTANCE_LOCK_PATH, FileAccess.READ)
+	var pid := int(f.get_as_text()) if f else -1
+	return pid > 0 and pid != OS.get_process_id() and OS.is_process_running(pid)
 
 
 ## プロフィールの読み込み
