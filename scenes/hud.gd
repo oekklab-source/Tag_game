@@ -54,7 +54,7 @@ const ROULETTE_FAST := 0.05
 const ROULETTE_SLOW := 0.22
 ## バフの表示名と、残量ゲージの基準になる持続時間
 const BUFF_INFO := {
-	&"speed": ["スピード", 6.0, Color(1.0, 0.85, 0.25)],
+	&"speed": ["スピード", 2.5, Color(1.0, 0.85, 0.25)],
 	&"jump": ["ジャンプ", 8.0, Color(0.55, 0.8, 1.0)],
 }
 
@@ -418,19 +418,27 @@ func _update_result(is_runner: bool) -> void:
 	if not result_panel.visible:
 		return
 	var won: bool = GameManager.result_runner_won
+	var copy := result_copy(is_runner, won, GameManager.result_reason)
+	result_title.text = copy[0]
+	result_sub.text = copy[1]
 	if GameManager.result_reason == GameManager.EndReason.RUNNER_LEFT:
-		result_title.text = "ちゅうだん"
 		result_title.modulate = COLOR_GOLD
-		result_sub.text = "逃げる人が抜けました"
 	else:
-		result_title.text = "にげきった！" if won else "つかまえた！"
 		result_title.modulate = COLOR_RUNNER if won else COLOR_HUNTER
-		if won:
-			result_sub.text = "最後まで逃げきった" if is_runner else "逃げる人に逃げきられた"
-		else:
-			result_sub.text = "つかまってしまった" if is_runner else "逃げる人をつかまえた"
 	result_next.text = "%d秒後になかま待ちにもどります" % maxi(ceili(GameManager.result_left), 0)
 	result_next.modulate = COLOR_GOLD
+
+
+static func result_copy(is_runner: bool, runner_won: bool, reason: int) -> PackedStringArray:
+	if reason == GameManager.EndReason.RUNNER_LEFT:
+		return PackedStringArray(["ちゅうだん", "逃げる人が抜けました"])
+	if runner_won:
+		if is_runner:
+			return PackedStringArray(["にげきった！", "最後まで逃げきった"])
+		return PackedStringArray(["にげきられた…", "逃げる人をつかまえられなかった"])
+	if is_runner:
+		return PackedStringArray(["つかまった…", "鬼につかまってしまった"])
+	return PackedStringArray(["つかまえた！", "逃げる人をつかまえた"])
 
 
 ## --- 円形タイマー ------------------------------------------------------

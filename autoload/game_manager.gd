@@ -33,7 +33,7 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## v2: _start_round / _sync_state に鬼の人数（CPU 込み）を足した
 ## v3: player.tscn の同期プロパティに sync_emote（エモート）を足した
 # v4: Player/CPU の SceneReplicationConfig に滑走状態を追加。
-const PROTOCOL_VERSION := 5  # 落下復帰タイマーをPlayer/両CPUに追加
+const PROTOCOL_VERSION := 6  # 外周の傾斜イベントRPCを追加
 ## 参加者から版数の返事が来るのを待つ時間。古いビルドには ack_version 自体が
 ## 無いので、無反応もまた「食い違っている」ことの手がかりになる。
 ## ただし回線が遅いだけの可能性もあるので、無反応では蹴らず警告に留める

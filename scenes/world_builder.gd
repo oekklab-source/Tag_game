@@ -282,6 +282,7 @@ static func build(map_root: Node3D, gimmick_root: Node3D, decor_root: Node3D) ->
 	var wall_mat := pop_material(Color(0.24, 0.18, 0.38))
 	_build_walls(map_root, wall_mat)
 	_build_wall_corners(map_root, wall_mat)
+	preload("res://scenes/perimeter_rim.gd").install(map_root, decor_root, wall_mat)
 	_build_parapets(map_root, zone_mats)
 	# 後から置く物が先に置いた物へ重ならないよう、確定した位置を順に積み上げていく
 	var occupied := _build_gimmicks(gimmick_root, zone_mats)
@@ -857,7 +858,7 @@ static func _hits_keepout(pos: Vector3, half: Vector2, rects: Array, pad: float)
 
 
 static func _build_walls(root: Node3D, mat: Material) -> void:
-	var h := WorldData.WALL_HEIGHT
+	var h := WorldData.WALL_HEIGHT - 0.3
 	var half := WorldData.WORLD_HALF
 	var cy: float = WorldData.SLAB_BOTTOM + h * 0.5
 	var span := half * 2.0 + 2.0
@@ -871,18 +872,39 @@ static func _build_walls(root: Node3D, mat: Material) -> void:
 ## 2枚の壁の法線を相殺してその場に詰まる（部屋の角にハマる典型例）。
 ## 対角の壁1枚に置き換えて、90°の凹んだ角を2つの135°の角へ変える
 static func _build_wall_corners(root: Node3D, mat: Material) -> void:
-	var h := WorldData.WALL_HEIGHT
-	var half := WorldData.WORLD_HALF
-	var cy: float = WorldData.SLAB_BOTTOM + h * 0.5
-	var chamfer := WALL_CORNER_CHAMFER
-	var corners: Array[Vector2] = [
-		Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]
-	for i in corners.size():
-		var s: Vector2 = corners[i]
-		var mid := Vector2(s.x * (half - chamfer * 0.5), s.y * (half - chamfer * 0.5))
-		var yaw := atan2(s.y, s.x)
-		_box(root, "WallCorner%d" % i, Vector3(mid.x, cy, mid.y),
-			Vector3(chamfer * sqrt(2.0), h, 1.0), mat, Vector3(0, yaw, 0))
+	var top := WorldData.SLAB_BOTTOM + WorldData.WALL_HEIGHT - 0.3
+	for signs in [Vector3(-1, 0, -1), Vector3(1, 0, -1), Vector3(1, 0, 1), Vector3(-1, 0, 1)]:
+		var body := StaticBody3D.new()
+		body.name = "FilledCorner%d" % root.get_child_count()
+		root.add_child(body)
+		corner_prism(body, signs, WorldData.SLAB_BOTTOM, top, mat)
+
+
+## 対角壁の裏側も三角柱で埋め、上から落ち込める袋状の空洞を作らない。
+static func corner_prism(body: Node3D, signs: Vector3, bottom: float, top: float, mat: Material) -> void:
+	var outer := WorldData.WORLD_HALF + 1.0
+	var inner := WorldData.WORLD_HALF - WALL_CORNER_CHAMFER - 1.0
+	var points := PackedVector3Array()
+	for y in [bottom, top]:
+		for p in [Vector3(inner, y, outer), Vector3(outer, y, inner), Vector3(outer, y, outer)]:
+			points.append(body.to_local(Vector3(p.x * signs.x, y, p.z * signs.z)))
+	var shape := ConvexPolygonShape3D.new()
+	shape.points = points
+	var collision := CollisionShape3D.new()
+	collision.shape = shape
+	body.add_child(collision)
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for index in [0, 2, 1, 3, 4, 5, 0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4, 2, 0, 3, 2, 3, 5]:
+		surface.add_vertex(points[index])
+	surface.generate_normals()
+	var mesh := MeshInstance3D.new()
+	mesh.mesh = surface.commit()
+	var solid_mat := mat.duplicate() as StandardMaterial3D
+	solid_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mesh.material_override = solid_mat
+	body.add_child(mesh)
+
 
 
 ## 遮蔽ブロック。配置は固定シードの乱数なので全ピアで同一になる。
