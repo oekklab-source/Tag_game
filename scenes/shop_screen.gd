@@ -48,6 +48,12 @@ func _ready() -> void:
 	PurchaseManager.currency_changed.connect(_refresh_gem_label)
 	PurchaseManager.purchase_failed.connect(_on_purchase_failed)
 	GiftManager.gift_received.connect(_on_gift_received)
+	# ⑥Stripe決済はOSブラウザ経由のため、決済完了直後はゲームウィンドウが
+	# フォーカスを失ったままになりやすい。フォーカス復帰時に付与済みジェム残高で
+	# 明示的に再同期し、「購入直後は表示が更新されず、画面を出入りするまで
+	# 反映されない」症状(currency_changed自体は正しく発火・保存されているのに
+	# 表示だけ古いまま、という実機報告)を防ぐ
+	get_window().focus_entered.connect(_refresh_gem_label)
 	gift_overlay.hide()
 	refresh()
 
@@ -110,7 +116,9 @@ func _on_buy_pack_pressed(pack_id: StringName, btn: Button) -> void:
 		btn.pressed.disconnect(cancel_callable)
 		btn.pressed.connect(buy_callable)
 		btn.text = original_text
-	if ok:
+	# ⑥決済待ち(最大約31分)の間にユーザーが画面を離れてこのインスタンス自体が
+	# queue_free()されている場合があるため、status_labelへのアクセス前にガードする
+	if ok and is_instance_valid(status_label):
 		var def := CurrencyPackCatalog.get_def(pack_id)
 		status_label.text = "💎%d を獲得しました！" % int(def.get("gems", 0))
 
