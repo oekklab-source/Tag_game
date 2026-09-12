@@ -19,12 +19,22 @@ Steamworks → EOS 移行はコード上は全フェーズ完了しているが�
 **2026-09-12 実施済み（ステップ1・2・3、スクリーンショットで確認）**: Stat `PlayerRating`
 （aggregation LATEST）、Leaderboard `GlobalRankings`（`PlayerRating` に紐づき aggregation LATEST、
 ステータス「アクティブ」）を作成済み。Client Policy `GameClient_Default` にも Stats/Leaderboards
-は有効（項目6参照）。**未実施**: ゲーム内のランキング画面
-（[scenes/ranking_dialog.gd](../scenes/ranking_dialog.gd)）に実際のスコアが表示されることの実機確認
-（下記の本来の完了条件）。
+は有効（項目6参照）。
+
+**2026-09-12 完了条件を実機2台で確認済み**: ルームマッチ経由のランク対戦を完了させ、
+ゲーム内のランキング画面（[scenes/ranking_dialog.gd](../scenes/ranking_dialog.gd)）に
+実際のスコアが表示されることを確認（自分の順位・レートが正しく反映、更新のたびに
+最新スコアへ更新される）。**新たに判明した既知の制限（バグではない）**: 自分以外の
+プレイヤーは名前が汎用の「Player」表示になる。EOS Leaderboards の `user_display_name` が
+常に空文字で返るため、EOS Connect の ProductUserId 逆引き
+（`QueryProductUserIdMappings`→`CopyProductUserInfo`）による解決を試したが、面識のない
+（フレンド/同ロビー実績のない）相手には `CopyProductUserInfo` が `result_code=NotFound` を
+返すことを実機ログで確認した（[autoload/eos_manager.gd](../autoload/eos_manager.gd) の
+リーダーボード節コメント参照）。EOS 側の意図的なプライバシー制限とみられ、クライアント側での
+回避手段はない。スコア自体は正しく表示されるため、この項目は完了とする。
 
 **完了条件**: ゲーム内のランキング画面（[scenes/ranking_dialog.gd](../scenes/ranking_dialog.gd)）に
-実際のスコアが表示される。
+実際のスコアが表示される。（達成。他プレイヤー名の「Player」表示は上記の理由により仕様として受容）
 
 ## 2. Stripe 決済（Phase 1・`service/commerce-api`）
 

@@ -500,9 +500,15 @@ func handoff_if_incapable() -> bool:
 
 # --- リーダーボード(Phase 3) ---
 # EOS Stats & Leaderboards Interface(HStats/HLeaderboards)で実装。
-# 表示名はEOS Connect匿名ログイン時(_init_eos内のlogin_anonymous_async)に渡した
-# display_nameがバックエンド側に保持され、get_leaderboard_records_asyncの
-# user_display_nameへそのまま反映される想定(旧Steam実装のような逆引きは不要)。
+# 表示名について: 当初はEOS Connect匿名ログイン時(_init_eos内のlogin_anonymous_async)に
+# 渡したdisplay_nameがget_leaderboard_records_asyncのuser_display_nameへそのまま
+# 反映される想定だったが、2026-09-12の実機検証で誤りと判明した(自分以外の全エントリで
+# user_display_nameが空文字で返ってきた)。EOS ConnectのProductUserId逆引き
+# (QueryProductUserIdMappings→HAuth.get_product_user_info_async)による解決も同日試したが、
+# 面識のない(フレンド/同ロビー実績のない)相手には常にCopyProductUserInfoが
+# result_code=NotFoundを返すことを実機ログで確認した——EOS側の意図的なプライバシー制限と
+# 考えられ、クライアント側での回避手段はない。そのため自分以外は"Player"表示のまま、
+# 自分の行だけranking_dialog.gd側でProfileManager.player_nameに差し替えるのが最終仕様。
 # ただしログイン後にプロフィール名を変更しても次回ログインまでは反映されない。
 
 const LEADERBOARD_STAT_NAME := "PlayerRating"
