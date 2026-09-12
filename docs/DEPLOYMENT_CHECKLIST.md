@@ -30,6 +30,13 @@ Steamworks → EOS 移行はコード上は全フェーズ完了しているが�
 `npx wrangler deploy` 実施済み）。**未実施は 7 のみ**（テストカードでの実際の
 購入フロー確認）— Phase 4 の実機検証項目6・7で行う。
 
+**2026-09-10 実施済み（Phase 4 実機検証項目6・7）**: テストカード
+`4242 4242 4242 4242` での通常購入（ジェム付与を確認）と、購入完了直後に
+キャンセルする競合ケース（`27498ae` の再チェック修正でジェム付与が正しく行われることを
+確認）を実機で確認済み。あわせて `pending_purchase.json` のバックアップ/リストアによる
+`reconcile_pending()` の二重付与防止（5分猶予ウィンドウ内の1回限りの再付与に限定される
+ことを `service/commerce-api` 側の `claimed` 状態遷移で確認）も実機検証済み。項目7は完了。
+
 1. Stripe（テストモード）で3商品（small / medium / large）の Price を作成する。
 2. 発行された Price ID を以下2箇所の `price_REPLACE_WITH_REAL_*` に上書きする:
    - [autoload/currency_pack_catalog.gd](../autoload/currency_pack_catalog.gd)（`PACKS` 内3箇所）
