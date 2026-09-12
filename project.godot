@@ -11,15 +11,32 @@ config_version=5
 [application]
 
 config/name="3D Chase Game"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/title.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [autoload]
 
+BackendConfig="*res://autoload/backend_config.gd"
+ProfileManager="*res://autoload/profile_manager.gd"
+RankingManager="*res://autoload/ranking_manager.gd"
 NetworkManager="*res://autoload/network_manager.gd"
 GameManager="*res://autoload/game_manager.gd"
-PlayerPrefs="*res://autoload/player_prefs.gd"
+PurchaseManager="*res://autoload/purchase_manager.gd"
+FriendManager="*res://autoload/friend_manager.gd"
+GiftManager="*res://autoload/gift_manager.gd"
+EOSGRuntime="*res://addons/epic-online-services-godot/runtime.gd"
+HPlatform="*res://addons/epic-online-services-godot/heos/hplatform.gd"
+HAuth="*res://addons/epic-online-services-godot/heos/hauth.gd"
+HAchievements="*res://addons/epic-online-services-godot/heos/hachievements.gd"
+HFriends="*res://addons/epic-online-services-godot/heos/hfriends.gd"
+HStats="*res://addons/epic-online-services-godot/heos/hstats.gd"
+HLeaderboards="*res://addons/epic-online-services-godot/heos/hleaderboards.gd"
+HLobbies="*res://addons/epic-online-services-godot/heos/hlobbies.gd"
+HP2P="*res://addons/epic-online-services-godot/heos/hp2p.gd"
+HSessions="*res://addons/epic-online-services-godot/heos/hsessions.gd"
+HPlayerDataStorage="*res://addons/epic-online-services-godot/heos/hplayerdatastorage.gd"
+EosManager="*res://autoload/eos_manager.gd"
 
 [display]
 
@@ -90,6 +107,10 @@ emote={
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":70,"key_label":0,"unicode":102,"location":0,"echo":false,"script":null)
 ]
 }
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/epic-online-services-godot/plugin.cfg")
 
 [layer_names]
 

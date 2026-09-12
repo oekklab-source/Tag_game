@@ -25,6 +25,11 @@
 .PARAMETER Port
     Godot ホストが待ち受けているポート（network_manager.gd の PORT と合わせる）。
 
+.PARAMETER HostAddrFile
+    ②EOSロビー経由の参加者へホスト名を伝えるため、確立したトンネルの
+    ホスト名をこのファイルへ書き出す。Godot 側（network_manager.gd の
+    _launch_tunnel）が渡す。手動実行時は省略してよい。
+
 .EXAMPLE
     pwsh tools/serve.ps1
 .EXAMPLE
@@ -33,7 +38,8 @@
 [CmdletBinding()]
 param(
     [string]$PagesUrl,
-    [int]$Port = 9999
+    [int]$Port = 9999,
+    [string]$HostAddrFile
 )
 
 # GitHub Pages の URL（末尾のスラッシュ無し）
@@ -62,8 +68,14 @@ if (-not $listening) {
 Write-Host "cloudflared を起動中 (localhost:$Port を公開)..." -ForegroundColor Cyan
 
 # quick tunnel の URL は標準エラーへバナーとして出るので、そこから拾う。
-# 2>&1 でマージすると PowerShell が ErrorRecord に包むため、文字列化してから照合する
+# 2>&1 でマージすると PowerShell が ErrorRecord に包むため、文字列化してから照合する。
+# $ErrorActionPreference='Stop' のままだと、cloudflared が起動時に出す通常のバナー
+# (起動失敗ではない) すら ErrorRecord として終端エラー扱いになり、肝心の
+# trycloudflare.com のホスト名行に到達する前にパイプラインが止まってしまう。
+# トンネルはこの後 Ctrl+C まで動き続け、この先で他のコマンドは走らないので
+# 元の値へ戻す必要はない
 $tunnelHost = $null
+$ErrorActionPreference = 'Continue'
 & $cloudflared tunnel --url "http://localhost:$Port" --no-autoupdate 2>&1 | ForEach-Object {
     $line = $_.ToString()
     Write-Host $line -ForegroundColor DarkGray
@@ -79,5 +91,12 @@ $tunnelHost = $null
         catch { Write-Host "  （クリップボードへのコピーに失敗: $_）" -ForegroundColor Yellow }
         Write-Host '  このウィンドウを閉じる / Ctrl+C でトンネルが切れる。' -ForegroundColor Yellow
         Write-Host ''
+
+        # ②EOSロビー経由の参加者が実際のホストへ繋げるよう、Godot 側に
+        # ホスト名を渡す（network_manager.gd がこのファイルをポーリングしている）
+        if ($HostAddrFile) {
+            try { Set-Content -Path $HostAddrFile -Value $tunnelHost -NoNewline -Encoding utf8 }
+            catch { Write-Host "  （ホスト名の書き出しに失敗: $_）" -ForegroundColor Yellow }
+        }
     }
 }

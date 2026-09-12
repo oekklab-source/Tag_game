@@ -40,6 +40,20 @@ func _ready() -> void:
 	await _wait(1.0)
 	_check_spawn_gap(world)
 
+	# 0) プロフィール名の変更が sync_nickname(スポーン同期) / peer_profiles(RPC配信)の
+	# 両方へ伝わることの検証(実機バグ: 着せ替え画面の名前変更がロビー/ランキングに
+	# 反映されない、の回帰確認)。ProfileManager.update_profile()は実ファイル
+	# (user://profile.json)への保存を伴うため、tests/costume_model.gdと同じ方針で
+	# 実I/Oを避け、player_nameを直接書き換えてprofile_updatedだけ手動発火する
+	if _is_host:
+		ProfileManager.player_name = "名前テスト999"
+		ProfileManager.profile_updated.emit()
+	await _settle()
+	_eq_str("名前変更がsync_nicknameに伝わる", GameManager.nickname_for(1), "名前テスト999")
+	_eq_str("名前変更がpeer_profilesに伝わる",
+		String(GameManager.peer_profiles.get(1, {}).get("name", "")), "名前テスト999")
+	await _gap()
+
 	# 1) クライアントが自分で立候補する
 	if not _is_host:
 		GameManager.toggle_my_role()
@@ -149,6 +163,10 @@ func _check_runner_spawn() -> void:
 
 func _eq(what: String, got: int, want: int) -> void:
 	_report("%s = %d" % [what, got], got == want, "期待値 %d" % want)
+
+
+func _eq_str(what: String, got: String, want: String) -> void:
+	_report("%s = %s" % [what, got], got == want, "期待値 %s" % want)
 
 
 func _report(what: String, ok: bool, why: String) -> void:

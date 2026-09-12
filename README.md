@@ -764,6 +764,64 @@ python -m http.server 8123 --directory export/web
   身内で遊ぶ前提の設計
 - ホストPCを落とすとゲームも終わる（専用サーバではない）
 
+## EOS ロビーによる自動マッチメイキング（見知らぬ相手と）
+
+上の「インターネット越しに遊ぶ」は**リンクを知り合いに手動で送る**方式。
+それとは別に、[scenes/room_match_dialog.gd](scenes/room_match_dialog.gd) と
+[autoload/eos_manager.gd](autoload/eos_manager.gd) には、**Epic Online Services (EOS)
+のロビー機能を使って見知らぬプレイヤー同士を自動で組み合わせる「クイックマッチ」が
+実装済み**。自分のレート帯に近い空きロビーへ自動参加し、無ければ自分のレート帯で
+新規ロビーを作って待つ。実際のゲーム通信は上記と同じ WebSocket + Cloudflare Tunnel
+のままで、**EOS はロビーの一覧・検索（マッチング）にだけ使う**（無料、EOS 自体に
+サーバー費用は発生しない）。
+
+> Steamworks から EOS への移行はコード上完了済み。決済・フレンド機能を含めて
+> 本番投入前に必要な人手作業（ポータル設定・デプロイ・実機確認）は
+> [docs/DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md) にまとめてある。
+
+```text
+[EOS ロビー]  … 見知らぬ相手を探す・レート帯でフィルタする（EOSが無料で提供）
+      |
+      `--- host_addr（LAN IP or トンネルのホスト名）をロビーのデータに書き込む
+              |
+              `--- 参加者はそこへ ws:// / wss:// で接続（従来と同じ経路）
+```
+
+### 使うために必要な準備
+
+EOSG という GDExtension プラグイン本体（バイナリ）は
+`addons/epic-online-services-godot/` 以下に**同梱済み**（Windows / Linux / macOS /
+Android 向けバイナリと `.gdextension` ファイルを含む）なので、追加のダウンロード・
+配置作業は不要。プロジェクトを開いた時点で Godot 4 が `.gdextension` を自動検出する。
+実際に動かすには次を用意する。
+
+1. Epic Developer Portal で Product / Sandbox / Deployment / Client Policy / Client を
+   作成し、Product ID・Sandbox ID・Deployment ID・Client ID・Client Secret を取得する
+2. `eos_credentials.cfg.example` をコピーして `eos_credentials.cfg`（gitignore対象）を
+   作成し、上記の値と暗号化キー（Player Data Storage 用、`.example` 内の説明を参照）を
+   書き込む
+3. EOS の認証は**匿名ログイン（Connect / Device ID）**のため、Steamのようなクライアント
+   常駐ログインは不要。`eos_credentials.cfg` が正しく設定されていればそのままゲームを
+   起動するだけで自動的にログインする
+
+### 動作確認
+
+エディタから実行（F5）し、**出力パネル**を見る。
+
+- 成功: `[EosManager] EOS initialized successfully. product_user_id=<PUID>`
+- 失敗: `eos_credentials.cfg not configured yet. Running in Offline / Fallback mode.` →
+  手順1・2を再確認（多い原因は Client Policy の機能未有効化、認証情報の入力ミス）
+
+2台（または2インスタンス）で、片方が「クイックマッチ」または部屋作成、もう片方が
+「ルームマッチ」タブから参加して、ロビー参加だけでなく実際にゲームが繋がる
+（トンネル経由の接続まで通る）ことを確認する。
+
+### 既知の制約（EOSマッチメイキング）
+
+- **Web（ブラウザ）版では使えない**。EOSG はブラウザの WASM サンドボックス上では
+  動作しないため（恒久的な制約）、Web ビルドでは「ルームマッチ」タブが自動的に無効化され、
+  代わりに「DirectConnect」タブが既定で開く
+
 ## 衝突レイヤー
 
 | # | 名前 | 用途 |
@@ -857,20 +915,26 @@ CPU 逃走者も取る。置き物が出る**自分の背後＝追ってくる�
 見えているのが逃走者側の前提）。ロケットは正面が退路になっている時だけ使い、
 安全な間（ROAM）は `CpuNavAssist.item_assist()` で？ブロックへ軽く寄り道して手ぶらを解消する。
 
-## UI が英語表記な理由（日本語化する場合）
+## レーティング (Elo) 計算モデル
 
-Godot 4 標準フォントに日本語グリフがなく、**Web エクスポートでは OS フォントへの
-フォールバックも使えない**ため、ブラウザで日本語が「□（豆腐）」になる。日本語化するには:
+1人の逃走者 (Runner) vs 複数人の鬼 (Hunter) による非対称対戦に最適化した、完全ゼロサム型の Elo 変動アルゴリズムを導入しています。詳細は [docs/RATING_SYSTEM.md](docs/RATING_SYSTEM.md) を参照。
 
-1. [Noto Sans JP](https://fonts.google.com/noto/specimen/Noto+Sans+JP) の .ttf を `ui/` に置く
-2. [ui/pop_theme.tres](ui/pop_theme.tres) の `default_font` に指定
-3. 各 `.gd` / `.tscn` 内の UI 文字列を日本語に置換
+- **時間依存スコア**: 逃げ切れば `1.0`、捕まった場合でも生存時間に応じて `0.0〜0.5` の部分点を獲得（粘るほどレート減少が緩和）。鬼は早期捕獲ほど高得点。
+- **非対称 Kファクター**: 鬼の人数 $N$ に応じて $K_R = 16 \times \sqrt{N}$、$K_H = 16 / \sqrt{N}$ とスケーリングし、レートのインフレ・デフレを防止。
+- **トドメ貢献度ボーナス**: 鬼陣営が勝利してレートを獲得した際、協力者から 30% の獲得分をトドメ役（実際にタッチした人）に再分配。
+- **人数補正**: 4人を基準とし、鬼が多いほど鬼陣営の期待勝率を自動引き上げ。
 
 ## 構成
 
 ```text
 autoload/network_manager.gd   WebSocket 接続・切断・シーン遷移・アドレス解決（ws / wss）
-autoload/game_manager.gd      役割抽選・速度補正・タイマー・タッチ判定・視界判定と情報共有・共有時計
+autoload/game_manager.gd      役割抽選・速度補正・タイマー・タッチ判定・共有時計（子ノードへの薄い委譲を含む）
+autoload/game/sight_system.gd    GameManagerの子ノード。視界判定（距離/視野角/情報の寿命）と共有状態
+autoload/game/version_gate.gd    GameManagerの子ノード。接続直後のプロトコル版数照合
+autoload/game/host_migration.gd  GameManagerの子ノード。切断時のCPU代行判定とレーティング・ペナルティ報告
+autoload/ranking_manager.gd   非対称 Elo レーティング計算・ランキング管理
+autoload/profile_manager.gd   プレイヤー名・カスタムカラー・戦績・レートのローカル/EOS管理
+autoload/backend_config.gd    friend-api/commerce-api の URL と USE_LIVE_* フラグを一元管理
 scenes/main.tscn(.gd)         ロビー（HOST / JOIN）
 scenes/world.tscn(.gd)        シーンの骨組み（空・光・ナビ領域・スポーン管理）
 scenes/world_data.gd          マップとギミック配置の唯一の定義（定数テーブル）
@@ -887,10 +951,13 @@ assets/gimmicks/spring_pad.glb Blender 製のジャンプ台（Base/Coil/Pad、�
 scenes/beacon.gdshader        光柱と結晶の加算合成シェーダ
 scenes/gimmicks/              マンホール・ジャンプ台・ダッシュパネル・動く床・回転床・？ブロック
                               + 滑り台・バンパー・壁の天面ガード・バナナ・設置ブロック
-scenes/hud.tscn(.gd)          役割バッジ・円形タイマー・9ゾーンミニマップ・バフ・危険表示・目撃情報
+scenes/hud.tscn(.gd)          役割バッジ・円形タイマー・バフ・危険表示・目撃情報・リザルト（$MapPanel/$Lobbyへの薄い委譲を含む）
+scenes/hud/minimap.gd         hud.tscnの$MapPanel。9ゾーンミニマップとコンパス回転・距離表示
+scenes/hud/lobby_panel.gd     hud.tscnの$Lobby。ロビー名簿・定員変更・役割選択ボタン
 ui/pop_theme.tres             全体に適用される POP テーマ
 tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
 tools/blender/build_fallguy.py キャラを一から組み立てて glb へ書き出す（blender -b -P で実行）
+tools/blender/build_hats.py   ⑤帽子（頭部装備）を個別 glb として書き出す（blender -b -P で実行）
 tools/blender/build_manhole.py ワープ地点の光の柱（光柱・舞う結晶）を同じ手順で書き出す
 tools/blender/build_item_box.py プレゼント箱（下箱・フタ・リボン・蝶結び）を同じ手順で書き出す
 tools/blender/build_spring_pad.py ジャンプ台（暗色台座・コイル・ゾーンアクセント橙の着地面）を同じ手順で書き出す
@@ -900,6 +967,10 @@ tools/blender/build_banana_peel.py バナナの皮（立った胴体＋寝る皮
 tools/blender/reference.png   デザインの参考画像。.gdignore で Godot のインポート対象外
 tools/verify_humanoid.gd      glb の構造・アニメ・向き・状態遷移をヘッドレスで検証
 tools/shot_humanoid.gd        各アニメの見た目を PNG に書き出す（目視確認用）
+autoload/costume_catalog.gd   ④コスチューム（部位の塗り分けレシピ）の定義データ
+autoload/hat_catalog.gd       ⑤帽子（新規ジオメトリの部位）の定義データ。CostumeCatalog と対
+scenes/costume_preview.tscn(.gd) プロフィール設定の3Dプレビュー（ターンテーブル、SubViewport）
+scenes/profile_dialog.tscn(.gd)  プロフィール設定（名前・スキン柄/カラー/帽子・戦績）
 tests/map_connectivity.tscn   ナビメッシュの連結性・滑り台の一方通行・走路の貫通の検証
 tests/item_drop.tscn          アイテムがラウンド外でも置けることの検証
 tests/bumper.tscn             バンパーが四方と真上から弾き返すことの検証
@@ -915,6 +986,9 @@ tests/net_roles.tscn          2ピアで役割選択と湧き位置の分散を�
 tests/net_live.tscn           実際の起動経路と実キー入力で通信対戦が始まるかの検証
 tests/uishot.tscn             UI（タイトル/ロビー/対戦中/リザルト）を PNG 書き出し（--headless 不可）
 tests/host_conflict.tscn      ポートが埋まっているときホストを弾いて理由を出すかの検証
+tests/costume_model.tscn      ④コスチューム・⑤帽子のデータモデル（所持・移行・整合性）を検証
+tests/hat_placement.gd        ⑤帽子の装着位置（Chestボーン基準オフセット）を目視調整するスクリプト
+                              （godot --path . --script res://tests/hat_placement.gd -- <出力先>）
 tests/hunter_squad.tscn       鬼3人の定員と連携（分担探索・挟み込み）の検証
 tests/cpu_strength.tscn       CPU 鬼の個体能力（首振り・ダッシュ・予測・アイテム）の検証
 tests/cpu_escape.tscn         CPU 逃走者の判断（温存・ダッシュ・挟み回避・角回避・アイテム・逃げ切り）の検証
@@ -948,6 +1022,20 @@ export_presets.cfg            Web エクスポート設定（CI が使うので�
   そこで Area3D の重なりを判定している
 - 動く床の位相は `GameManager.world_time`（ラウンド開始で全ピア同時にリセット）から求める。
   物理 delta は全ピアで固定値なので、以後もずれない
+- `GameManager` は視界(索敵)・バージョン確認・ホストマイグレーションのロジックを
+  `autoload/game/sight_system.gd`(`$SightSystem`) / `version_gate.gd`(`$VersionGate`) /
+  `host_migration.gd`(`$HostMigration`) の3つの子ノードへ分割してある(`_ready()` で
+  `add_child` し、全ピアで同一の NodePath になる)。**これらの子ノードに定義した
+  `@rpc` メソッドのノードパスを変える(別のノードへ移す/ノード名を変える)場合も、
+  `GameManager.PROTOCOL_VERSION` を上げること**(v5→v6はこの分割自体が理由)。
+  `GameManager.spotted` / `can_see()` 等の既存の呼び出し規約は薄い委譲で維持しているので、
+  呼び出し側(`cpu_hunter.gd` 等)を書き換える必要は無い
+- ホストが意図的に参加者を切る場合(tier_lock不一致など)は、`disconnect_peer()` の**前**に
+  `notify_rejected` RPC で理由を本人へ伝える(`autoload/game/version_gate.gd` の
+  `check_version` と同じパターン)。何も伝えずに切ると、EOSロビー経由の参加者側は
+  `NetworkManager._on_server_disconnected()` がただの拒否をホストロストと区別できず、
+  実際には存在しないホストマイグレーション探索UIを誤って出してしまう
+  （v6→v7はこのRPC追加が理由）
 - **視界判定はホストが一元的に行う**。CPU 側で個別にレイを飛ばさない
   （`GameManager.hunter_sees_runner()` に問い合わせる）
 - 視線の向きは**カメラではなくボディの -Z**。`player.tscn` が同期するのは

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://test_phase6_uid"]
+
+[ext_resource type="Script" path="res://tests/test_phase6_network_edge.gd" id="1_phase6"]
+
+[node name="TestPhase6" type="Node"]
+script = ExtResource("1_phase6")

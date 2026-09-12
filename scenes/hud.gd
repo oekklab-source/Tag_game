@@ -11,20 +11,13 @@ extends CanvasLayer
 ##   Runner  : 全体の2Dマップ（鬼の位置つき）＋最寄りの鬼への矢印・距離・危険ヴィネット、
 ##             そして「今 見られている」ことを知らせる SPOTTED バナー。
 ## Runner 側の情報が多いのは意図的で、非対称性を弱めず強めている。
-## マップに逃走者のドットは誰の画面にも描かれない（_on_map_draw を参照）。
+## マップに逃走者のドットは誰の画面にも描かれない（scenes/hud/minimap.gd の _on_map_draw を参照）。
 
-const ARROW_COLOR := Color(1.0, 0.3, 0.25)
-const HUNTER_DOT := Color(1.0, 0.25, 0.2)
-const SELF_DOT := Color(0.3, 1.0, 0.5)
-const INK := Color(0.05, 0.04, 0.12)
+## scenes/hud/lobby_panel.gd の同名定数と値を揃えておくこと(役割バッジの色と一致させる)
 const COLOR_RUNNER := Color(0.35, 1.0, 0.55)
 const COLOR_HUNTER := Color(1.0, 0.45, 0.4)
 const COLOR_HEAD_START := Color(0.35, 0.85, 1.0)
 const COLOR_GOLD := Color(1.0, 0.82, 0.25)
-
-# ゾーン名・色は WorldData に一本化してある（レイアウト変更時の同期漏れを防ぐため）
-const WORLD_MIN := -WorldData.WORLD_HALF
-const WORLD_SIZE := WorldData.WORLD_HALF * 2.0
 
 const HUNTER_DISTANCE_DELAY := 10.0
 const BUFF_BAR_WIDTH := 64.0
@@ -68,11 +61,22 @@ var _sb_mid: StyleBoxFlat
 var _sb_low: StyleBoxFlat
 var _sb_empty: StyleBoxFlat
 var _sb_border: StyleBoxFlat
-var _sb_row: StyleBoxFlat
 var _spinning := false
 var _spin_index := 0
 var _spin_next := 0.0
-var _roster_key := ""
+var _last_rating_delta := 0
+var _rating_applied := false
+var _rating_shown := false  # ①CPU戦や離脱中断ではレート行を表示しない
+
+## 待機中に一時的に開く着せ替え/ショップ/フレンド画面。world.tscnのシーンツリーは
+## 離れず、hudの子としてオーバーレイ表示することで部屋(接続・スポーン状態)を保つ
+const OVERLAY_SCENES := {
+	"costume": "res://scenes/costume_screen.tscn",
+	"shop": "res://scenes/shop_screen.tscn",
+	"friend": "res://scenes/friend_screen.tscn",
+}
+var _overlay_instance: Control = null
+var _overlay_full_notified := false
 var _shown_item: int = Player.Item.NONE
 var _shown_alpha := 1.0
 var _icon_tween: Tween
@@ -85,7 +89,9 @@ var _icon_tween: Tween
 @onready var zone_chip: PanelContainer = $ZoneChip
 @onready var zone_swatch: ColorRect = $ZoneChip/Row/Swatch
 @onready var zone_label: Label = $ZoneChip/Row/ZoneLabel
-@onready var map_panel: Control = $MapPanel
+## scenes/hud/minimap.gd がアタッチされている(型を書くと組み込みControlに
+## 縛られsetup()/update_compass()が呼べないため、意図的に無署名の := で推論させる)
+@onready var map_panel := $MapPanel
 @onready var compass: Control = $Compass
 @onready var distance_chip: PanelContainer = $DistanceChip
 @onready var distance_label: Label = $DistanceChip/DistanceLabel
@@ -97,13 +103,10 @@ var _icon_tween: Tween
 @onready var stamina_label: Label = $StaminaLabel
 @onready var stamina_bar: Control = $StaminaBar
 @onready var toast_tray: VBoxContainer = $ToastTray
-@onready var lobby: CenterContainer = $Lobby
-@onready var lobby_status: Label = $Lobby/Box/Col/Status
-@onready var lobby_list: VBoxContainer = $Lobby/Box/Col/ListBox/List
-@onready var lobby_role_button: Button = $Lobby/Box/Col/RoleButton
-@onready var lobby_debug_cpu_runner_button: CheckButton = $Lobby/Box/Col/DebugCpuRunnerButton
-@onready var lobby_start_button: Button = $Lobby/Box/Col/StartButton
-@onready var lobby_hint: Label = $Lobby/Box/Col/Hint
+## scenes/hud/lobby_panel.gd がアタッチされている。HUD で唯一クリックできる UI
+## なので _ignore_mouse() はここだけ対象外にする(型を書くとupdate_lobby()等の
+## 独自メンバーが呼べないため、意図的に無署名の := で推論させる)
+@onready var lobby := $Lobby
 @onready var info_label: Label = $InfoLabel
 @onready var result_panel: CenterContainer = $ResultPanel
 @onready var result_title: Label = $ResultPanel/Box/Col/ResultTitle
@@ -114,12 +117,12 @@ var _icon_tween: Tween
 func _ready() -> void:
 	_ignore_mouse(self)
 	timer_ring.draw.connect(_on_timer_draw)
-	compass.draw.connect(_on_compass_draw)
-	map_panel.draw.connect(_on_map_draw)
 	stamina_bar.draw.connect(_on_stamina_draw)
 	item_icon.draw.connect(_on_item_icon_draw)
 	GameManager.state_changed.connect(_on_state_changed)
 	GameManager.spotted_changed.connect(_on_spotted_changed)
+	map_panel.setup(compass, distance_chip, distance_label)
+	lobby.open_overlay_requested.connect(_open_overlay)
 	_sb_full = _bar_style(Color(0.3, 0.95, 0.55))
 	_sb_mid = _bar_style(Color(1.0, 0.85, 0.25))
 	_sb_low = _bar_style(Color(1.0, 0.35, 0.35))
@@ -131,12 +134,8 @@ func _ready() -> void:
 	_sb_border.set_border_width_all(2)
 	_sb_border.border_color = Color(1, 1, 1, 0.6)
 	_sb_border.anti_aliasing = true
-	_sb_row = _row_style()
 	vignette.texture = _radial_texture()
 	vignette.modulate = Color(1.0, 0.12, 0.12, 0.0)
-	lobby_role_button.pressed.connect(GameManager.toggle_my_role)
-	lobby_debug_cpu_runner_button.toggled.connect(GameManager.set_debug_cpu_runner)
-	lobby_start_button.pressed.connect(GameManager.request_start_round)
 
 
 ## HUD には操作可能なウィジェットが一つも無いので、全 Control をマウス無視にする。
@@ -156,18 +155,6 @@ func _ignore_mouse(node: Node) -> void:
 		node.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for c in node.get_children():
 		_ignore_mouse(c)
-
-
-## ロビーの一覧の行。コードで作る行にも .tscn 側と同じ角丸を効かせる
-func _row_style() -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(1, 1, 1, 0.07)
-	sb.set_corner_radius_all(12)
-	sb.content_margin_left = 14.0
-	sb.content_margin_right = 14.0
-	sb.content_margin_top = 8.0
-	sb.content_margin_bottom = 8.0
-	return sb
 
 
 func _bar_style(c: Color) -> StyleBoxFlat:
@@ -237,7 +224,8 @@ func _update_labels() -> void:
 	if spotted_banner.visible and (not is_runner or not GameManager.spotted):
 		_hide_spotted_banner()
 
-	_update_lobby()
+	lobby.update_lobby(_overlay_instance != null)
+	_check_overlay_room_full(GameManager.player_ids().size(), multiplayer.is_server())
 
 	var lines := PackedStringArray()
 	if GameManager.state == GameManager.State.WAITING:
@@ -252,114 +240,56 @@ func _update_labels() -> void:
 
 
 ## --- 待機中のロビー -----------------------------------------------------
-## HUD で唯一クリックできる UI。誰が逃げる役かをひと目で分かるようにして、
-## 「開始のしかたが分からない」を無くすのがここの役目。
-## キー操作（R / Enter）も同じことができる
-func _update_lobby() -> void:
-	var waiting := GameManager.state == GameManager.State.WAITING
-	lobby.visible = waiting
-	if not waiting:
+## ロビー一覧・定員変更・役割ボタン等の実装は scenes/hud/lobby_panel.gd($Lobby)に
+## 集約してある。ここに残るのはオーバーレイ(着せ替え/ショップ/フレンド)の開閉のみ
+## (フルスクリーン表示のため HUD の CanvasLayer 直下に追加する必要があるため)。
+
+## 着せ替え/ショップ/フレンド画面をworld.tscnのシーンツリーを離れずに
+## オーバーレイとして開く。閉じる操作はそれぞれのcloseシグナル経由(_on_overlay_closed)
+func _open_overlay(key: String) -> void:
+	if _overlay_instance != null:
 		return
+	var scene: PackedScene = load(OVERLAY_SCENES[key])
+	var inst: Control = scene.instantiate()
+	add_child(inst)
+	_overlay_instance = inst
+	_overlay_full_notified = false
+	GameManager.lobby_overlay_open = true
+	if inst.has_signal("closed"):
+		inst.closed.connect(_on_overlay_closed)
 
-	var me := multiplayer.get_unique_id()
-	var ids := GameManager.player_ids()
-	var is_host := multiplayer.is_server()
-	# 版数を出しておくと、古いビルドが混ざったときに見ただけで分かる。
-	# 定員は常に4人（逃走者1 + 鬼3）で、足りない鬼は CPU が埋めることも書いておく
-	var humans_on_hunt: int = maxi(ids.size() - 1, 0)
-	var cpu_fill: int = maxi(GameManager.MAX_HUNTERS - humans_on_hunt, 0)
-	if GameManager.debug_cpu_runner:
-		cpu_fill = 0  # デバッグ（CPU逃走者）は1対1の検証用で CPU 鬼を足さない
-	var fill_text := "" if cpu_fill <= 0 else "（うち CPU の鬼 %d人）" % cpu_fill
-	lobby_status.text = "%s ／ 4人であそぶ: %d人が参加中%s ／ v%d" % ["ホスト（あなた）" if is_host
-		else "参加中（ホストは別の人）", ids.size(), fill_text, GameManager.PROTOCOL_VERSION]
 
-	_rebuild_roster(ids, me, is_host)
+func _on_overlay_closed() -> void:
+	if is_instance_valid(_overlay_instance):
+		_overlay_instance.queue_free()
+	_overlay_instance = null
+	GameManager.lobby_overlay_open = false
 
-	var debug_available := is_host and ids.size() == 1
-	if is_host and GameManager.debug_cpu_runner and not debug_available:
-		GameManager.set_debug_cpu_runner(false)
-	lobby_debug_cpu_runner_button.visible = debug_available
-	lobby_debug_cpu_runner_button.set_pressed_no_signal(GameManager.debug_cpu_runner)
-	lobby_debug_cpu_runner_button.text = "デバッグ: CPU逃走者 ON" if GameManager.debug_cpu_runner else "デバッグ: CPU逃走者 OFF"
-	var i_am_runner := GameManager.wanted_runner == me
-	lobby_role_button.text = "デバッグ中: あなたは鬼" if GameManager.debug_cpu_runner else ("おにに戻る" if i_am_runner else "逃げる役になる")
-	lobby_role_button.disabled = GameManager.debug_cpu_runner
-	lobby_start_button.visible = is_host
-	lobby_start_button.disabled = ids.is_empty()
-	if not GameManager.peer_notice.is_empty():
-		# ビルドの食い違いなど、放っておくと原因の分からない不具合になるものを出す
-		lobby_hint.text = GameManager.peer_notice
-		lobby_hint.modulate = Color(1.0, 0.55, 0.4)
-	elif is_host and GameManager.debug_cpu_runner:
-		lobby_hint.text = "デバッグ中: あなたが鬼、CPUが逃げる役です。Enter キー: 開始"
-		lobby_hint.modulate = Color.WHITE
-	elif is_host:
-		lobby_hint.text = "R キー: 役割を切りかえ　Tab キー: 逃げる役を指名　Enter キー: 開始"
-		lobby_hint.modulate = Color.WHITE
+
+## 満員通知: オーバーレイを開いている間だけ人数を監視し、定員に達した瞬間に
+## 一度だけポップアップする。定員を下回ったら再度通知できるようリセットする
+func _check_overlay_room_full(member_count: int, is_host: bool) -> void:
+	if _overlay_instance == null or not is_host:
+		return
+	var max_m := EosManager.get_current_lobby_max_members()
+	if member_count >= max_m:
+		if not _overlay_full_notified:
+			_overlay_full_notified = true
+			_show_room_full_popup()
 	else:
-		lobby_hint.text = "R キー: 役割を切りかえ　― ホストが始めるのを待っています"
-		lobby_hint.modulate = Color.WHITE
+		_overlay_full_notified = false
 
 
-## 一覧は毎フレーム作り直さず、中身が変わったときだけ組み直す
-func _rebuild_roster(ids: Array[int], me: int, is_host: bool) -> void:
-	var names := ids.map(func(id): return GameManager.nickname_for(id))
-	var key := "%s|%s|%d|%d" % [ids, names, GameManager.wanted_runner, int(is_host)]
-	if key == _roster_key:
-		return
-	_roster_key = key
-	for c in lobby_list.get_children():
-		lobby_list.remove_child(c)
-		c.queue_free()
-	if ids.is_empty():
-		lobby_list.add_child(_roster_note("だれもいません"))
-		return
-	for id in ids:
-		lobby_list.add_child(_roster_row(id, me, is_host))
-	if GameManager.wanted_runner < 0:
-		lobby_list.add_child(_roster_note("逃げる役が未定です（開始時にランダムで決まります）"))
-
-
-## 1行 = 名前 + 役割バッジ。ホストなら行ごとクリックして指名できる
-func _roster_row(id: int, me: int, is_host: bool) -> Control:
-	var is_runner := id == GameManager.wanted_runner
-	var row := PanelContainer.new()
-	row.add_theme_stylebox_override("panel", _sb_row)
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 12)
-	var name_label := Label.new()
-	var nickname := GameManager.nickname_for(id)
-	name_label.text = "あなた（%s）" % nickname if id == me else nickname
-	name_label.add_theme_font_size_override("font_size", 19)
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var badge := Label.new()
-	badge.text = "にげる" if is_runner else "おに"
-	badge.add_theme_font_size_override("font_size", 19)
-	badge.modulate = COLOR_RUNNER if is_runner else COLOR_HUNTER
-	h.add_child(name_label)
-	h.add_child(badge)
-	row.add_child(h)
-	if not is_host:
-		return row
-	# ホストだけ、行を押して逃げる役を付け替えられる
-	var btn := Button.new()
-	btn.flat = true
-	btn.focus_mode = Control.FOCUS_NONE
-	btn.tooltip_text = "この人を逃げる役にする"
-	btn.pressed.connect(func() -> void: GameManager.set_wanted_runner_to(id))
-	btn.set_anchors_preset(Control.PRESET_FULL_RECT)
-	row.add_child(btn)
-	return row
-
-
-func _roster_note(text: String) -> Control:
-	var l := Label.new()
-	l.text = text
-	l.add_theme_font_size_override("font_size", 15)
-	l.modulate = Color(1, 1, 1, 0.55)
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	return l
+func _show_room_full_popup() -> void:
+	var dlg := AcceptDialog.new()
+	dlg.dialog_text = "部屋の人数が揃いました。戻りますか？"
+	dlg.ok_button_text = "部屋に戻る"
+	add_child(dlg)
+	dlg.confirmed.connect(func() -> void:
+		_on_overlay_closed()
+		dlg.queue_free())
+	dlg.canceled.connect(dlg.queue_free)
+	dlg.popup_centered()
 
 
 ## 鬼にだけ、共有された目撃情報を見せる。
@@ -423,10 +353,20 @@ func _update_result(is_runner: bool) -> void:
 	else:
 		result_title.text = "にげきった！" if won else "つかまえた！"
 		result_title.modulate = COLOR_RUNNER if won else COLOR_HUNTER
+		var sub_text := ""
 		if won:
-			result_sub.text = "最後まで逃げきった" if is_runner else "逃げる人に逃げきられた"
+			sub_text = "最後まで逃げきった" if is_runner else "逃げる人に逃げきられた"
 		else:
-			result_sub.text = "つかまってしまった" if is_runner else "逃げる人をつかまえた"
+			sub_text = "つかまってしまった" if is_runner else "逃げる人をつかまえた"
+		
+		# レート変動表示（①CPU戦・離脱中断は非表示）
+		if _rating_shown:
+			var sign_str := "+" if _last_rating_delta >= 0 else ""
+			sub_text += "\nレート: %d Pt (%s%d)" % [ProfileManager.rating, sign_str, _last_rating_delta]
+		else:
+			sub_text += "\n練習モード（レート変動なし）"
+		result_sub.text = sub_text
+		
 	result_next.text = "%d秒後になかま待ちにもどります" % maxi(ceili(GameManager.result_left), 0)
 	result_next.modulate = COLOR_GOLD
 
@@ -634,31 +574,27 @@ func _make_buff_chip(key: StringName) -> Control:
 
 
 ## --- ミニマップ（両陣営）と Runner 専用の方位・距離・危険表示 ----------------
+## ミニマップの描画とコンパス回転・距離表示は scenes/hud/minimap.gd($MapPanel)に
+## 集約してある。危険ヴィネット（近いほど赤く脈打つ）だけはここに残す
+## ("見られている"バナーと合わせて管理する in-match HUD の危険表示の一部だから)。
+## コンパスとヴィネットは同じ「最寄りの鬼との距離」を使うので、二重に計算しない
+## よう minimap.gd の update_compass() が最寄りの鬼(または null)を返す
 
 func _update_tracking(player: Player) -> void:
 	var playing := GameManager.state == GameManager.State.PLAYING and player != null
 	var is_runner := playing and multiplayer.get_unique_id() == GameManager.runner_id
 	# マップは両陣営に出す。鬼の画面には味方の鬼と自分しか描かれないので
-	# （_on_map_draw を参照）、逃走者の位置が漏れることはない
+	# （minimap.gd の _on_map_draw を参照）、逃走者の位置が漏れることはない
 	map_panel.visible = playing
 	if playing:
 		map_panel.queue_redraw()
 
-	var target: Node3D = _nearest_hunter(player) if is_runner else null
-	compass.visible = target != null
-	distance_chip.visible = target != null
+	var target: Node3D = map_panel.update_compass(player, is_runner)
 	if target == null:
 		vignette.modulate.a = 0.0
 		return
 
-	var forward: Vector3 = -player.camera.global_transform.basis.z
-	var to_target: Vector3 = target.global_position - player.global_position
-	var f2 := Vector2(forward.x, forward.z)
-	var t2 := Vector2(to_target.x, to_target.z)
-	if f2.length_squared() > 0.0001 and t2.length_squared() > 0.0001:
-		compass.rotation = f2.angle_to(t2)
-	var dist := to_target.length()
-	distance_label.text = "%.1f m" % dist
+	var dist := player.global_position.distance_to(target.global_position)
 	# 鬼が近いほど赤く脈打つ（Runner 側だけの情報）
 	var a := clampf(inverse_lerp(DANGER_FAR, DANGER_NEAR, dist), 0.0, 1.0) * 0.6
 	# 見られている間は距離に関わらず必ず出す。
@@ -669,110 +605,6 @@ func _update_tracking(player: Player) -> void:
 	vignette.modulate.a = a * (0.85 + 0.15 * sin(Time.get_ticks_msec() * 0.012))
 
 
-func _nearest_hunter(player: Node3D) -> Node3D:
-	var best: Node3D = null
-	var best_dist := INF
-	var runner_name := str(GameManager.runner_id)
-	for p in get_tree().get_nodes_in_group("players"):
-		if p.name == runner_name:
-			continue
-		var d: float = p.global_position.distance_to(player.global_position)
-		if d < best_dist:
-			best_dist = d
-			best = p
-	for cpu in get_tree().get_nodes_in_group("cpu_hunters"):
-		var d: float = cpu.global_position.distance_to(player.global_position)
-		if d < best_dist:
-			best_dist = d
-			best = cpu
-	return best
-
-
-func _on_compass_draw() -> void:
-	var c := compass.size * 0.5
-	var points := PackedVector2Array([
-		c + Vector2(0, -40), c + Vector2(25, 22), c + Vector2(0, 9), c + Vector2(-25, 22),
-	])
-	compass.draw_colored_polygon(points, ARROW_COLOR)
-	compass.draw_polyline(points + PackedVector2Array([points[0]]), INK, 3.0, true)
-
-
-func _on_map_draw() -> void:
-	var s := map_panel.size
-	map_panel.draw_rect(Rect2(Vector2.ZERO, s), Color(0.06, 0.05, 0.12, 0.92))
-	for idx in WorldData.ZONE_COUNT:
-		var c := WorldData.zone_color(idx).darkened(0.35)
-		c.a = 0.92
-		map_panel.draw_rect(_zone_rect(idx), c)
-		map_panel.draw_rect(_zone_rect(idx), Color(0, 0, 0, 0.25), false, 1.0)
-	# マップ全体の外枠を真四角・細く淡い色で描画する（角丸や太枠にせずスッキリ馴染ませる）
-	map_panel.draw_rect(Rect2(Vector2.ZERO, s), Color(0.12, 0.10, 0.22, 0.5), false, 2.0)
-
-	# 逃走者のドットは**誰の画面にも**描かない。
-	# 逃走者が見るとこれは「鬼全員」、鬼が見ると「味方の鬼」になる。
-	# デバッグの CPU 逃走者は cpu_runners グループなのでどちらのループにも入らない
-	var runner_name := str(GameManager.runner_id)
-	# ここに来るのは必ず鬼なので、エモートを見せてよいのは**鬼から見た時だけ**。
-	# 逃走者にも見せると、鬼の合図（＝これから挟みに来る）まで読めてしまう
-	var viewer_is_hunter := multiplayer.get_unique_id() != GameManager.runner_id
-	for p in get_tree().get_nodes_in_group("players"):
-		if p.name != runner_name:
-			_draw_marker(_map_point(p.global_position), HUNTER_DOT,
-				_emote_of(p) if viewer_is_hunter else Player.Emote.NONE)
-	for cpu in get_tree().get_nodes_in_group("cpu_hunters"):
-		_draw_marker(_map_point(cpu.global_position), HUNTER_DOT, Player.Emote.NONE)
-
-	var player := _get_local_player()
-	if player:
-		var center := _map_point(player.global_position)
-		_draw_marker(center, SELF_DOT, player.sync_emote)
-		var forward: Vector3 = -player.global_transform.basis.z
-		var dir2 := Vector2(forward.x, forward.z).normalized()
-		map_panel.draw_line(center, center + dir2 * 13.0, SELF_DOT, 2.5, true)
-
-
-## CPU 鬼は sync_emote を持たないので、存在を確かめてから読む
-## （GameManager.nickname_for() が sync_nickname に対してやっているのと同じ）
-func _emote_of(node: Node) -> int:
-	if "sync_emote" in node:
-		return node.sync_emote
-	return Player.Emote.NONE
-
-
-func _draw_marker(p: Vector2, c: Color, emote: int) -> void:
-	if emote != Player.Emote.NONE:
-		# 「呼んでいる」ことを目立たせるための脈打つリング。
-		# 誰のエモートかは色ではなく位置で読むので、リングの色は文言ごとに変える
-		var ring: Color = Player.EMOTE_COLOR.get(emote, Color.WHITE)
-		var t := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.010)
-		map_panel.draw_circle(p, lerpf(13.0, 21.0, t), Color(ring, lerpf(0.45, 0.05, t)))
-		map_panel.draw_arc(p, lerpf(13.0, 21.0, t), 0.0, TAU, 24,
-			Color(ring, lerpf(0.95, 0.15, t)), 2.5, true)
-	map_panel.draw_circle(p, 11.0, Color(c.r, c.g, c.b, 0.22))
-	map_panel.draw_circle(p, 5.5, c)
-	map_panel.draw_circle(p, 2.2, Color(1, 1, 1, 0.9))
-
-
-## ゾーンの床範囲をミニマップ上の矩形に変換する
-func _zone_rect(idx: int) -> Rect2:
-	var col: int = WorldData.ZONE_COL[idx]
-	var row: int = WorldData.ZONE_ROW[idx]
-	var x0: float = WorldData.AXIS_CENTER[col] - WorldData.AXIS_SIZE[col] * 0.5
-	var z0: float = WorldData.AXIS_CENTER[row] - WorldData.AXIS_SIZE[row] * 0.5
-	var s := map_panel.size
-	return Rect2(
-		(x0 - WORLD_MIN) / WORLD_SIZE * s.x,
-		(z0 - WORLD_MIN) / WORLD_SIZE * s.y,
-		WorldData.AXIS_SIZE[col] / WORLD_SIZE * s.x,
-		WorldData.AXIS_SIZE[row] / WORLD_SIZE * s.y)
-
-
-func _map_point(world: Vector3) -> Vector2:
-	var u := clampf((world.x - WORLD_MIN) / WORLD_SIZE, 0.0, 1.0)
-	var v := clampf((world.z - WORLD_MIN) / WORLD_SIZE, 0.0, 1.0)
-	return Vector2(u * map_panel.size.x, v * map_panel.size.y)
-
-
 ## --- 演出（状態遷移とトースト） ------------------------------------------
 
 func _on_state_changed(new_state: int) -> void:
@@ -780,11 +612,31 @@ func _on_state_changed(new_state: int) -> void:
 	# （毎フレームやると待機中に視点を回せなくなるので、状態が変わった瞬間だけ）
 	if new_state == GameManager.State.WAITING:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_rating_applied = false
 	if new_state != GameManager.State.PLAYING:
 		_hide_spotted_banner()  # 見られたままラウンドが終わる（＝捕まる）ので必ず消す
 	if new_state == GameManager.State.PLAYING:
 		_pop_in(role_badge)
+		_rating_applied = false
 	elif new_state == GameManager.State.RESULT:
+		if not _rating_applied:
+			_rating_applied = true
+			_last_rating_delta = 0
+			# ①VS CPU戦（round_is_ranked==false）と、逃走者離脱による中断はレート非適用
+			_rating_shown = GameManager.round_is_ranked \
+				and GameManager.result_reason != GameManager.EndReason.RUNNER_LEFT
+			if _rating_shown:
+				var my_id := multiplayer.get_unique_id()
+				var is_runner := my_id == GameManager.runner_id
+				var won := (is_runner and GameManager.result_runner_won) or (not is_runner and not GameManager.result_runner_won)
+				var survival := GameManager.ROUND_TIME - GameManager.time_left
+				var is_tagger := (my_id == GameManager.tagger_peer_id)
+				var opp_rating := RankingManager.opponent_avg_rating(is_runner)
+				_last_rating_delta = RankingManager.apply_match_end(
+					is_runner, won, survival, GameManager.round_hunter_count, is_tagger, opp_rating)
+			elif not GameManager.round_is_ranked:
+				# 離脱中断（オンライン）はどちらの戦績にも数えない。CPU戦のみ練習回数に加算
+				ProfileManager.record_casual_match()
 		_pop_in(result_panel.get_node("Box"))
 
 
