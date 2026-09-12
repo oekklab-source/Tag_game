@@ -31,6 +31,12 @@ func _ready() -> void:
 		var p: CharacterBody3D = load("res://scenes/player.tscn").instantiate()
 		p.name = str(id)
 		world.get_node("Players").add_child(p)
+	# ②⑥ロビー名簿のレート帯バッジ・生数値・見た目プレビューが実データ入りで
+	# どう見えるかも確認する(peer_profilesが空だとこれらの欄は表示されない)
+	GameManager.peer_profiles[4242] = {"rating": 1720, "tier": "platinum",
+		"costume": "neon", "colors": [], "hat": "party"}
+	GameManager.peer_profiles[7] = {"rating": 980, "tier": "bronze",
+		"costume": "default", "colors": [], "hat": "none"}
 	await get_tree().physics_frame
 	await _shot(out, "lobby")
 

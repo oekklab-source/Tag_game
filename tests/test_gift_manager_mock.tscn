@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://test_gift_manager_mock_uid"]
+
+[ext_resource type="Script" path="res://tests/test_gift_manager_mock.gd" id="1_giftmanager"]
+
+[node name="TestGiftManagerMock" type="Node"]
+script = ExtResource("1_giftmanager")

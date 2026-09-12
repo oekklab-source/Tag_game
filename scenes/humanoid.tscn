@@ -11,3 +11,10 @@ script = ExtResource("1_humanoid")
 ; 180度回して Godot の正面（-Z）に合わせる
 [node name="Model" parent="." instance=ExtResource("2_model")]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
+
+; ⑤帽子の装着点。このキャラには首ボーンが無く Chest が頭を兼ねる（humanoid.gd 参照）ため、
+; 帽子は Chest ボーンへ剛体アタッチする。オフセットは HatCatalog 側の定義値を使う
+[node name="HatAttachment" type="BoneAttachment3D" parent="Model/Armature/Skeleton3D"]
+bone_name = "Chest"
+
+[editable path="Model"]

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://test_eos_live_smoke_uid"]
+
+[ext_resource type="Script" path="res://tests/test_eos_live_smoke.gd" id="1_eoslivesmoke"]
+
+[node name="TestEosLiveSmoke" type="Node"]
+script = ExtResource("1_eoslivesmoke")

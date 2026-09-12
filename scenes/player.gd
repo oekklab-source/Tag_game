@@ -155,7 +155,8 @@ var _stuck_kick_left := 0.0
 ## 速度は権威ピアだけが正確に知っているので、素直に配るのが一番確実で安い
 @export var sync_speed := 0.0
 @export var sync_air := false
-## 味方ハンターの頭上ラベルに使うニックネーム。権威ピアが PlayerPrefs から一度だけ書く
+## 味方ハンターの頭上ラベルに使うニックネーム。権威ピアが ProfileManager.player_name から書く
+## (profile_updated を購読して追従するので、ラウンド中の変更も反映される)
 @export var sync_nickname := ""
 ## 出しているエモート（Emote の値）。0 = 出していない。
 ## 終わるたび必ず 0 を挟むので、同じエモートを繰り返しても ON_CHANGE の同期が発火する
@@ -182,13 +183,22 @@ func _ready() -> void:
 	if is_multiplayer_authority():
 		sync_position = position
 		sync_yaw = rotation.y
-		sync_nickname = PlayerPrefs.nickname
+		sync_nickname = ProfileManager.player_name
+		ProfileManager.profile_updated.connect(_on_profile_updated_for_nickname)
 		camera.current = true
 		spring_arm.add_excluded_object(get_rid())
+		# ④自分のコスチュームを反映する。他ピア分は GameManager.peer_profiles の
+		# 同期（RPC）で受け取ってから反映するため、ここでは自分の分のみ
+		humanoid.apply_costume(ProfileManager.costume_id, ProfileManager.costume_colors)
+		humanoid.apply_hat(ProfileManager.hat_id)
 	else:
 		# スポーン時の同期値へ即座に合わせる。補間に任せると原点から滑って来る
 		position = sync_position
 		rotation.y = sync_yaw
+		# ②④ 相手のコスチュームは GameManager.peer_profiles の同期を待って反映する。
+		# 既に届いている場合に備えて即座にも試す（順序はどちらが先でも良い）
+		GameManager.profiles_changed.connect(_apply_peer_costume)
+		_apply_peer_costume()
 
 
 ## 接触判定はホストが一元的に行う（全ピアで発火するので必ずサーバ判定を挟む）
@@ -691,7 +701,24 @@ func _update_role_visuals() -> void:
 		color = COLOR_RUNNER if my_id == GameManager.runner_id else COLOR_HUNTER
 	if color != _current_color:
 		_current_color = color
-		humanoid.set_color(color)
+		humanoid.set_role_color(color)
+
+
+## ②④ 他ピア（自分以外）のコスチュームを GameManager.peer_profiles から反映する
+func _apply_peer_costume() -> void:
+	var peer_id := String(name).to_int()
+	if not GameManager.peer_profiles.has(peer_id):
+		return
+	var info: Dictionary = GameManager.peer_profiles[peer_id]
+	var colors := ProfileManager.colors_from_html(info.get("colors", []))
+	humanoid.apply_costume(StringName(info.get("costume", "default")), colors)
+	humanoid.apply_hat(StringName(info.get("hat", "none")))
+
+
+## 着せ替え画面での名前変更をロビー待機中/対戦中でも即座に追従させる。
+## sync_nickname は同期プロパティなので、書き込むだけで他ピアへも伝わる
+func _on_profile_updated_for_nickname() -> void:
+	sync_nickname = ProfileManager.player_name
 
 
 ## 頭上の名前ラベル。逃走者には見せない（味方ハンター同士にのみ表示する）。

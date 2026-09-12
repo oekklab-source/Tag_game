@@ -1,0 +1,17 @@
+name = "tag-game-commerce-api"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# KVスキーマ:
+#   <session_id>   -> {packId, grantedGems, status, claimedAt?}
+#     status は pending -> paid(Stripe Webhookのみが遷移させる) -> claimed
+#     (/purchase-statusが初回にpaidを返すと同時に自動遷移、二重付与防止)の一方向。
+#   rl:<ip>:<date> -> カウント文字列(TTL2日)  (/create-checkout-sessionのレート制限)
+# `wrangler kv namespace create COMMERCE_TXNS` で作成し、id をここに設定する
+[[kv_namespaces]]
+binding = "COMMERCE_TXNS"
+id = "9ed5a6a315a84adfa3d94f4a9da62efb"
+
+# 機密値はリポジトリに置かず、以下のコマンドで設定する:
+#   wrangler secret put STRIPE_SECRET_KEY      (Stripeのsecret key。まずテストモードのsk_test_...)
+#   wrangler secret put STRIPE_WEBHOOK_SECRET  (Stripe DashboardでWebhookエンドポイント登録後に発行されるwhsec_...)

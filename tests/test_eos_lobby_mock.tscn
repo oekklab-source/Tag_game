@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://test_eos_lobby_mock_uid"]
+
+[ext_resource type="Script" path="res://tests/test_eos_lobby_mock.gd" id="1_eoslobby"]
+
+[node name="TestEosLobbyMock" type="Node"]
+script = ExtResource("1_eoslobby")

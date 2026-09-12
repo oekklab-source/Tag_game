@@ -159,7 +159,9 @@ var _stuck_kick_left := 0.0
 
 func _ready() -> void:
 	add_to_group("cpu_hunters")
-	humanoid.set_color(HUNTER_COLOR)
+	# CPU は既定コスチュームのまま（Godot は子の _ready() を親より先に呼ぶため、
+	# $Humanoid._ready() が既に default を適用済み。ここで役割色だけ反映する）
+	humanoid.set_role_color(HUNTER_COLOR)
 	name_label.text = name
 	if multiplayer.is_server():
 		sync_position = position
