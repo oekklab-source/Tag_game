@@ -60,6 +60,15 @@ outline_size = 8
 outline_modulate = Color(0, 0, 0, 1)
 font_size = 48
 
+; 役割の頭上ラベル。CPU 鬼は役割が固定なので、文言と色は _ready で一度入れるだけ
+[node name="RoleLabel" type="Label3D" parent="."]
+visible = false
+position = Vector3(0, 2.32, 0)
+billboard = 1
+outline_size = 12
+outline_modulate = Color(0, 0, 0, 1)
+font_size = 44
+
 [node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
 path_desired_distance = 0.6
 target_desired_distance = 0.8

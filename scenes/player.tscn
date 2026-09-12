@@ -36,6 +36,9 @@ properties/6/replication_mode = 2
 properties/7/path = NodePath(".:stunned")
 properties/7/spawn = true
 properties/7/replication_mode = 2
+properties/8/path = NodePath(".:sync_skin")
+properties/8/spawn = true
+properties/8/replication_mode = 2
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
@@ -67,12 +70,23 @@ outline_size = 8
 outline_modulate = Color(0, 0, 0, 1)
 font_size = 48
 
+; 役割（にげ / おに）の頭上ラベル。名前ラベルと違い相手陣営にも見せる。
+; 体色の代わりなので、遠くて文字が潰れても色で役割が読めるよう輪郭を太くする。
+; no_depth_test は付けない ＝ 壁の向こうの相手は見えないまま
+[node name="RoleLabel" type="Label3D" parent="."]
+visible = false
+position = Vector3(0, 2.32, 0)
+billboard = 1
+outline_size = 12
+outline_modulate = Color(0, 0, 0, 1)
+font_size = 44
+
 ; エモートの固定文言。NameLabel と同じ理由で Humanoid の兄弟に置く
 ; （ダイブで Humanoid.rotation.x が倒れても吹き出しは傾かない）。
 ; 名前ラベル(y=2.0)と重ならないよう一段上に出す
 [node name="EmoteLabel" type="Label3D" parent="."]
 visible = false
-position = Vector3(0, 2.5, 0)
+position = Vector3(0, 2.78, 0)
 billboard = 1
 outline_size = 10
 outline_modulate = Color(0, 0, 0, 1)

@@ -5,6 +5,7 @@ extends Control
 @onready var status_label: Label = $CenterContainer/VBox/StatusLabel
 @onready var version_label: Label = $VersionLabel
 @onready var nickname_edit: LineEdit = $CenterContainer/VBox/NicknameEdit
+@onready var skin_option: OptionButton = $CenterContainer/VBox/SkinRow/SkinOption
 @onready var host_button: Button = $CenterContainer/VBox/HostButton
 @onready var address_edit: LineEdit = $CenterContainer/VBox/JoinRow/AddressEdit
 @onready var join_button: Button = $CenterContainer/VBox/JoinRow/JoinButton
@@ -15,6 +16,9 @@ func _ready() -> void:
 	if OS.has_feature("web"):
 		host_button.visible = false
 	nickname_edit.text = PlayerPrefs.nickname
+	for entry in Humanoid.SKINS:
+		skin_option.add_item(entry["name"])
+	skin_option.selected = PlayerPrefs.skin
 	status_label.text = NetworkManager.last_error
 	NetworkManager.last_error = ""
 	# ホストと参加者でここが違うと通信が噛み合わない。ひと目で分かるように出す
@@ -46,8 +50,15 @@ func _server_from_query() -> String:
 	return (q as String).strip_edges()
 
 
-func _on_host_pressed() -> void:
+## ニックネームと着せ替えを保存する。ホスト・参加のどちらから始めても
+## 同じものが player.gd の _ready() で読まれ、そのまま全ピアへ配られる
+func _save_prefs() -> void:
 	PlayerPrefs.set_nickname(nickname_edit.text)
+	PlayerPrefs.set_skin(skin_option.selected)
+
+
+func _on_host_pressed() -> void:
+	_save_prefs()
 	if NetworkManager.start_host():
 		return
 	# 始められなかった（たいていはポートの取り合い）。理由をその場で見せる
@@ -60,5 +71,5 @@ func _on_join_pressed() -> void:
 	if address.is_empty():
 		status_label.text = "ホストのアドレスを入力してください"
 		return
-	PlayerPrefs.set_nickname(nickname_edit.text)
+	_save_prefs()
 	NetworkManager.start_client(address)

@@ -2,19 +2,29 @@ extends SceneTree
 
 ## humanoid.tscn が glTF から正しく組み上がるかをヘッドレスで確認する検証スクリプト。
 ## 実行: godot --headless --path <project> --script res://tools/verify_humanoid.gd
+##
+## 着せ替え（Humanoid.SKINS）を1つずつ着せて全項目を確認する。全スキンで
+## **ボーン名とアニメ名がまったく同じ**であることがこの仕組みの前提なので、
+## 新しい服を足したらまずこれを通すこと。
 
 
-## _initialize() の時点ではまだノードがツリーに入らず _ready が走らないので、
-## 最初のフレームで検証する
 func _process(_delta: float) -> bool:
 	var humanoid: Node3D = load("res://scenes/humanoid.tscn").instantiate()
 	root.add_child(humanoid)
+	for id in Humanoid.SKINS.size():
+		humanoid.set_skin(id)
+		_check(humanoid, id)
+	quit()
+	return true
 
+
+func _check(humanoid: Node3D, id: int) -> void:
+	var model := humanoid.get_node("Model")
+	print("=== skin %d: %s ===" % [id, Humanoid.SKINS[id]["name"]])
 	print("--- node tree ---")
 	_dump(humanoid, 0)
 
-	var player: AnimationPlayer = humanoid.get_node("Model").find_child(
-		"AnimationPlayer", true, false)
+	var player: AnimationPlayer = model.find_child("AnimationPlayer", true, false)
 	print("--- animations ---")
 	for anim_name in player.get_animation_list():
 		var anim := player.get_animation(anim_name)
@@ -23,15 +33,14 @@ func _process(_delta: float) -> bool:
 	print("--- bounds / facing ---")
 	var aabb := _mesh_aabb(humanoid)
 	print("  aabb pos=%s size=%s" % [aabb.position, aabb.size])
-	# 尻尾は背面、顔は正面。Godot の前方は -Z なので顔側の z が負なら正しい向き
+	# 顔は正面。Godot の前方は -Z なので顔側の z が負なら正しい向き
 	print("  facing: front z=%.3f  back z=%.3f" % [aabb.position.z, aabb.end.z])
-	var skel: Skeleton3D = humanoid.get_node("Model").find_child("Skeleton3D", true, false)
+	var skel: Skeleton3D = model.find_child("Skeleton3D", true, false)
 	print("  bones=%d" % skel.get_bone_count())
 	var foot := skel.get_bone_global_pose(skel.find_bone("Foot.L")).origin
 	print("  Foot.L rest z(-Zが前)=%.3f x=%.3f" % [foot.z, foot.x])
 
 	print("--- state machine ---")
-	humanoid.set_color(Color(0.9, 0.25, 0.25))
 	# update_motion は速度を時定数で平滑化する（ネットワーク越しの推定値が
 	# 跳ねても脚の回転が痙攣しないように）。1秒ぶんの delta を渡せば収束するので、
 	# 1回の呼び出しで最終状態を見られる
@@ -54,15 +63,19 @@ func _process(_delta: float) -> bool:
 	humanoid.update_motion(0.0, true, step)
 	print("  recover -> %s" % player.current_animation)
 
-	var body: MeshInstance3D = humanoid.get_node("Model").find_child("Body", true, false)
-	var costume: MeshInstance3D = humanoid.get_node("Model").find_child("Costume", true, false)
-	print("  body override albedo=%s" % body.material_override.albedo_color)
-	for i in costume.mesh.get_surface_count():
-		print("  costume surface %d base=%s override=%s" % [i,
-			costume.mesh.surface_get_material(i).resource_name,
-			costume.get_surface_override_material(i)])
-	quit()
-	return true
+	# 役割色をやめたので material_override は付かない。素材はスキンが持つものが
+	# そのまま出るのが正しい（空のマテリアルが混じると Blender 側の塗り忘れ）
+	print("--- materials ---")
+	for part in ["Body", "Face", "Costume"]:
+		var mesh: MeshInstance3D = model.find_child(part, true, false)
+		if mesh == null:
+			print("  %s: なし" % part)
+			continue
+		var names := []
+		for i in mesh.mesh.get_surface_count():
+			var mat := mesh.mesh.surface_get_material(i)
+			names.append(mat.resource_name if mat else "*** 未設定 ***")
+		print("  %s override=%s surfaces=%s" % [part, mesh.material_override, names])
 
 
 func _dump(node: Node, depth: int) -> void:

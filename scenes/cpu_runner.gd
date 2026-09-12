@@ -137,6 +137,7 @@ const REPATH_INTERVAL := 0.3
 ## （実際にこれでマップ中央に固まったまま鬼3体に囲まれた）
 const WAYPOINT_SKIP := 1.0
 const TURN_SPEED := 8.0
+## 頭上の役割ラベルの文字色（体色ではない。理由は player.gd の COLOR_* を参照）
 const RUNNER_COLOR := Player.COLOR_RUNNER
 const GROUND_DRAG := Player.GROUND_DRAG
 const STEER_WHILE_FAST := Player.STEER_WHILE_FAST
@@ -200,11 +201,13 @@ var _rng := RandomNumberGenerator.new()
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
 @onready var humanoid: Node3D = $Humanoid
+@onready var role_label: Label3D = $RoleLabel
 
 
 func _ready() -> void:
 	add_to_group("cpu_runners")
-	humanoid.set_color(RUNNER_COLOR)
+	role_label.text = Player.ROLE_TEXT["runner"]
+	role_label.modulate = RUNNER_COLOR
 	if multiplayer.is_server():
 		sync_position = position
 		sync_yaw = rotation.y
@@ -224,6 +227,8 @@ func _on_tag_area_body_entered(body: Node3D) -> void:
 
 
 func _process(delta: float) -> void:
+	# 役割ラベルは鬼にも見せる。体色をやめたので、これが唯一の「逃走者だ」という手がかり
+	role_label.visible = GameManager.state == GameManager.State.PLAYING
 	if delta <= 0.0:
 		return
 	if not multiplayer.is_server():

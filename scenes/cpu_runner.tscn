@@ -55,6 +55,15 @@ shape = SubResource("tag_shape")
 ; 約1m 高い所にある。0.6 のままだと水平にどれだけ寄っても到達扱いにならず、
 ; 経路点が進まないまま同じ場所で前後に振動する（ダッシュ時に顕著）。
 ; 逃走者は鬼より速い局面が多いので、ここは広めに取る
+; 役割の頭上ラベル。デバッグ用の CPU 逃走者も、人間の鬼から「にげ」と読める必要がある
+[node name="RoleLabel" type="Label3D" parent="."]
+visible = false
+position = Vector3(0, 2.32, 0)
+billboard = 1
+outline_size = 12
+outline_modulate = Color(0, 0, 0, 1)
+font_size = 44
+
 [node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
 path_desired_distance = 1.5
 target_desired_distance = 1.5

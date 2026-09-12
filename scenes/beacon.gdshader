@@ -1,7 +1,8 @@
 shader_type spatial;
 
-// ワープ地点の「光の柱」を作る加算合成シェーダ。
-// 光柱（Beacon）と舞う結晶（Shards）で共用し、uniform で振る舞いを変える。
+// 光る飾りを作る加算合成シェーダ。uniform で振る舞いを変えて共用する。
+// ワープ地点の光柱（Beacon）と舞う結晶（Shards）、
+// アイテムボックスの開封エフェクト（Burst の光の輪・Confetti の紙吹雪）。
 //
 // 規約: 当たり判定のある物は GameManager.world_time（全ピアで揃える必要がある）、
 // 装飾だけの物はこのシェーダの TIME。目印は当たらないので同期が要らない
@@ -17,6 +18,9 @@ uniform float energy = 1.0;       // 1.0 前後。上げると加算が飽和し
 uniform float fade_height = 0.0;  // >0 でこの高さに向かって薄れる（光柱用・メートル）
 uniform float bob = 0.0;          // 上下の揺れ幅(m)
 uniform float stripe = 0.0;       // 上へ流れる縞の強さ
+// 一度きりの演出を消えぎわに引くための係数。1.0 で通常、0.0 で完全に消える。
+// energy は ALBEDO にしか効かないので、加算合成では明るさが落ちても消えてくれない
+uniform float fade = 1.0;
 
 // フラグメントの VERTEX はビュー空間なので、モデル空間の高さは自前で運ぶ
 varying float local_y;
@@ -45,5 +49,5 @@ void fragment() {
 		pulse += stripe * (0.5 + 0.5 * sin(local_y * 1.1 - TIME * 2.6));
 	}
 	ALBEDO = albedo * energy;
-	ALPHA = clamp(k * pulse, 0.0, 1.0);
+	ALPHA = clamp(k * pulse * fade, 0.0, 1.0);
 }

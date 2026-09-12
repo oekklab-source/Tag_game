@@ -1,8 +1,16 @@
+class_name Humanoid
 extends Node3D
 
-## Blender 製の Fall Guys 風ちびキャラ（元データ: tools/blender/fallguy.blend）。
-## プレイヤーと CPU 鬼で共用。移動速度・接地・ダイブ状態からアニメを切り替える。
-## 役割色（Runner=緑 / Hunter=赤 / 待機=灰）は体色に反映する。
+## Blender 製の Fall Guys 風ちびキャラ。プレイヤーと CPU で共用し、
+## 移動速度・接地・ダイブ状態からアニメを切り替える。
+##
+## 着せ替え（SKINS）は Model を丸ごと差し替えて実現する。どのスキンも
+## tools/blender/character_common.py が同じリグと同じ名前のアニメクリップを
+## 焼くので、ここは glb を入れ替えるだけでよく、アニメの分岐は一切要らない。
+##
+## 役割（Runner / Hunter）は**体色ではなく頭上の文字ラベル**で示す
+## （player.gd の RoleLabel）。スキンごとに配色が違うので体色は使えないし、
+## 装束を本物の服として塗れる方が着せ替えとして面白い。
 
 ## Run アニメを等倍で再生したとき、キャラが実際に歩く速度。
 ## 1周期 0.8秒で 1周期ぶんの歩幅を進むので、この値で割った倍率で再生すれば
@@ -34,40 +42,99 @@ const SPEED_SMOOTH := 14.0
 const BLEND := 0.15  # アニメ切り替えのクロスフェード秒
 ## エモートは数秒間まわし続けるので、Idle/Run と同じくループ扱いにする
 ## （glTF 既定のワンショットのままだと1周で止まったポーズのまま固まる）
-const LOOPING := ["Idle", "Run", "Jump", "Nice", "Come"]
-## エモート ID（Player.Emote）と再生するクリップ名の対応
-const EMOTE_ANIM := {1: "Nice", 2: "Come"}
+const LOOPING := ["Idle", "Run", "Jump", "Nice", "Come", "ComeHip", "ComeCool"]
+## エモート ID（Player.Emote）と再生するクリップ名の対応。
+## 2〜4 はラウンド中の挑発3種（前のめり / 腰ふり / 余裕）
+const EMOTE_ANIM := {1: "Nice", 2: "Come", 3: "ComeHip", 4: "ComeCool"}
 
-var _mat_body := StandardMaterial3D.new()
+## 転倒中だけ頭の上でまわる星の輪。stunned で駆動するので、
+## プレイヤーも CPU も、他ピアの画面でも同じように出る
+const STAR_SPIN := 4.0        # まわる速さ rad/s
+const STAR_UP := 0.26         # 頭のてっぺんからどれだけ浮かせるか
+## Chest ボーンの原点から頭のてっぺんまでの距離（Blender のボーン長 0.56）。
+## 顔面ダイブでは頭が前方 1m・高さ 0.5m まで動くので、頭の位置は
+## ボーンから毎フレーム取り直すしかない。ボーンのローカル軸は Blender と glTF で
+## 向きが変わるため、この値と向きは tests/slip.tscn が実測して確かめている
+const HEAD_FROM_CHEST := 0.56
+
+## 着せ替え。ロビー（main.gd）で選び、PlayerPrefs に保存され、
+## player.gd の sync_skin で全ピアに配られる。並び順がそのまま保存値なので、
+## **既存の項目の順番は変えないこと**（入れ替えると保存済みの設定が別の服になる）。
+const SKINS := [
+	{"name": "きょうりゅう", "path": "res://assets/character/fallguy.glb"},
+	{"name": "しのび", "path": "res://assets/character/ninja.glb"},
+]
+## Blender では -Y を正面にモデリングしたが、glTF(+Y up) 変換でそれが +Z に来るため
+## 180度回して Godot の正面（-Z）に合わせる（元は humanoid.tscn の Model にあった）
+const MODEL_BASIS := Basis(Vector3(-1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, -1))
+
 var _diving := false
 var _stunned := false
 var _emote := 0
 var _state := ""
 var _speed := 0.0
+var _star_angle := 0.0
+var _skin := -1
 
-@onready var _anim: AnimationPlayer = $Model.find_child("AnimationPlayer", true, false)
-@onready var _body: MeshInstance3D = $Model.find_child("Body", true, false)
+var _model: Node3D
+var _anim: AnimationPlayer
+var _skel: Skeleton3D
+var _chest := -1
+
+@onready var _stars: Node3D = $Stars
 
 
 func _ready() -> void:
+	if _skin < 0:
+		set_skin(0)
+
+
+## 着せ替えを差し替える。生成前（_ready より先）に呼ばれることもあるので、
+## _stars に依存せず単体で完結させる。
+##
+## 差し替えると AnimationPlayer ごと入れ替わるため、再生中のクリップは
+## 状態(_state)を消してから同じものを鳴らし直す。そうしないと _play() が
+## 「もう再生中」と判断して新しいモデルが Rest ポーズのまま固まる。
+func set_skin(id: int) -> void:
+	var index := id if id >= 0 and id < SKINS.size() else 0
+	if index == _skin:
+		return
+	_skin = index
+	var was := _state
+	if _model:
+		# queue_free() はフレーム末まで実行されない。木に残したまま同じ名前の
+		# ノードを足すと Godot が新しい方を勝手に改名し、get_node("Model") が
+		# 消える寸前の古いモデルを掴んでしまう。先に木から外すこと
+		remove_child(_model)
+		_model.queue_free()
+	_model = (load(SKINS[index]["path"]) as PackedScene).instantiate()
+	_model.name = "Model"
+	_model.transform = Transform3D(MODEL_BASIS, Vector3.ZERO)
+	add_child(_model)
+	_anim = _model.find_child("AnimationPlayer", true, false)
+	_skel = _model.find_child("Skeleton3D", true, false)
+	_chest = _skel.find_bone("Chest")
 	# glTF のアニメは既定でワンショット扱いなので、ループするものだけ設定し直す
 	for anim_name in LOOPING:
 		var anim := _anim.get_animation(anim_name)
 		if anim:
 			anim.loop_mode = Animation.LOOP_LINEAR
-	_body.material_override = _mat_body
-	set_color(Color(0.5, 0.55, 0.6))
-	_play("Idle")
+	_state = ""
+	_play(was if not was.is_empty() else "Idle")
 
 
-## 色を変えるのは体だけ。ニット帽とビブは元の配色のまま残して衣装らしさを保つ
-## （体が最大面積なので役割色はこれだけで十分読み取れる）。
-## 広くてカラフルなマップで床に埋もれないよう、体色は弱く自己発光させる
-func set_color(color: Color) -> void:
-	_mat_body.albedo_color = color
-	_mat_body.emission_enabled = true
-	_mat_body.emission = color
-	_mat_body.emission_energy_multiplier = 0.35
+## 星は頭に追従させるが、輪そのものは常に水平にまわす。
+## Humanoid ごと傾く（ダイブ）ことも、うつ伏せで頭だけ前へ出ることもあるので、
+## 親のローカル座標ではなく世界座標で置き直す
+func _process(delta: float) -> void:
+	_stars.visible = _stunned
+	if not _stunned:
+		return
+	_star_angle = fmod(_star_angle + delta * STAR_SPIN, TAU)
+	var head: Vector3 = _skel.global_transform * (_skel.get_bone_global_pose(_chest)
+		* (Vector3.UP * HEAD_FROM_CHEST))
+	_stars.global_position = head + Vector3.UP * STAR_UP
+	_stars.global_basis = Basis(Vector3.UP, _star_angle)
 
 
 ## 親（player / cpu_hunter）が毎フレーム水平速度と接地状態を渡す。
@@ -107,8 +174,9 @@ func set_diving(value: bool) -> void:
 	_diving = value
 
 
-## バナナを踏んで転んでいる間。Slip は 1.5秒ワンショットで、
-## banana.gd の STUN と同じ長さなので終わりがそのままスタン明けに一致する
+## バナナを踏んで転んでいる間。Slip（顔面ダイブ）は 1.5秒ワンショットで、
+## banana.gd の STUN と同じ長さなので終わりがそのままスタン明けに一致する。
+## 頭上の星もこのフラグで出す
 func set_stunned(value: bool) -> void:
 	_stunned = value
 

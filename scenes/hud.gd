@@ -241,9 +241,15 @@ func _update_labels() -> void:
 
 	var lines := PackedStringArray()
 	if GameManager.state == GameManager.State.WAITING:
-		lines.append("Esc: マウスを離してロビーを操作 / F: ナイス！")
+		lines.append("Esc: メニュー（マウスも離れる） / F: ナイス！")
 	else:
-		lines.append("クリック: 視点を操作 / Esc: マウスを離す / F: カモン！")
+		# 挑発は3種あって 1/2/3 で選ぶので、今どれが出るかをヒントに出す
+		var style := "前のめり"
+		var me := _get_local_player()
+		if me:
+			style = Player.TAUNT_NAME.get(me.taunt_style, style)
+		lines.append("クリック: 視点を操作 / Esc: メニュー / F: カモン！（1/2/3 で型: %s）"
+			% style)
 		if GameManager.head_start_left > 0.0:
 			lines.append("にげる時間！ 今のうちに走れ" if is_runner
 				else "にげる時間 ― おには動けない")

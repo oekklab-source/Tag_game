@@ -18,6 +18,17 @@ export/
 # Blender の自動バックアップ
 *.blend1
 
+# tools/blender の build_*.py を import したときに出る Python キャッシュ
+__pycache__/
+
+# シークレット（Stripe APIキーなど）
+.env
+.env.*
+!.env.example
+
+# Node.js（server/ の Stripe バックエンド）
+node_modules/
+
 # 確認用に生成される PNG（tests/screenshot.tscn --shots、build_*.py --render の出力）
 tests/shots/
 tools/blender/renders/

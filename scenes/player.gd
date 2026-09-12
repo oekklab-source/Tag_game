@@ -15,8 +15,9 @@ enum Item { NONE, ROCKET, BANANA, BLOCK }
 
 ## エモート（hud.gd / humanoid.gd と共有）。文言は固定で、状況で自動的に決まる。
 ## humanoid.gd の EMOTE_ANIM がこの数値をクリップ名に対応させているので、
-## 値を並べ替えたら向こうも直すこと
-enum Emote { NONE, NICE, COME }
+## 値を並べ替えたら向こうも直すこと（足すのは必ず末尾）。
+## COME 系はラウンド中の挑発3種で、どれが出るかは taunt_style が持つ
+enum Emote { NONE, NICE, COME, COME_HIP, COME_COOL }
 
 signal effect_gained(effect: int)
 signal item_changed(held: int)
@@ -76,21 +77,42 @@ const ITEM_ROULETTE := 1.2
 
 ## --- エモート -----------------------------------------------------------
 ## 唯一の意思疎通の手段。文言は固定で、待機中は「ナイス！」、ラウンド中は「カモン！」に
-## 自動で決まるので操作は F の1キーだけ。移動は止めない（凍結中の鬼も出せる）
+## 自動で決まるので出す操作は F の1キーだけ。移動は止めない（凍結中の鬼も出せる）
 const EMOTE_TIME := 2.4      # 吹き出し・モーション・マップの光が出ている長さ
 const EMOTE_COOLDOWN := 3.0  # 連打で撒き散らせないようにする
 const EMOTE_TEXT := {
 	Emote.NICE: "ナイス！",
 	Emote.COME: "カモン！",
+	Emote.COME_HIP: "カモン！",
+	Emote.COME_COOL: "カモン！",
 }
+## 挑発3種の色を分けないのは意図的。吹き出しとミニマップのリングが型ごとに変わると、
+## 味方が読み取りたい「誰が呼んでいるか」に型のノイズが乗る
 const EMOTE_COLOR := {
 	Emote.NICE: Color(0.45, 1.0, 0.65),
 	Emote.COME: Color(1.0, 0.85, 0.3),
+	Emote.COME_HIP: Color(1.0, 0.85, 0.3),
+	Emote.COME_COOL: Color(1.0, 0.85, 0.3),
 }
 
+## --- 挑発の型 -----------------------------------------------------------
+## ラウンド中の「カモン！」は挑発モーションで、1 / 2 / 3 で型を選ぶ。
+## 選んだ型はローカルな好みなので**同期しない**。出した瞬間に sync_emote へ乗るので
+## それだけで全ピアに伝わる。名前は HUD の操作ヒントが引く
+const TAUNT_STYLES := [Emote.COME, Emote.COME_HIP, Emote.COME_COOL]
+const TAUNT_NAME := {
+	Emote.COME: "前のめり",
+	Emote.COME_HIP: "腰ふり",
+	Emote.COME_COOL: "余裕",
+}
+
+## 頭上の役割ラベルの文字色。着せ替えで体の配色が変わるので、役割は体色ではなく
+## ここで示す。ただし 48m の視認距離では文字は読めなくなるため、**文字色そのものを
+## 役割色にして**近くでは文字が、遠くでは色の点が役割を伝えるようにしてある
 const COLOR_WAITING := Color(0.62, 0.66, 0.72)
 const COLOR_RUNNER := Color(0.2, 1.0, 0.45)
 const COLOR_HUNTER := Color(1.0, 0.18, 0.22)
+const ROLE_TEXT := {"runner": "にげ", "hunter": "おに"}
 
 ## --- リモートピアの補間 -------------------------------------------------
 ## インターネット越しでは到着間隔がばらつくので、同期値を直接 position に入れると
@@ -125,6 +147,7 @@ var stun_left := 0.0                # バナナを踏んだ時の操作不能時
 var stunned := false
 var emote_left := 0.0               # 権威ピアのみ。0 になったら sync_emote を戻す
 var emote_cooldown := 0.0           # 権威ピアのみ
+var taunt_style: int = Emote.COME   # 自分の端末だけの好み。同期しない（hud.gd が読む）
 
 ## 壁の角に押し付けられて動けなくなった時の検知・脱出用。
 ## cpu_hunter.gd / cpu_runner.gd と同じ stuck_escape.gd を共有する
@@ -151,6 +174,9 @@ var _stuck_kick_left := 0.0
 @export var sync_air := false
 ## 味方ハンターの頭上ラベルに使うニックネーム。権威ピアが PlayerPrefs から一度だけ書く
 @export var sync_nickname := ""
+## 着せ替え（Humanoid.SKINS の添字）。権威ピアが PlayerPrefs から一度だけ書く。
+## 届く前に描画されるフレームは既定スキン（0）で出る
+@export var sync_skin := 0
 ## 出しているエモート（Emote の値）。0 = 出していない。
 ## 終わるたび必ず 0 を挟むので、同じエモートを繰り返しても ON_CHANGE の同期が発火する
 @export var sync_emote: int = Emote.NONE
@@ -161,6 +187,7 @@ var _current_color := Color.TRANSPARENT
 @onready var camera: Camera3D = $SpringArm3D/Camera3D
 @onready var humanoid: Node3D = $Humanoid
 @onready var name_label: Label3D = $NameLabel
+@onready var role_label: Label3D = $RoleLabel
 @onready var emote_label: Label3D = $EmoteLabel
 
 
@@ -176,6 +203,7 @@ func _ready() -> void:
 		sync_position = position
 		sync_yaw = rotation.y
 		sync_nickname = PlayerPrefs.nickname
+		sync_skin = PlayerPrefs.skin
 		camera.current = true
 		spring_arm.add_excluded_object(get_rid())
 	else:
@@ -222,8 +250,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		# ブラウザのポインタロックはユーザー操作起点が必須のため、クリックで取得する
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	elif event.is_action_pressed("ui_cancel"):
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	# Esc でのマウス解放は QuitMenu が開くときに行う
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
 		spring_arm.rotation.x = clampf(
@@ -242,6 +269,7 @@ func _physics_process(delta: float) -> void:
 	# dive / use_item と同じく _unhandled_input ではなくここで拾うのは、
 	# 「押しっぱなしの間だけ有効」ではないものを物理フレームの粒度で揃えるため
 	_tick_emote(delta)
+	_tick_taunt_style()
 	if Input.is_action_just_pressed("emote"):
 		_start_emote()
 	buffs.tick(delta)
@@ -383,9 +411,19 @@ func _start_emote() -> void:
 	emote_cooldown = EMOTE_COOLDOWN
 
 
-## ラウンド中は仲間を呼ぶ「カモン」、それ以外（待機中・リザルト）は「ナイス」
+## 1 / 2 / 3 で挑発の型を選ぶ。出している最中でもクールダウン中でも切り替えられる
+## （次に出すときに効く）。押しっぱなしは意味が無いので just_pressed で拾う
+func _tick_taunt_style() -> void:
+	for i in TAUNT_STYLES.size():
+		if Input.is_action_just_pressed("taunt_%d" % (i + 1)):
+			taunt_style = TAUNT_STYLES[i]
+			return
+
+
+## ラウンド中は仲間を呼ぶ「カモン」（選んだ挑発の型）、
+## それ以外（待機中・リザルト）は「ナイス」
 func _emote_for_state() -> int:
-	return Emote.COME if GameManager.state == GameManager.State.PLAYING else Emote.NICE
+	return taunt_style if GameManager.state == GameManager.State.PLAYING else Emote.NICE
 
 
 func _tick_emote(delta: float) -> void:
@@ -604,19 +642,28 @@ func apply_stun(seconds: float) -> void:
 	effect_gained.emit(Effect.STUN)
 
 
-## 役割に応じた体色の反映（全ピアで実行）
+## 役割の見た目（全ピアで実行）。着せ替えの反映もここでまとめて行う。
+##
+## 役割は頭上の文字ラベルで出す。名前ラベルと違い**逃走者にも鬼にも見せる**:
+## 見えている相手の役割が分からないと成立しないゲームだからで、視界に入った時
+## しか描画されない以上、位置情報の非対称（README）は崩れない。
+## 自分の頭上には出さない（自分の役割は HUD が出している）。
 func _update_role_visuals() -> void:
 	var my_id := String(name).to_int()
+	humanoid.set_skin(sync_skin)
+	var waiting := GameManager.state == GameManager.State.WAITING
+	var is_runner := my_id == (GameManager.wanted_runner if waiting else GameManager.runner_id)
 	var color := COLOR_WAITING
-	if GameManager.state == GameManager.State.WAITING:
-		# 準備中も立候補者だけ緑にして、誰が逃げる役かゲーム内で分かるようにする
-		if my_id == GameManager.wanted_runner:
-			color = COLOR_RUNNER
-	else:
-		color = COLOR_RUNNER if my_id == GameManager.runner_id else COLOR_HUNTER
+	if is_runner:
+		color = COLOR_RUNNER
+	elif not waiting:
+		color = COLOR_HUNTER
+	role_label.visible = my_id != multiplayer.get_unique_id() and not (waiting and not is_runner)
 	if color != _current_color:
 		_current_color = color
-		humanoid.set_color(color)
+		role_label.modulate = color
+		# 準備中の立候補者は「逃げる役に立候補している」ことだけ示す
+		role_label.text = ROLE_TEXT["runner"] if is_runner else ROLE_TEXT["hunter"]
 
 
 ## 頭上の名前ラベル。逃走者には見せない（味方ハンター同士にのみ表示する）。
