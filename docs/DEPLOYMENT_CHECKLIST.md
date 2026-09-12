@@ -16,6 +16,13 @@ Steamworks → EOS 移行はコード上は全フェーズ完了しているが�
    （既定の `GameClient` ポリシーで足りるか未確認。Phase 0 で Connect 機能が
    Custom Policy では有効化できなかった前例があるので、ここでも要注意）。
 
+**2026-09-12 実施済み（ステップ1・2・3、スクリーンショットで確認）**: Stat `PlayerRating`
+（aggregation LATEST）、Leaderboard `GlobalRankings`（`PlayerRating` に紐づき aggregation LATEST、
+ステータス「アクティブ」）を作成済み。Client Policy `GameClient_Default` にも Stats/Leaderboards
+は有効（項目6参照）。**未実施**: ゲーム内のランキング画面
+（[scenes/ranking_dialog.gd](../scenes/ranking_dialog.gd)）に実際のスコアが表示されることの実機確認
+（下記の本来の完了条件）。
+
 **完了条件**: ゲーム内のランキング画面（[scenes/ranking_dialog.gd](../scenes/ranking_dialog.gd)）に
 実際のスコアが表示される。
 
@@ -146,6 +153,22 @@ Leaderboards など**必要最小限の権限のみ**になっているかを、
 過剰な権限（例: 他プロダクトの管理系スコープ）が付いていないことを確認する。
 
 **完了条件**: Developer Portal のスクリーンショットで Client Policy の権限一覧を確認済み。
+
+**2026-09-12 実施済み（スクリーンショットで確認、現状維持を採用）**: 製品設定 → クライアント
+（`https://dev.epicgames.com/portal/solpinto/products/taggame-a0f2f993/settings/clients`）で確認。
+クライアントは `Godot_Client` の1つのみ、ポリシーは既定の `GameClient_Default`（GameClient型）。
+付与されている14項目（Achievements, Anti-Cheat, Leaderboards, Lobbies, Metrics, Notifications,
+Player Data Storage, Player Reports, Progression Snapshot, Sanctions, Sessions, Stats,
+Title Storage, Voice）のうち、コード側（`autoload/`・`scenes/` 全体を grep、SDKラッパー本体
+`addons/epic-online-services-godot/` 自体は除く）で実際に呼んでいるのは **Leaderboards / Lobbies /
+Player Data Storage / Stats の4項目のみ**。残り10項目は未使用（特に Sessions はこのゲームが使う
+EOS Lobbies とは別インターフェースで無関係、Player Reports/Sanctions は EOS ネイティブ機能ではなく
+`report_profile` RPC・friend-api の `/report-penalty` で自前実装済み）。なお「P2P」という項目自体が
+Client Policy の権限一覧に存在しないことも確認した（このゲームは EOS の P2P Interface を使わず、
+ENet/WebSocket + Cloudflare トンネルで通信しているため、そもそも懸念不要）。
+**判断**: 単一プロダクトのポリシーであり他プロダクトへの権限漏洩リスクがないため、
+過剰な10項目は残したまま許容することをユーザーが選択（最小権限へ絞る対応は見送り）。
+今後 EOS 機能を追加する際に絞り込みを再検討してよい。
 
 ## 7. Cloudflare Workers Builds（Git連携）のチェック失敗 — 原因確定・対応済み（2026-09-12）
 
