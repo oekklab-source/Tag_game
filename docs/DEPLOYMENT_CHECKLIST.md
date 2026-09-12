@@ -147,32 +147,30 @@ Leaderboards など**必要最小限の権限のみ**になっているかを、
 
 **完了条件**: Developer Portal のスクリーンショットで Client Policy の権限一覧を確認済み。
 
-## 7. Cloudflare Workers Builds（Git連携）のチェック失敗（任意・非ブロッキング）
+## 7. Cloudflare Workers Builds（Git連携）のチェック失敗 — 原因確定・対応済み（2026-09-12）
 
 GitHub PR上の「Workers Builds: tag-game」チェックは、2026-08-27の初回導入コミット以降
-一度も成功していない。ただし **マージのブロッカーではない**（`main` に必須チェック設定なし、
+一度も成功していなかった。**マージのブロッカーではなかった**（`main` に必須チェック設定なし、
 PRは常に `MERGEABLE`）。本番デプロイは本チェックリストの手動 `npx wrangler deploy`
-経由で完結しており、このCI連携とは無関係。
+経由で完結しており、このCI連携とは無関係だった。
 
-原因は本リポジトリの2つのworker（`tag-game-friend-api`/`service/friend-api`、
-`tag-game-commerce-api`/`service/commerce-api`）のいずれとも名前が一致しない
-「tag-game」というWorkers Buildsプロジェクトが、Cloudflareダッシュボード上でGit連携
-されていること（ルートディレクトリ未設定、または対象workerの取り違えの可能性）。
+**根本原因（Cloudflare API で直接確認済み、推測ではない）**: 「tag-game」という Worker は
+本リポジトリの実サービス（`tag-game-friend-api`/`tag-game-commerce-api`）のどちらとも
+無関係で、Cloudflareダッシュボードの「Hello World」テンプレートから **2026-08-01**
+（本リポジトリの初期コミットより前）に作成されたまま一度も更新されていない放置スクリプト
+だった（`source: dash_template`、workers.dev公開オフ、cronトリガーなし、bindings空）。
+それにGitHub連携（Workers Builds）だけが本リポジトリに紐付いており、対応する
+`wrangler.toml`が存在しないため毎回ビルドに失敗していた。
 
-修正するには（Cloudflareダッシュボード側の作業、コード変更は不要）:
+**対応**: 上記の安全性（未使用・無関係と確認済み）に基づき、`DELETE
+/accounts/{account}/workers/scripts/tag-game` をCloudflare APIで実行し、2026-09-12に
+このWorkerを削除済み。`tag-game-friend-api`/`tag-game-commerce-api`は削除対象に含めておらず、
+既存の友達機能/決済機能への影響はない。
 
-1. Cloudflare dashboard → Workers & Pages → 該当の「tag-game」プロジェクト → Settings → Build
-   を開き、現在の Root directory / 対象 Worker 設定を確認する。
-2. 次のいずれかを選ぶ:
-   - `service/friend-api` または `service/commerce-api` のどちらかを Root directory に
-     設定し、対象 Worker 名を `wrangler.toml` の `name` と一致させる
-     （2 worker構成のため、このプロジェクト1つではどちらか片方しかビルドできない）。
-   - もしくは、実デプロイは既に手動 `wrangler deploy` で完結しており本連携が不要であれば、
-     この Git 連携（Workers Builds プロジェクト）自体を削除し、PRへの赤バツ表示を止める。
-3. 次回コミットで対象PRのチェックが消える、または成功することを確認する。
-
-**完了条件**: 新規コミットに対して「Workers Builds: tag-game」チェックが失敗表示されなくなる
-（成功する、またはGit連携を削除してチェック自体が出なくなる）。
+**完了条件**: 削除直後に `GET /accounts/{account}/workers/scripts` で `tag-game` が
+一覧から消えたことを確認済み。次回このブランチにコミットした際、GitHub側の
+「Workers Builds: tag-game」チェック自体が発生しなくなることを確認する（未確認、次回
+コミット時に確認）。
 
 ## 8. フレンド検索・オンライン状態・戦績公開の追加エンドポイント（未デプロイ）
 
