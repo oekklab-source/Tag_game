@@ -144,7 +144,6 @@ const SLIP_DRAG := Player.SLIP_DRAG
 const SLIDE_STEER := Player.SLIDE_STEER
 const SLIDE_MIN_SPEED := Player.SLIDE_MIN_SPEED
 const SLIDE_SNAP := Player.SLIDE_SNAP
-const SLIDE_GRACE := Player.SLIDE_GRACE
 const WARP_GRACE := Player.WARP_GRACE
 const NET_SMOOTH := Player.NET_SMOOTH
 const NET_SNAP_DIST := Player.NET_SNAP_DIST
@@ -153,10 +152,7 @@ var buffs := BuffSet.new()
 var carry_velocity := Vector3.ZERO
 var bumper_bounce_velocity := Vector3.ZERO
 var bumper_bounce_left := 0.0
-var slide_dir := Vector3.ZERO
-var slide_accel := 0.0
-var slide_cap := 0.0
-var slide_left := 0.0
+var slide_ride := SlideRide.new()
 var warp_lock := 0.0
 var warp_grace := 0.0
 var stun_left := 0.0
@@ -199,6 +195,8 @@ var _rng := RandomNumberGenerator.new()
 @export var sync_yaw := 0.0
 @export var sync_speed := 0.0
 @export var sync_air := false
+@export var sync_slide := Vector4.ZERO
+@export var sync_respawn_left := 0.0
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
 @onready var humanoid: Node3D = $Humanoid
@@ -232,14 +230,18 @@ func _process(delta: float) -> void:
 		_follow_sync(delta)
 	humanoid.set_diving(false)
 	humanoid.set_stunned(stunned)
+	humanoid.set_respawn(sync_respawn_left)
+	humanoid.set_slide(sync_slide, global_rotation.y, delta)
 	humanoid.update_motion(sync_speed, not sync_air, delta)
-	humanoid.rotation.x = lerpf(humanoid.rotation.x, 0.0, minf(delta * 12.0, 1.0))
+	if stunned or int(sync_slide.x) == SlideRide.Phase.NONE:
+		humanoid.rotation.x = lerpf(humanoid.rotation.x, 0.0, minf(delta * 12.0, 1.0))
 
 
 func _physics_process(delta: float) -> void:
 	if not multiplayer.is_server():
 		return
 
+	sync_respawn_left = maxf(0.0, sync_respawn_left - delta)
 	buffs.tick(delta)
 	warp_lock = maxf(warp_lock - delta, 0.0)
 	stun_left = maxf(stun_left - delta, 0.0)
@@ -253,7 +255,7 @@ func _physics_process(delta: float) -> void:
 	if warp_grace > 0.0 or not grounded:
 		velocity += get_gravity() * delta
 
-	var active := (GameManager.state == GameManager.State.PLAYING and stun_left <= 0.0)
+	var active := (GameManager.state == GameManager.State.PLAYING and stun_left <= 0.0 and sync_respawn_left <= 0.0)
 	var dir := Vector3.ZERO
 	var wants_dash := false
 	if active:
@@ -293,20 +295,26 @@ func _physics_process(delta: float) -> void:
 		_try_use_item()
 
 	_update_stamina(delta, wants_dash)
+	var was_sliding := slide_ride.active()
+	slide_ride.tick(delta)
+	if was_sliding and not slide_ride.active():
+		_repath_timer = 0.0
+		_goal_timer = 0.0
 
 	var speed := (DASH_SPEED if is_dashing else SPEED) * buffs.get_mult(&"speed")
 	var target := Vector2(dir.x, dir.z) * speed
-	if holding_bumper_bounce:
+	if sync_respawn_left > 0.0:
+		velocity.x = 0.0
+		velocity.z = 0.0
+	elif holding_bumper_bounce:
 		velocity.x = bumper_bounce_velocity.x
 		velocity.z = bumper_bounce_velocity.z
-	elif slide_left > 0.0:
-		velocity = SlideMotion.step(velocity, delta, slide_dir, slide_accel, slide_cap,
-			SLIDE_STEER, dir, SLIDE_MIN_SPEED)
+	elif slide_ride.active():
+		velocity = slide_ride.move(velocity, delta, dir, SLIDE_STEER, SLIDE_MIN_SPEED)
 		floor_snap_length = SLIDE_SNAP
-		slide_left = maxf(slide_left - delta, 0.0)
-		if slide_left <= 0.0:
-			_repath_timer = 0.0
-			_goal_timer = 0.0
+	elif slide_ride.phase == SlideRide.Phase.RECOVER and grounded:
+		velocity = slide_ride.recover_motion(velocity, target, delta)
+		floor_snap_length = 0.1
 	elif warp_grace > 0.0:
 		warp_grace = maxf(warp_grace - delta, 0.0)
 		if dir != Vector3.ZERO:
@@ -347,8 +355,9 @@ func _physics_process(delta: float) -> void:
 
 	sync_speed = Vector2(velocity.x, velocity.z).length()
 	sync_air = not grounded
+	sync_slide = slide_ride.visual()
 	if global_position.y < WorldData.FALL_LIMIT:
-		teleport(WorldData.zone_center(WorldData.zone_index(global_position)) + Vector3(0, 3, 0))
+		respawn_after_fall()
 	sync_position = position
 	sync_yaw = rotation.y
 
@@ -415,7 +424,7 @@ func _update_goal(delta: float) -> void:
 	_repick_timer -= delta
 	_giveup_left = maxf(_giveup_left - delta, 0.0)
 	var dist := _xz_dist(global_position, _goal)
-	if _sidestep_left <= 0.0 and slide_left <= 0.0:
+	if _sidestep_left <= 0.0 and not slide_ride.active():
 		_progress_timer -= delta
 		if _progress_timer <= 0.0:
 			_progress_timer = PROGRESS_TIME
@@ -688,6 +697,7 @@ func get_ai_goal() -> Vector3:
 ## --- ギミックから呼ばれる API（player.gd と同じ契約） --------------------
 
 func teleport(pos: Vector3) -> void:
+	sync_respawn_left = 0.0
 	global_position = pos
 	sync_position = position
 	velocity = Vector3.ZERO
@@ -701,7 +711,8 @@ func teleport(pos: Vector3) -> void:
 	item_lock = 0.0
 	warp_lock = 0.0
 	warp_grace = 0.0
-	slide_left = 0.0
+	slide_ride.reset()
+	sync_slide = Vector4.ZERO
 	stun_left = 0.0
 	stunned = false
 	_repath_timer = 0.0
@@ -715,6 +726,8 @@ func teleport(pos: Vector3) -> void:
 
 
 func launch(v: Vector3) -> void:
+	slide_ride.reset()
+	sync_slide = Vector4.ZERO
 	if v.y != 0.0:
 		velocity.y = v.y
 	velocity.x += v.x
@@ -735,7 +748,8 @@ func warp_to(pos: Vector3, up_vel: float, exit_kick := Vector3.ZERO) -> void:
 	bumper_bounce_left = 0.0
 	warp_lock = 0.9
 	warp_grace = WARP_GRACE
-	slide_left = 0.0
+	slide_ride.reset()
+	sync_slide = Vector4.ZERO
 	_repath_timer = 0.0
 	_goal_timer = 0.0
 	_threat_prev = INF
@@ -755,14 +769,34 @@ func add_carry(v: Vector3) -> void:
 	carry_velocity += v
 
 
-func apply_slide(dir: Vector3, accel: float, cap: float) -> void:
-	slide_dir = dir
-	slide_accel = accel
-	slide_cap = cap
-	slide_left = SLIDE_GRACE
+func apply_slide(dir: Vector3, accel: float, cap: float, pitch := 0.0,
+		near_bottom := false, source_id := 0) -> void:
+	if sync_respawn_left > 0.0 or stunned or warp_grace > 0.0 or bumper_bounce_left > 0.0:
+		return
+	slide_ride.contact(source_id, dir, pitch, accel, cap, near_bottom, velocity)
+
+
+func release_slide(source_id: int) -> void:
+	if slide_ride.active():
+		_repath_timer = 0.0
+		_goal_timer = 0.0
+	slide_ride.release(source_id)
+	sync_slide = slide_ride.visual()
 
 
 func apply_stun(seconds: float) -> void:
+	slide_ride.reset()
+	sync_slide = Vector4.ZERO
 	stun_left = maxf(stun_left, seconds)
 	stunned = true
 	# 水平速度は殺さない。走っていた勢いのまま尻で滑らせる（SLIP_DRAG で減速する）
+
+
+## 落下復帰専用。ラウンド開始などの通常teleportにはペナルティを付けない。
+func respawn_after_fall() -> void:
+	if not is_multiplayer_authority():
+		return
+	teleport(WorldData.respawn_point(self))
+	stun_left = 0.0
+	stunned = false
+	sync_respawn_left = 3.0
