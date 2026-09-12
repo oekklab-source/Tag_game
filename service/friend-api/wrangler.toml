@@ -9,8 +9,11 @@ compatibility_date = "2024-11-01"
 #                                                                          最大NAME_INDEX_MAX件/名前)
 #   requests:<puid>      -> [{request_id, from_puid, from_name, created_at}]  (/send-request, /respond-request)
 #   friends:<puid>       -> [{puid, name}]                                (/respond-request accept, /remove-friend)
-#   presence:<puid>      -> {last_seen}                                   (/heartbeat が更新。オンライン判定は
-#                                                                          読み取り時にONLINE_THRESHOLD_MSで計算)
+#   presence:<puid>      -> {last_seen, heartbeat_day, heartbeat_count}   (/heartbeat が更新。オンライン判定は
+#                                                                          読み取り時にONLINE_THRESHOLD_MSで計算。
+#                                                                          heartbeat_day/countは旧rlheartbeat:の
+#                                                                          レート制限カウンタをここに同居させたもの
+#                                                                          ―書き込みを1呼び出しあたり2件→1件に削減)
 #   stats:<puid>         -> {rating, matches_played, runner_wins, hunter_wins,
 #                             highest_rating, costume_id, costume_colors, hat_id, updated_at}  (/syncが更新)
 #   penalty:<puid>       -> {rating_delta, reason, created_at}            (/report-penalty, /consume-penalty)
@@ -18,7 +21,6 @@ compatibility_date = "2024-11-01"
 #   rlpenalty:<puid>:<date>    -> カウント文字列(TTL2日)                  (/report-penaltyのレート制限、報告者PUID単位)
 #   rlsync:<puid>:<date>       -> カウント文字列(TTL2日)                  (/syncのレート制限)
 #   rlsearch:<puid>:<date>     -> カウント文字列(TTL2日)                  (/search-userのレート制限)
-#   rlheartbeat:<puid>:<date>  -> カウント文字列(TTL2日)                  (/heartbeatのレート制限)
 #   jwks_cache           -> Epic JWKSの生JSON(TTL1時間)                  (verifyIdToken()のキャッシュ)
 # `wrangler kv namespace create FRIEND_KV` で作成し、id をここに設定する
 [[kv_namespaces]]

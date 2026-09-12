@@ -198,3 +198,20 @@ PRは常に `MERGEABLE`）。本番デプロイは本チェックリストの手
 
 **完了条件**: 本番デプロイ後、2アカウント間で検索→追加→オンライン状態表示→詳細情報表示が
 実際に動作し、KV書き込み量が無料枠に対して余裕があることを確認する。
+
+**2026-09-12 実施**: 手順1(`npx tsc --noEmit`)をエラー無しで確認後、`npx wrangler deploy`
+実施済み(Version ID `83d3c5fe-7477-4338-b07c-8072aafb75df`)。`curl`で`/search-user`・
+`/heartbeat`・`/friend-profile`の3エンドポイントとも、`Authorization`ヘッダ無し・不正トークンの
+両方で401を返すことを確認済み(既存エンドポイントと同じ挙動)。
+
+**手順4(2アカウントでの実機確認)はユーザーの意向により今回は省略する。**
+
+**2026-09-12 追加実施(KV書き込み削減)**: KV無料枠(1日1,000件、`service/commerce-api`とも
+アカウント単位で共有)への懸念から、ハートビートの書き込みを2件削減する2つの対応を実装・
+デプロイした: (1) `/heartbeat`のレート制限カウンタ(旧`rlheartbeat:<puid>:<date>`)を
+`presence:<puid>`自体に統合し、1呼び出しあたりのKV書き込みを2件→1件に削減
+([service/friend-api/src/index.ts](../service/friend-api/src/index.ts)の`handleHeartbeat()`)。
+(2) クライアント側(`autoload/friend_manager.gd`)で、フレンドが1人もいない間はハートビート
+自体を送らないようにした(`_update_heartbeat_state()`、`get_friends()`呼び出しのたびに再評価)。
+手順3(KV書き込み量の数日観測)は引き続き未実施 — デプロイから数日経ってから
+Cloudflareダッシュボードで確認すること。

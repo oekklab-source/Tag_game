@@ -40,7 +40,7 @@ func _live() -> bool:
 	return USE_LIVE_FRIEND_BACKEND and EosManager.is_eos_available
 
 
-## EOS初期化(成功時のみ)を機にハートビートを開始する。失敗時(オフライン)は
+## EOS初期化(成功時のみ)を機にハートビートの開始判定を行う。失敗時(オフライン)は
 ## _live()がfalseのままなので、以降のheartbeat呼び出しは全て無音で無視される。
 ## ヘッドレス実行(tests/*.tscn)はEOS credentials設定済みの開発機だと毎回ここまで
 ## 到達してしまい、テスト実行のたびに本番friend-apiへハートビート/戦績アップロードの
@@ -52,20 +52,43 @@ func _on_eos_initialized(success: bool) -> void:
 		return
 	if not success or not USE_LIVE_FRIEND_BACKEND:
 		return
-	if _heartbeat_timer == null:
-		_heartbeat_timer = Timer.new()
-		_heartbeat_timer.wait_time = HEARTBEAT_INTERVAL_SEC
-		_heartbeat_timer.timeout.connect(_send_heartbeat)
-		add_child(_heartbeat_timer)
-		_heartbeat_timer.start()
-	_send_heartbeat()
 	# EOS初期化前に発火したprofile_updated分の戦績も、ここで一度アップロードしておく
 	_upload_my_stats_now()
+	# フレンドが1人もいない間は誰も自分のオンライン状態を見ないため、ハートビートは
+	# get_friends()の結果(_update_heartbeat_state経由)で必要な時だけ開始する
+	get_friends()
 
 
 func _send_heartbeat() -> void:
 	if _live():
 		await FriendBackendClient.heartbeat(self)
+
+
+## ⑤フレンドが1人もいない間はオンライン状態を見る相手がいないため、ハートビート
+## (KV書き込み予算を消費)を送らない。get_friends()が呼ばれるたび(フレンド画面を開いた時・
+## 更新ボタン・リクエスト応答後・削除後・ギフト送り先選択時)に再評価されるので、
+## フレンドが増減すれば自動的に開始/停止が切り替わる
+func _update_heartbeat_state(has_friends: bool) -> void:
+	if has_friends:
+		_start_heartbeat()
+	else:
+		_stop_heartbeat()
+
+
+func _start_heartbeat() -> void:
+	if _heartbeat_timer == null:
+		_heartbeat_timer = Timer.new()
+		_heartbeat_timer.wait_time = HEARTBEAT_INTERVAL_SEC
+		_heartbeat_timer.timeout.connect(_send_heartbeat)
+		add_child(_heartbeat_timer)
+	if _heartbeat_timer.is_stopped():
+		_heartbeat_timer.start()
+		_send_heartbeat()
+
+
+func _stop_heartbeat() -> void:
+	if _heartbeat_timer != null and not _heartbeat_timer.is_stopped():
+		_heartbeat_timer.stop()
 
 
 ## ⑤⑦名前変更だけでなく戦績・スキン変更でも発火するため、デバウンスして
@@ -123,6 +146,7 @@ func get_friends() -> Array[Dictionary]:
 		for f in res.get("friends", []):
 			out.append({"id": String(f.get("puid", "")), "name": String(f.get("name", "Friend")),
 				"online": bool(f.get("online", false))})
+		_update_heartbeat_state(not out.is_empty())
 		return out
 	return _mock_friends()
 

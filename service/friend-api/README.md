@@ -43,9 +43,15 @@ npm run deploy    # Cloudflare Workersへデプロイ
 - **オンライン在席状況(presence)はハートビート方式。** クライアントが`/heartbeat`を
   一定間隔(既定120秒、`autoload/friend_manager.gd`の`HEARTBEAT_INTERVAL_SEC`)で呼び、
   `presence:<puid>`の`last_seen`をサーバー側の`ONLINE_THRESHOLD_MS`(5分)で判定する。
-  **KV書き込み予算(無料枠1日1,000件、全ユーザー合計)を最も消費する要素**なので、
-  デプロイ後は[docs/DEPLOYMENT_CHECKLIST.md](../../docs/DEPLOYMENT_CHECKLIST.md)の
-  8番に従って実測し、必要なら間隔を伸ばすか有料プランへ移行すること。
+  **KV書き込み予算(無料枠1日1,000件、全ユーザー合計。`service/commerce-api`の
+  `COMMERCE_TXNS`ともアカウント単位で共有)を最も消費する要素**なので、2つの節約策を
+  入れてある: (1) レート制限カウンタを`presence:<puid>`自体に同居させ、1呼び出しあたりの
+  書き込みを2件→1件に削減(旧`rlheartbeat:<puid>:<date>`キーは廃止)。(2)
+  クライアント側でフレンドが1人もいない間はハートビート自体を送らない
+  (`autoload/friend_manager.gd`の`_update_heartbeat_state()`、`get_friends()`が
+  呼ばれるたびに再評価)。それでも書き込みが多い場合は
+  [docs/DEPLOYMENT_CHECKLIST.md](../../docs/DEPLOYMENT_CHECKLIST.md)の8番に従って実測し、
+  必要なら間隔を伸ばすか有料プランへ移行すること。
 - **戦績・レート・スキン(`stats:<puid>`)は自己申告・未検証。** `/sync`の`stats`フィールドを
   クライアントがそのまま送るだけで、サーバー側の検証は無い。フレンドにしか見えず実際の
   EOSリーダーボード/レーティングには影響しないため、実害は小さいと判断している

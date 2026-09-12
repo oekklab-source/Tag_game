@@ -109,6 +109,11 @@ interface NameIndexEntry {
 
 interface PresenceRecord {
 	last_seen: number;
+	// レート制限カウンタを別キー(rlheartbeat:)に持たず、この中に同居させている
+	// (ハートビートは他エンドポイントよりずっと高頻度なため、1呼び出しあたりのKV書き込みを
+	// 2件→1件に減らす狙い)。heartbeat_dayが今日の日付と一致しない場合はカウント0扱いにする
+	heartbeat_day: string;
+	heartbeat_count: number;
 }
 
 // フレンドにのみ公開する戦績・レート・スキン。自己申告(未検証)。フレンドにしか見えず、
@@ -585,12 +590,18 @@ async function handleSearchUser(request: Request, env: Env, puid: string): Promi
 
 /** クライアントが一定間隔(autoload/friend_manager.gd、既定120秒)ごとに呼ぶ生存通知。
  * KV書き込み予算(無料枠1日1,000件)を消費するため、間隔・上限はservice/friend-api/README.md
- * に明記した実測での見直しを前提にしている */
+ * に明記した実測での見直しを前提にしている。レート制限カウンタは別キーを持たず、
+ * presence:<puid>自体に同居させることで1呼び出しあたりのKV書き込みを1件に抑えている
+ * (旧実装はレート制限用+実データ用で2件書いていた) */
 async function handleHeartbeat(env: Env, puid: string): Promise<Response> {
-	if (!(await checkAndBumpRateLimit(env, heartbeatRateLimitKey(puid), HEARTBEAT_LIMIT_PER_DAY))) {
+	const day = new Date().toISOString().slice(0, 10);
+	const prevRaw = await env.FRIEND_KV.get(presenceKey(puid));
+	const prev: PresenceRecord | null = prevRaw ? JSON.parse(prevRaw) : null;
+	const countToday = prev && prev.heartbeat_day === day ? prev.heartbeat_count : 0;
+	if (countToday >= HEARTBEAT_LIMIT_PER_DAY) {
 		return json({ ok: false, reason: "rate_limited" }, 200);
 	}
-	const record: PresenceRecord = { last_seen: Date.now() };
+	const record: PresenceRecord = { last_seen: Date.now(), heartbeat_day: day, heartbeat_count: countToday + 1 };
 	await env.FRIEND_KV.put(presenceKey(puid), JSON.stringify(record), {
 		// オンライン判定はlast_seenの鮮度(ONLINE_THRESHOLD_MS)で行うので、TTLは
 		// プレイヤーが長期間戻らなかった場合の放置クリーンアップ用でしかない
@@ -726,10 +737,6 @@ function syncRateLimitKey(puid: string): string {
 function searchRateLimitKey(puid: string): string {
 	const day = new Date().toISOString().slice(0, 10);
 	return `rlsearch:${puid}:${day}`;
-}
-function heartbeatRateLimitKey(puid: string): string {
-	const day = new Date().toISOString().slice(0, 10);
-	return `rlheartbeat:${puid}:${day}`;
 }
 
 async function safeJson(request: Request): Promise<any> {
