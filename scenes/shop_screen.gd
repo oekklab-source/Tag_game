@@ -111,7 +111,28 @@ func _on_buy_pack_pressed(pack_id: StringName, btn: Button) -> void:
 	btn.pressed.disconnect(buy_callable)
 	btn.pressed.connect(cancel_callable)
 	btn.text = "処理中...(キャンセル)"
+
+	# H-10対策: OS.shell_open()がポップアップブロック等で実際にはチェックアウトページを
+	# 開けていなくても、このゲーム側からは成否が分からない。検知は諦め、URLが分かり次第
+	# 常に「開かない場合はこちら」の再試行リンクを出しておくことで逃げ道を作る
+	var fallback_btn := Button.new()
+	fallback_btn.text = "開かない場合はこちら"
+	fallback_btn.visible = false
+	var fallback_url := ""
+	var on_checkout_opened := func(pid: StringName, url: String) -> void:
+		if pid != pack_id or not is_instance_valid(fallback_btn):
+			return
+		fallback_url = url
+		fallback_btn.visible = true
+	fallback_btn.pressed.connect(func(): OS.shell_open(fallback_url))
+	PurchaseManager.checkout_url_ready.connect(on_checkout_opened)
+	btn.get_parent().add_child(fallback_btn)
+
 	var ok: bool = await PurchaseManager.buy_currency_pack(pack_id)
+
+	PurchaseManager.checkout_url_ready.disconnect(on_checkout_opened)
+	if is_instance_valid(fallback_btn):
+		fallback_btn.queue_free()
 	if is_instance_valid(btn):
 		btn.pressed.disconnect(cancel_callable)
 		btn.pressed.connect(buy_callable)
@@ -178,7 +199,14 @@ func _build_item_card(kind: StringName, id: StringName, def: Dictionary) -> Cont
 
 	var gift_btn := Button.new()
 	gift_btn.text = "🎁 プレゼントする"
-	gift_btn.disabled = price <= 0
+	# M-03対策: プレゼントはEOSのP2Pメッシュ経由でしか配信できず、Web版では
+	# EOSGが恒久的に動作しない(room_match_dialog.gd:57と同じ制約)ため、
+	# 挑戦させて後から失敗理由を出すのではなく、ここで先に無効化して伝える
+	if OS.has_feature("web"):
+		gift_btn.disabled = true
+		gift_btn.tooltip_text = "Web版ではプレゼント機能は利用できません（EOSのP2P接続が必要なため）"
+	else:
+		gift_btn.disabled = price <= 0
 	gift_btn.pressed.connect(_open_gift_picker.bind(kind, id))
 	vbox.add_child(gift_btn)
 

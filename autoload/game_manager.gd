@@ -49,7 +49,8 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## notify_rejected RPCを追加したため
 ## v8: 「カモン」を挑発3種にして sync_emote が取る値に COME_HIP / COME_COOL が増えた。
 ## あわせて着せ替えのキャラ（Humanoid.SKINS）をプロフィールの "skin" に載せた
-const PROTOCOL_VERSION := 8
+## v9: 結果画面の「スキップ」操作用に request_skip_result RPCを追加したため(M-14)
+const PROTOCOL_VERSION := 9
 
 const ROUND_TIME := 180.0
 const RESULT_TIME := 5.0
@@ -823,6 +824,25 @@ func _back_to_waiting() -> void:
 	state_changed.emit(state)
 	if multiplayer.is_server():
 		_clear_cpu_characters()
+
+
+## M-14対策: 結果画面の「スキップ」ボタン用。全ピアが押せる
+## (toggle_my_role() / request_runner と同じ「自分がホストなら直接、
+## そうでなければサーバーへリクエストする」形)
+func skip_result() -> void:
+	if state != State.RESULT:
+		return
+	if multiplayer.is_server():
+		_back_to_waiting.rpc()
+	else:
+		request_skip_result.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func request_skip_result() -> void:
+	if not multiplayer.is_server() or state != State.RESULT:
+		return
+	_back_to_waiting.rpc()
 
 
 @rpc("authority", "call_remote", "reliable")

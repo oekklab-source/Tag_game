@@ -112,6 +112,8 @@ var _icon_tween: Tween
 @onready var result_title: Label = $ResultPanel/Box/Col/ResultTitle
 @onready var result_sub: Label = $ResultPanel/Box/Col/ResultSub
 @onready var result_next: Label = $ResultPanel/Box/Col/ResultNext
+## M-14対策: 結果画面唯一の操作可能ボタン。lobbyと同じ理由で_ignore_mouse()の対象外にする
+@onready var result_skip_btn: Button = $ResultPanel/Box/Col/ResultSkipButton
 
 
 func _ready() -> void:
@@ -123,6 +125,7 @@ func _ready() -> void:
 	GameManager.spotted_changed.connect(_on_spotted_changed)
 	map_panel.setup(compass, distance_chip, distance_label)
 	lobby.open_overlay_requested.connect(_open_overlay)
+	result_skip_btn.pressed.connect(_on_result_skip_pressed)
 	_sb_full = _bar_style(Color(0.3, 0.95, 0.55))
 	_sb_mid = _bar_style(Color(1.0, 0.85, 0.25))
 	_sb_low = _bar_style(Color(1.0, 0.35, 0.35))
@@ -147,9 +150,10 @@ func _ready() -> void:
 ## Control が STOP のままだと必ずこうなる。
 ## 個別ノードに書くのではなく再帰で潰すのは、UI を足した時に再発させないため。
 func _ignore_mouse(node: Node) -> void:
-	# ロビーだけは唯一の操作できる UI なので触らない。
-	# 待機中しか visible にならないので、ラウンド中に視点操作を奪うことはない
-	if node == lobby:
+	# ロビーと結果画面の「スキップ」ボタンだけは操作できるUIなので触らない。
+	# どちらも該当ステート(WAITING/RESULT)でしか visible にならないので、
+	# ラウンド中に視点操作を奪うことはない
+	if node == lobby or node == result_skip_btn:
 		return
 	if node is Control:
 		node.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -375,6 +379,11 @@ func _update_result(is_runner: bool) -> void:
 		
 	result_next.text = "%d秒後になかま待ちにもどります" % maxi(ceili(GameManager.result_left), 0)
 	result_next.modulate = COLOR_GOLD
+
+
+## M-14対策: 結果画面に唯一の操作(自動カウントダウンを待たずに次へ進む)を足す
+func _on_result_skip_pressed() -> void:
+	GameManager.skip_result()
 
 
 ## --- 円形タイマー ------------------------------------------------------

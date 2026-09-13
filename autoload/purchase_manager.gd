@@ -8,6 +8,9 @@ extends Node
 signal currency_changed
 signal item_purchased(kind: StringName, id: StringName)
 signal purchase_failed(reason: String)
+## H-10対策: Stripeのチェックアウトページを開いた直後に中継する。ポップアップブロックで
+## 実際には開けていない場合の「開かない場合はこちら」導線をUI側が出せるようにするため
+signal checkout_url_ready(pack_id: StringName, url: String)
 
 ## ⑥購入失敗理由の識別子。UI側で文言を出し分けられるよう定数化する
 const REASON_UNKNOWN_PACK := "unknown_pack"
@@ -29,6 +32,8 @@ var _provider: PurchaseProvider
 func _ready() -> void:
 	_provider = StripePurchaseProvider.new(self) if USE_LIVE_PURCHASES else MockPurchaseProvider.new()
 	if USE_LIVE_PURCHASES and _provider is StripePurchaseProvider:
+		_provider.checkout_opened.connect(
+			func(pack_id: StringName, url: String): checkout_url_ready.emit(pack_id, url))
 		var recon: Dictionary = await _provider.reconcile_pending()
 		if recon.get("found", false) and recon.get("ok", false):
 			ProfileManager.add_currency(int(recon.get("granted_gems", 0)))

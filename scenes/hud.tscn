@@ -433,3 +433,8 @@ horizontal_alignment = 1
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 horizontal_alignment = 1
+
+[node name="ResultSkipButton" type="Button" parent="ResultPanel/Box/Col"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "スキップ"

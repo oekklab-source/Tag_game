@@ -1248,6 +1248,11 @@ export_presets.cfg            Web エクスポート設定（CI が使うので�
   `NetworkManager._on_server_disconnected()` がただの拒否をホストロストと区別できず、
   実際には存在しないホストマイグレーション探索UIを誤って出してしまう
   （v6→v7はこのRPC追加が理由）
+- 結果画面の「スキップ」ボタンは、`toggle_my_role()` / `request_runner` と同じ
+  「自分がホストなら直接、そうでなければ `request_skip_result` でサーバーへ依頼する」形。
+  サーバー側は `_back_to_waiting` RPCの発行元を1箇所（`GameManager`）に保つため、
+  `_schedule_next_round()` の自動タイムアウトと同じ経路をそのまま使う
+  （v8→v9はこのRPC追加が理由）
 - **視界判定はホストが一元的に行う**。CPU 側で個別にレイを飛ばさない
   （`GameManager.hunter_sees_runner()` に問い合わせる）
 - 視線の向きは**カメラではなくボディの -Z**。`player.tscn` が同期するのは

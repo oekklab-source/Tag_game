@@ -79,11 +79,16 @@ func _acquire_instance_lock() -> bool:
 	if OS.has_feature("web") or DisplayServer.get_name() == "headless":
 		return true
 	if _other_instance_holds_lock():
+		# M-12対策: このダイアログはOS標準のもので見た目はゲームと揃わないが、
+		# 表示できるUIツリーがまだ無い最初期(autoload._ready())で発生するため
+		# ゲーム内スタイルのパネルには置き換えられない(README/CLAUDE.md参照)。
+		# 文言だけでも「なぜ・これからどうなるか」を明確にしておく
 		OS.alert(
-			"Tag_Game は既に起動しています。\n"
-			+ "二重に起動すると、セーブデータ（プレゼントの受け取り等）が正しく保存されないことがあります。\n"
-			+ "先に起動しているウィンドウを閉じてから、もう一度起動してください。",
-			"多重起動を検出しました")
+			"Tag_Game はすでに別のウィンドウで起動しています。\n\n"
+			+ "同時に起動したままだと、セーブデータ（プレゼントの受け取りなど）が正しく"
+			+ "保存されないことがあるため、このウィンドウはこのまま終了します。\n\n"
+			+ "先に起動しているウィンドウを閉じてから、もう一度起動しなおしてください。",
+			"多重起動のため、このウィンドウは終了します")
 		get_tree().quit()
 		return false
 	var out := FileAccess.open(INSTANCE_LOCK_PATH, FileAccess.WRITE)
