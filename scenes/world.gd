@@ -48,15 +48,35 @@ func _ready() -> void:
 		multiplayer.peer_connected.connect(_on_peer_connected)
 		multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 		_spawn_player(1)
+		GameManager.broadcast_my_profile()
+		# ⑨ホストマイグレーション中でなければ無害(no-op)。マイグレーション中なら
+		# 新ホストとしてのシーン起動が完了したのでオーバーレイを閉じる
+		NetworkManager.finish_migration_if_active()
+	else:
+		# ②④ 接続が確立してから自分のプロフィール（レート/ティア/コスチューム）を
+		# ホストへ報告する。setup_peer() 直後はまだハンドシェイク中のことがあるため待つ。
+		# multiplayer は world.tscn を跨いで生き続ける SceneTree 側のオブジェクトなので、
+		# ONE_SHOT にしないと再入室のたびに接続が積み重なってしまう
+		var _on_connected_to_server := func() -> void:
+			GameManager.broadcast_my_profile()
+			# ⑨マイグレーション中でなければ無害。新ホストへの再接続が確立したので閉じる
+			NetworkManager.finish_migration_if_active()
+		multiplayer.connected_to_server.connect(_on_connected_to_server, CONNECT_ONE_SHOT)
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# 着せ替え/ショップ/フレンドをオーバーレイ表示中は、そちらのUI操作中に
+	# R/Tab/Enterのロビーショートカットが裏で誤爆しないようにする
+	if GameManager.lobby_overlay_open:
+		return
 	if event.is_action_pressed("start_round") and multiplayer.is_server():
 		GameManager.request_start_round()
-	elif event.is_action_pressed("toggle_role"):
-		# 役割の立候補は全ピアができる（逃走者の枠は1つなので奪い合いになる）
+	elif event.is_action_pressed("toggle_role") and not NetworkManager.matched_via_eos_lobby:
+		# 役割の立候補は全ピアができる（逃走者の枠は1つなので奪い合いになる）。
+		# ②EOSロビー経由(レーティング戦)は鬼をランダム化するため立候補自体を無効にする
 		GameManager.toggle_my_role()
-	elif event.is_action_pressed("cycle_runner") and multiplayer.is_server():
+	elif event.is_action_pressed("cycle_runner") and multiplayer.is_server() \
+			and not NetworkManager.matched_via_eos_lobby:
 		GameManager.cycle_wanted_runner()
 
 
@@ -71,9 +91,15 @@ func _on_peer_connected(id: int) -> void:
 
 func _on_peer_disconnected(id: int) -> void:
 	var p := players.get_node_or_null(str(id))
+	# ⑦レーティング戦で逃げる役が対戦中に切断した場合はCPUに代行させる(暫定実装、
+	# 既存のcpu_runner.gdをそのまま流用)。ノードを破棄する前に判定・位置取得する
+	var takeover := GameManager.should_cpu_takeover_runner(id)
+	var last_pos: Vector3 = p.position if p else Vector3.ZERO
 	if p:
 		p.queue_free()
-	GameManager.on_player_left(id)
+	if takeover:
+		spawn_cpu_runner(last_pos)
+	GameManager.on_player_left(id, takeover)
 
 
 ## 湧き位置を決めてプレイヤーを生成し、その座標を返す。
@@ -120,13 +146,17 @@ func _is_clear(p: Vector3) -> bool:
 
 
 ## プレイヤーの置きアイテム。GameManager.request_drop（ホスト）から呼ばれる
-func spawn_dropped_item(kind: int, pos: Vector3, yaw: float) -> void:
+func spawn_dropped_item(kind: int, pos: Vector3, yaw: float,
+		launch_velocity := Vector3.ZERO, thrower_id := -1) -> void:
 	_drop_counter += 1
 	var scene := BANANA_SCENE if kind == Player.Item.BANANA else BLOCK_SCENE
 	var n: Node3D = scene.instantiate()
 	n.name = "Drop%d" % _drop_counter
 	n.position = pos
 	n.rotation.y = yaw
+	if kind == Player.Item.BANANA:
+		n.launch_velocity = launch_velocity
+		n.thrower_peer_id = thrower_id if launch_velocity.length_squared() > 0.01 else -1
 	items.add_child(n)
 
 

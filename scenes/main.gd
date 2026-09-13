@@ -15,10 +15,10 @@ func _ready() -> void:
 	# ブラウザは WebSocket サーバになれないため、Web 版ではホスト不可
 	if OS.has_feature("web"):
 		host_button.visible = false
-	nickname_edit.text = PlayerPrefs.nickname
+	nickname_edit.text = ProfileManager.player_name
 	for entry in Humanoid.SKINS:
 		skin_option.add_item(entry["name"])
-	skin_option.selected = PlayerPrefs.skin
+	skin_option.selected = ProfileManager.skin
 	status_label.text = NetworkManager.last_error
 	NetworkManager.last_error = ""
 	# ホストと参加者でここが違うと通信が噛み合わない。ひと目で分かるように出す
@@ -50,11 +50,11 @@ func _server_from_query() -> String:
 	return (q as String).strip_edges()
 
 
-## ニックネームと着せ替えを保存する。ホスト・参加のどちらから始めても
-## 同じものが player.gd の _ready() で読まれ、そのまま全ピアへ配られる
+## ニックネームと着せ替えのキャラを保存する。ホスト・参加のどちらから始めても
+## 同じものが player.gd の _ready() とプロフィール同期で全ピアへ配られる
 func _save_prefs() -> void:
-	PlayerPrefs.set_nickname(nickname_edit.text)
-	PlayerPrefs.set_skin(skin_option.selected)
+	ProfileManager.update_profile(nickname_edit.text)
+	ProfileManager.set_skin(skin_option.selected)
 
 
 func _on_host_pressed() -> void:

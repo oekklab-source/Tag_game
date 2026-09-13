@@ -4,12 +4,16 @@ extends Node3D
 ## Blender 製の Fall Guys 風ちびキャラ。プレイヤーと CPU で共用し、
 ## 移動速度・接地・ダイブ状態からアニメを切り替える。
 ##
-## 着せ替え（SKINS）は Model を丸ごと差し替えて実現する。どのスキンも
-## tools/blender/character_common.py が同じリグと同じ名前のアニメクリップを
-## 焼くので、ここは glb を入れ替えるだけでよく、アニメの分岐は一切要らない。
+## 見た目は3つを独立に組み合わせる:
+##   - キャラ（SKINS）: Model を丸ごと差し替える。どのキャラも
+##     tools/blender/character_common.py が同じリグと同じ名前のアニメクリップを
+##     焼くので、ここは glb を入れ替えるだけでよく、アニメの分岐は一切要らない。
+##   - コスチューム（CostumeCatalog）: 面ごとの塗り分け。面の構成が
+##     CostumeCatalog.PART_SURFACES と一致するキャラ（きょうりゅう）にだけ効く。
+##   - 帽子（HatCatalog）: Chest ボーンへの剛体アタッチ。リグが共通なのでどのキャラにも付く。
 ##
 ## 役割（Runner / Hunter）は**体色ではなく頭上の文字ラベル**で示す
-## （player.gd の RoleLabel）。スキンごとに配色が違うので体色は使えないし、
+## （player.gd の RoleLabel）。キャラごとに配色が違うので体色は使えないし、
 ## 装束を本物の服として塗れる方が着せ替えとして面白い。
 
 ## Run アニメを等倍で再生したとき、キャラが実際に歩く速度。
@@ -57,9 +61,10 @@ const STAR_UP := 0.26         # 頭のてっぺんからどれだけ浮かせる
 ## 向きが変わるため、この値と向きは tests/slip.tscn が実測して確かめている
 const HEAD_FROM_CHEST := 0.56
 
-## 着せ替え。ロビー（main.gd）で選び、PlayerPrefs に保存され、
-## player.gd の sync_skin で全ピアに配られる。並び順がそのまま保存値なので、
-## **既存の項目の順番は変えないこと**（入れ替えると保存済みの設定が別の服になる）。
+## 着せ替えのキャラ。ロビー（main.gd）で選び、ProfileManager.skin に保存され、
+## GameManager のプロフィール同期（peer_profiles の "skin"）で全ピアに配られる。
+## 並び順がそのまま保存値なので、**既存の項目の順番は変えないこと**
+## （入れ替えると保存済みの設定が別のキャラになる）。
 const SKINS := [
 	{"name": "きょうりゅう", "path": "res://assets/character/fallguy.glb"},
 	{"name": "しのび", "path": "res://assets/character/ninja.glb"},
@@ -67,6 +72,9 @@ const SKINS := [
 ## Blender では -Y を正面にモデリングしたが、glTF(+Y up) 変換でそれが +Z に来るため
 ## 180度回して Godot の正面（-Z）に合わせる（元は humanoid.tscn の Model にあった）
 const MODEL_BASIS := Basis(Vector3(-1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, -1))
+
+## コスチュームの塗り分け対象パーツ（CostumeCatalog.PART_SURFACES と対応）
+const PARTS := ["Body", "Costume", "Face"]
 
 var _diving := false
 var _stunned := false
@@ -80,6 +88,17 @@ var _model: Node3D
 var _anim: AnimationPlayer
 var _skel: Skeleton3D
 var _chest := -1
+
+var _mesh_nodes := {}       # "Body" -> MeshInstance3D
+var _override_keys := []    # 直前に上書きした "Body:0" 等のキー（切替時のクリア用）
+var _costume_id: StringName = CostumeCatalog.DEFAULT_ID
+var _costume_colors := CostumeCatalog.default_colors(CostumeCatalog.DEFAULT_ID)
+
+## 帽子（新規ジオメトリの部位）。apply_costume() が既存サーフェスの塗り分けだけを
+## 扱うのに対し、こちらはメッシュそのものの追加/削除を扱う
+var _hat_id: StringName = HatCatalog.DEFAULT_ID
+var _hat_instance: Node3D = null
+var _hat_attachment: BoneAttachment3D = null
 
 @onready var _stars: Node3D = $Stars
 
@@ -95,6 +114,7 @@ func _ready() -> void:
 ## 差し替えると AnimationPlayer ごと入れ替わるため、再生中のクリップは
 ## 状態(_state)を消してから同じものを鳴らし直す。そうしないと _play() が
 ## 「もう再生中」と判断して新しいモデルが Rest ポーズのまま固まる。
+## コスチュームと帽子も古いモデルと一緒に消えるので、選択中のものを付け直す。
 func set_skin(id: int) -> void:
 	var index := id if id >= 0 and id < SKINS.size() else 0
 	if index == _skin:
@@ -119,6 +139,22 @@ func set_skin(id: int) -> void:
 		var anim := _anim.get_animation(anim_name)
 		if anim:
 			anim.loop_mode = Animation.LOOP_LINEAR
+
+	_mesh_nodes.clear()
+	_override_keys.clear()
+	for part in PARTS:
+		var node: MeshInstance3D = _model.find_child(part, true, false)
+		if node:
+			_mesh_nodes[part] = node
+	# 帽子の装着点。このリグには首ボーンが無く Chest が頭を兼ねる
+	_hat_instance = null
+	_hat_attachment = BoneAttachment3D.new()
+	_hat_attachment.name = "HatAttachment"
+	_hat_attachment.bone_name = "Chest"
+	_skel.add_child(_hat_attachment)
+	apply_costume(_costume_id, _costume_colors)
+	apply_hat(_hat_id)
+
 	_state = ""
 	_play(was if not was.is_empty() else "Idle")
 
@@ -135,6 +171,80 @@ func _process(delta: float) -> void:
 		* (Vector3.UP * HEAD_FROM_CHEST))
 	_stars.global_position = head + Vector3.UP * STAR_UP
 	_stars.global_basis = Basis(Vector3.UP, _star_angle)
+
+
+## コスチューム（部位ごとの塗り分けレシピ）を適用する。
+## CostumeCatalog.COSTUMES[id]["surfaces"] に載っていない面は glTF インポート時の
+## 元マテリアルのまま変更しない（material_override は全 surface に効くため、
+## 個別の面だけ塗り分けるには set_surface_override_material() で面ごとに扱う必要がある）
+func apply_costume(id: StringName, colors: PackedColorArray) -> void:
+	for key in _override_keys:
+		var seg: PackedStringArray = key.split(":")
+		var node: MeshInstance3D = _mesh_nodes.get(seg[0])
+		if node:
+			node.set_surface_override_material(int(seg[1]), null)
+	_override_keys.clear()
+
+	_costume_id = id if CostumeCatalog.has(id) else CostumeCatalog.DEFAULT_ID
+	_costume_colors = colors
+	# 選択は覚えておき、面の構成が違うキャラ（しのび）では塗らない。
+	# レシピは面の添字で指定しているので、構成が違うと別の部位を塗ってしまう
+	if not _fits_costume_parts():
+		return
+
+	var def: Dictionary = CostumeCatalog.get_def(_costume_id)
+	for surf in def.get("surfaces", []):
+		var part: String = surf["part"]
+		var index: int = surf["index"]
+		var node: MeshInstance3D = _mesh_nodes.get(part)
+		var mat := StandardMaterial3D.new()
+		var color := _surface_color(surf)
+		mat.albedo_color = color
+		if surf.get("emission", false):
+			mat.emission_enabled = true
+			mat.emission = color
+			mat.emission_energy_multiplier = 0.6
+		if surf.has("metallic"):
+			mat.metallic = float(surf["metallic"])
+			mat.roughness = 0.35
+		node.set_surface_override_material(index, mat)
+		_override_keys.append("%s:%d" % [part, index])
+
+
+func _fits_costume_parts() -> bool:
+	for part in PARTS:
+		var node: MeshInstance3D = _mesh_nodes.get(part)
+		if node == null or node.mesh == null \
+				or node.mesh.get_surface_count() != CostumeCatalog.PART_SURFACES[part]:
+			return false
+	return true
+
+
+## 頭部装備（新規ジオメトリ、スキニング無しの剛体アタッチ）を差し替える。
+## HatCatalog の各エントリは Chest ボーン(HatAttachment)基準のローカル
+## position/rotation_degrees を持つ（実測値、机上計算では出せない）
+func apply_hat(id: StringName) -> void:
+	if _hat_instance:
+		_hat_instance.queue_free()
+		_hat_instance = null
+	_hat_id = id if HatCatalog.has(id) else HatCatalog.DEFAULT_ID
+	var def: Dictionary = HatCatalog.get_def(_hat_id)
+	var packed: PackedScene = def.get("scene")
+	if packed == null or _hat_attachment == null:
+		return
+	var inst: Node3D = packed.instantiate()
+	inst.position = def.get("offset", Vector3.ZERO)
+	inst.rotation_degrees = def.get("rotation_degrees", Vector3.ZERO)
+	_hat_attachment.add_child(inst)
+	_hat_instance = inst
+
+
+func _surface_color(surf: Dictionary) -> Color:
+	if surf.has("slot"):
+		var slot: int = surf["slot"]
+		if slot < _costume_colors.size():
+			return _costume_colors[slot]
+	return surf.get("albedo", Color(0.5, 0.55, 0.6))
 
 
 ## 親（player / cpu_hunter）が毎フレーム水平速度と接地状態を渡す。

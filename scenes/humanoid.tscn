@@ -7,8 +7,8 @@
 [node name="Humanoid" type="Node3D"]
 script = ExtResource("1_humanoid")
 
-; Model（着せ替えの glb）はここには置かない。humanoid.gd の set_skin() が
-; SKINS から選んで実行時に生成する（180度の向き直しも含めて）
+; Model（着せ替えの glb）と帽子の装着点 HatAttachment はここには置かない。
+; humanoid.gd の set_skin() が SKINS から選んで実行時に生成する（180度の向き直しも含めて）
 
 ; 転倒中に頭の上でまわる星。位置と回転は humanoid.gd が毎フレーム世界座標で置き直す
 ; （うつ伏せになると頭は前方 1m・高さ 0.5m まで移動するので、ここの座標は初期値でしかない）。

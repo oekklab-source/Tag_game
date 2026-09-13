@@ -131,7 +131,6 @@ func _shots(dur: float, out: String) -> void:
 	DirAccess.make_dir_recursive_absolute(out)
 	# 頭上の星も一緒に写す（stunned でしか出ない）
 	_rig.set_stunned(true)
-	_rig.set_color(Color(0.35, 0.85, 0.45))  # 灰色のままだと体の向きが読み取りにくい
 	var floor_mesh := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(20.0, 20.0)

@@ -71,7 +71,11 @@ const STAMINA_RECOVER := 30.0 # 枯渇後、この値まで回復するとダッ
 const ROCKET_FORWARD := 12.0
 const ROCKET_UP := 9.0
 const BANANA_BEHIND := 3.0    # 足元の後ろこの距離に置く
-const BLOCK_BEHIND := 5.0     # カメラの SpringArm(4m) に干渉しにくい背後距離
+const BLOCK_BEHIND := 3.0     # バナナと同じ距離。カメラ干渉は壁側を除外して防ぐ
+const BANANA_THROW_SPAWN := 1.2
+const BANANA_THROW_FORWARD := 8.55  # 以前の5.7m/sの1.5倍
+const BANANA_THROW_UP := 7.47       # 投げバナナ用重力と合わせて最高点を約4mにする
+const BANANA_CARRY_RATIO := 0.5     # 投げた瞬間の自キャラ速度を全方向とも半分加える
 ## 取得直後のルーレット時間。この間は中身が確定しておらず使えない（HUD が回して見せる）
 const ITEM_ROULETTE := 1.2
 
@@ -129,6 +133,8 @@ var exhausted := false
 var is_dashing := false
 var buffs := BuffSet.new()
 var carry_velocity := Vector3.ZERO  # 動く床から毎フレーム渡される搬送速度
+var bumper_bounce_velocity := Vector3.ZERO
+var bumper_bounce_left := 0.0
 var slide_dir := Vector3.ZERO       # 滑り台から毎フレーム渡される最急降下方向
 var slide_accel := 0.0
 var slide_cap := 0.0
@@ -172,16 +178,15 @@ var _stuck_kick_left := 0.0
 ## 速度は権威ピアだけが正確に知っているので、素直に配るのが一番確実で安い
 @export var sync_speed := 0.0
 @export var sync_air := false
-## 味方ハンターの頭上ラベルに使うニックネーム。権威ピアが PlayerPrefs から一度だけ書く
+## 味方ハンターの頭上ラベルに使うニックネーム。権威ピアが ProfileManager.player_name から書く
+## (profile_updated を購読して追従するので、ラウンド中の変更も反映される)
 @export var sync_nickname := ""
-## 着せ替え（Humanoid.SKINS の添字）。権威ピアが PlayerPrefs から一度だけ書く。
-## 届く前に描画されるフレームは既定スキン（0）で出る
-@export var sync_skin := 0
 ## 出しているエモート（Emote の値）。0 = 出していない。
 ## 終わるたび必ず 0 を挟むので、同じエモートを繰り返しても ON_CHANGE の同期が発火する
 @export var sync_emote: int = Emote.NONE
 
 var _current_color := Color.TRANSPARENT
+var _camera_block_rids := {}
 
 @onready var spring_arm: SpringArm3D = $SpringArm3D
 @onready var camera: Camera3D = $SpringArm3D/Camera3D
@@ -202,14 +207,23 @@ func _ready() -> void:
 	if is_multiplayer_authority():
 		sync_position = position
 		sync_yaw = rotation.y
-		sync_nickname = PlayerPrefs.nickname
-		sync_skin = PlayerPrefs.skin
+		sync_nickname = ProfileManager.player_name
+		ProfileManager.profile_updated.connect(_on_profile_updated_for_nickname)
 		camera.current = true
 		spring_arm.add_excluded_object(get_rid())
+		# ④自分のキャラ・コスチュームを反映する。他ピア分は GameManager.peer_profiles の
+		# 同期（RPC）で受け取ってから反映するため、ここでは自分の分のみ
+		humanoid.set_skin(ProfileManager.skin)
+		humanoid.apply_costume(ProfileManager.costume_id, ProfileManager.costume_colors)
+		humanoid.apply_hat(ProfileManager.hat_id)
 	else:
 		# スポーン時の同期値へ即座に合わせる。補間に任せると原点から滑って来る
 		position = sync_position
 		rotation.y = sync_yaw
+		# ②④ 相手のコスチュームは GameManager.peer_profiles の同期を待って反映する。
+		# 既に届いている場合に備えて即座にも試す（順序はどちらが先でも良い）
+		GameManager.profiles_changed.connect(_apply_peer_costume)
+		_apply_peer_costume()
 
 
 ## 接触判定はホストが一元的に行う（全ピアで発火するので必ずサーバ判定を挟む）
@@ -223,6 +237,8 @@ func _process(delta: float) -> void:
 		return
 	if not is_multiplayer_authority():
 		_follow_sync(delta)
+	else:
+		_update_placed_block_camera()
 	humanoid.set_diving(diving)
 	humanoid.set_stunned(stunned)
 	humanoid.set_emote(sync_emote)
@@ -308,6 +324,8 @@ func _physics_process(delta: float) -> void:
 
 	_update_stuck(delta, direction, grounded, frozen)
 	_update_stamina(delta, direction != Vector3.ZERO, frozen)
+	var holding_bumper_bounce := bumper_bounce_left > 0.0
+	bumper_bounce_left = maxf(bumper_bounce_left - delta, 0.0)
 
 	var speed := BASE_SPEED * GameManager.get_speed_mult(my_id) * buffs.get_mult(&"speed")
 	if is_dashing:
@@ -317,7 +335,10 @@ func _physics_process(delta: float) -> void:
 	# ジャンプ台やブーストで得た初速が次フレームで消えないようにするため、
 	# 空中で入力が無い場合は水平速度に一切手を加えない。
 	var target := Vector2(direction.x, direction.z) * speed
-	if slide_left > 0.0:
+	if holding_bumper_bounce:
+		velocity.x = bumper_bounce_velocity.x
+		velocity.z = bumper_bounce_velocity.z
+	elif slide_left > 0.0:
 		velocity = SlideMotion.step(velocity, delta, slide_dir, slide_accel, slide_cap,
 			SLIDE_STEER, direction, SLIDE_MIN_SPEED)
 		floor_snap_length = SLIDE_SNAP
@@ -510,6 +531,7 @@ func teleport(pos: Vector3) -> void:
 	global_position = pos
 	sync_position = position  # 他ピアが次の物理フレームを待たずスナップできるように
 	velocity = Vector3.ZERO
+	bumper_bounce_left = 0.0
 	stamina = stamina_max()
 	exhausted = false
 	buffs.clear()
@@ -553,9 +575,17 @@ func _use_item() -> void:
 			launch(Vector3(fwd.x, 0.0, fwd.z).normalized() * ROCKET_FORWARD
 				+ Vector3(0, ROCKET_UP, 0))
 		Item.BANANA:
-			var back := global_transform.basis.z
-			_request_drop(Item.BANANA,
-				global_position + Vector3(back.x, 0.0, back.z).normalized() * BANANA_BEHIND)
+			if _is_hunter_for_items():
+				var fwd := -global_transform.basis.z
+				fwd = Vector3(fwd.x, 0.0, fwd.z).normalized()
+				_request_drop(Item.BANANA,
+					global_position + fwd * BANANA_THROW_SPAWN + Vector3.UP,
+					fwd * BANANA_THROW_FORWARD + Vector3.UP * BANANA_THROW_UP
+						+ velocity * BANANA_CARRY_RATIO)
+			else:
+				var back := global_transform.basis.z
+				_request_drop(Item.BANANA,
+					global_position + Vector3(back.x, 0.0, back.z).normalized() * BANANA_BEHIND)
 		Item.BLOCK:
 			var back := global_transform.basis.z
 			_request_drop(Item.BLOCK,
@@ -569,11 +599,53 @@ func _use_item() -> void:
 ## 置き物の生成はサーバに一任する。クライアントが自前で生成しても
 ## MultiplayerSpawner を通らず他ピアへ同期されないため。
 ## 自分がサーバなら rpc_id(1) のセルフ配信に頼らず直接呼ぶ
-func _request_drop(kind: int, pos: Vector3) -> void:
+func _request_drop(kind: int, pos: Vector3, launch_velocity := Vector3.ZERO) -> void:
 	if multiplayer.is_server():
-		GameManager.request_drop(kind, pos, rotation.y)
+		GameManager.request_drop(kind, pos, rotation.y, launch_velocity)
 	else:
-		GameManager.request_drop.rpc_id(1, kind, pos, rotation.y)
+		GameManager.request_drop.rpc_id(1, kind, pos, rotation.y, launch_velocity)
+
+
+func _is_hunter_for_items() -> bool:
+	var my_id := String(name).to_int()
+	if GameManager.state == GameManager.State.WAITING:
+		return my_id != GameManager.wanted_runner
+	return my_id != GameManager.runner_id
+
+
+## 置き壁は通行と視線判定には残し、ローカルの三人称カメラだけ通過させる。
+## 壁自身がカメラと注視点の間にあるかを判定し、必要な間だけ半透明にする。
+func _update_placed_block_camera() -> void:
+	var live := {}
+	for node in get_tree().get_nodes_in_group("placed_blocks"):
+		if not node is CollisionObject3D:
+			continue
+		var block := node as CollisionObject3D
+		var id := block.get_instance_id()
+		live[id] = true
+		register_placed_block_camera(block)
+
+	for id in _camera_block_rids.keys():
+		if not live.has(id):
+			spring_arm.remove_excluded_object(_camera_block_rids[id])
+			_camera_block_rids.erase(id)
+
+
+func register_placed_block_camera(block: CollisionObject3D) -> void:
+	if not is_multiplayer_authority():
+		return
+	var id := block.get_instance_id()
+	if not _camera_block_rids.has(id):
+		var rid := block.get_rid()
+		spring_arm.add_excluded_object(rid)
+		_camera_block_rids[id] = rid
+	if block.has_method("update_camera_obscured"):
+		# Camera3D の位置は SpringArm の内部更新より前だと前フレームの値になる。
+		# アームの向きから本来の4m位置を直接作り、更新順に依存させない。
+		var target := spring_arm.global_position
+		var desired_camera := target \
+			+ spring_arm.global_transform.basis.z.normalized() * spring_arm.spring_length
+		block.update_camera_obscured(target, desired_camera)
 
 
 ## --- ギミックから呼ばれる API ------------------------------------------
@@ -592,6 +664,15 @@ func launch(v: Vector3) -> void:
 	_stuck_kick_left = 0.0
 
 
+## バンパー反動の間だけ、ダッシュ・ブースト由来の目標速度で押し戻されないようにする。
+## 視点操作や上方向の物理は止めず、操作不能状態は作らない。
+func hold_bumper_bounce(horizontal: Vector3, duration: float) -> void:
+	if not is_multiplayer_authority():
+		return
+	bumper_bounce_velocity = horizontal
+	bumper_bounce_left = duration
+
+
 ## マンホールのワープ。着地先で即座に再ワープしないよう warp_lock を張る。
 ## exit_kick は水平方向の勢い（manhole.gd 側で「進行方向」から作る）。
 ## これが無いと無操作時に真上へ飛んで同じ場所へ落ち、フタへ戻って再突入する
@@ -600,6 +681,7 @@ func warp_to(pos: Vector3, up_vel: float, exit_kick := Vector3.ZERO) -> void:
 		return
 	global_position = pos
 	velocity = Vector3(exit_kick.x, up_vel, exit_kick.z)
+	bumper_bounce_left = 0.0
 	warp_lock = 0.9
 	warp_grace = WARP_GRACE
 	slide_left = 0.0  # 滑走状態のまま飛ぶと出口で明後日の方向へ加速する
@@ -642,7 +724,7 @@ func apply_stun(seconds: float) -> void:
 	effect_gained.emit(Effect.STUN)
 
 
-## 役割の見た目（全ピアで実行）。着せ替えの反映もここでまとめて行う。
+## 役割の見た目（全ピアで実行）。
 ##
 ## 役割は頭上の文字ラベルで出す。名前ラベルと違い**逃走者にも鬼にも見せる**:
 ## 見えている相手の役割が分からないと成立しないゲームだからで、視界に入った時
@@ -650,7 +732,6 @@ func apply_stun(seconds: float) -> void:
 ## 自分の頭上には出さない（自分の役割は HUD が出している）。
 func _update_role_visuals() -> void:
 	var my_id := String(name).to_int()
-	humanoid.set_skin(sync_skin)
 	var waiting := GameManager.state == GameManager.State.WAITING
 	var is_runner := my_id == (GameManager.wanted_runner if waiting else GameManager.runner_id)
 	var color := COLOR_WAITING
@@ -664,6 +745,24 @@ func _update_role_visuals() -> void:
 		role_label.modulate = color
 		# 準備中の立候補者は「逃げる役に立候補している」ことだけ示す
 		role_label.text = ROLE_TEXT["runner"] if is_runner else ROLE_TEXT["hunter"]
+
+
+## ②④ 他ピア（自分以外）のキャラ・コスチュームを GameManager.peer_profiles から反映する
+func _apply_peer_costume() -> void:
+	var peer_id := String(name).to_int()
+	if not GameManager.peer_profiles.has(peer_id):
+		return
+	var info: Dictionary = GameManager.peer_profiles[peer_id]
+	var colors := ProfileManager.colors_from_html(info.get("colors", []))
+	humanoid.set_skin(int(info.get("skin", 0)))
+	humanoid.apply_costume(StringName(info.get("costume", "default")), colors)
+	humanoid.apply_hat(StringName(info.get("hat", "none")))
+
+
+## 着せ替え画面での名前変更をロビー待機中/対戦中でも即座に追従させる。
+## sync_nickname は同期プロパティなので、書き込むだけで他ピアへも伝わる
+func _on_profile_updated_for_nickname() -> void:
+	sync_nickname = ProfileManager.player_name
 
 
 ## 頭上の名前ラベル。逃走者には見せない（味方ハンター同士にのみ表示する）。
