@@ -26,6 +26,8 @@ const MIGRATION_RECONNECT_WAIT_SEC := 30.0
 const TUNNEL_HOST_FILE := "user://tunnel_host.txt"
 const TUNNEL_POLL_INTERVAL := 1.0
 const TUNNEL_POLL_TIMEOUT := 30.0
+## 招待リンク配布用のページ(tools/serve.ps1が案内するURLと同じ)
+const PAGES_URL := "https://oekklab-source.github.io/Tag_game"
 
 var mode := Mode.NONE
 var session_kind := SessionKind.SOLO
@@ -68,6 +70,13 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 	EosManager.host_migrated.connect(_on_host_migrated)
 	_apply_cmdline()
+
+
+## ロビー画面に表示する招待リンク。public_addressが未確定の間は空文字を返す
+func join_link() -> String:
+	if public_address.is_empty():
+		return ""
+	return "%s/?s=%s" % [PAGES_URL, public_address]
 
 
 ## 動作確認用。`-- client <addr>` を付けて world.tscn を直接起動するとロビーを飛ばす。

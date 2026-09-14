@@ -33,10 +33,15 @@ const PREVIEW_SIZE := 96
 @onready var max_members_apply_button: Button = $Box/Col/MaxMembersRow/MaxMembersApplyButton
 @onready var leave_button: Button = $Box/Col/LeaveButton
 @onready var hint: Label = $Box/Col/Hint
+@onready var invite_row: HBoxContainer = $Box/Col/InviteRow
+@onready var invite_label: Label = $Box/Col/InviteRow/InviteLabel
+@onready var copy_link_button: Button = $Box/Col/InviteRow/CopyLinkButton
+@onready var version_label: Label = $Box/Col/ControlsHelpRow/VersionLabel
 
 var _roster_key := ""
 var _max_members_row_was_visible := false
 var _sb_row: StyleBoxFlat
+var _public_address_confirmed := false
 
 
 func _ready() -> void:
@@ -57,6 +62,30 @@ func _ready() -> void:
 	# ホストが押すと全員切断されるが、それは server_disconnected 経由で
 	# 各参加者が自動的に NetworkManager.leave() されるので既存動作のまま
 	leave_button.pressed.connect(NetworkManager.leave)
+	copy_link_button.pressed.connect(_on_copy_link_pressed)
+	# ホストマイグレーション後の再emit(_promote_self_to_host())も含めて拾う。
+	# 既にpublic_addressが確定した後にこのパネルが読み込まれるケースは
+	# シグナルを取りこぼすため、下の即時チェックで補う
+	NetworkManager.public_address_ready.connect(_on_public_address_ready)
+	version_label.text = "v%d" % GameManager.PROTOCOL_VERSION
+	if not NetworkManager.public_address.is_empty():
+		_on_public_address_ready(NetworkManager.public_address)
+
+
+## 招待リンクの画面内表示(C-04)。ホスト開始/トンネル確定/ホストマイグレーション後の
+## 再確定のいずれでもNetworkManager.public_address_readyから呼ばれる
+func _on_public_address_ready(_addr: String) -> void:
+	_public_address_confirmed = true
+	invite_label.text = "招待リンク: %s" % NetworkManager.join_link()
+
+
+func _on_copy_link_pressed() -> void:
+	DisplayServer.clipboard_set(NetworkManager.join_link())
+	copy_link_button.text = "コピーしました"
+	copy_link_button.disabled = true
+	await get_tree().create_timer(1.5).timeout
+	copy_link_button.text = "リンクをコピー"
+	copy_link_button.disabled = false
 
 
 ## ロビーの一覧の行。コードで作る行にも .tscn 側と同じ角丸を効かせる
@@ -88,16 +117,20 @@ func update_lobby(overlay_open: bool) -> void:
 	# 立候補UI(役割ボタン・ホストの指名クリック)自体を出さない。DirectConnect
 	# (フレンドのみのプライベート対戦)は従来通り立候補制のまま
 	var is_eos_matched := NetworkManager.matched_via_eos_lobby
+	# EOSロビー経由(見知らぬ相手とのレート戦)で招待リンクを見せると、意図的に
+	# 特定の相手を招き入れてレートを操作できてしまう。DirectConnect(非レート)でのみ出す
+	invite_row.visible = _public_address_confirmed and not is_eos_matched
 	_update_max_members_row(is_host)
-	# 版数を出しておくと、古いビルドが混ざったときに見ただけで分かる。
+	# 版数は_ready()でControlsHelpRow/VersionLabelに出す(古いビルドが混ざったときに
+	# 見ただけで分かるように)。ここではStatusの毎フレーム更新のみ扱う。
 	# 定員は常に4人（逃走者1 + 鬼3）で、足りない鬼は CPU が埋めることも書いておく
 	var humans_on_hunt: int = maxi(ids.size() - 1, 0)
 	var cpu_fill: int = maxi(GameManager.MAX_HUNTERS - humans_on_hunt, 0)
 	if GameManager.debug_cpu_runner:
 		cpu_fill = 0  # デバッグ（CPU逃走者）は1対1の検証用で CPU 鬼を足さない
 	var fill_text := "" if cpu_fill <= 0 else "（うち CPU の鬼 %d人）" % cpu_fill
-	status.text = "%s ／ 4人であそぶ: %d人が参加中%s ／ v%d" % ["ホスト（あなた）" if is_host
-		else "参加中（ホストは別の人）", ids.size(), fill_text, GameManager.PROTOCOL_VERSION]
+	status.text = "%s ／ 4人であそぶ: %d人が参加中%s" % ["ホスト（あなた）" if is_host
+		else "参加中（ホストは別の人）", ids.size(), fill_text]
 
 	_rebuild_roster(ids, me, is_host, is_eos_matched)
 

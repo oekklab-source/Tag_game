@@ -35,6 +35,11 @@ var _all_lobbies: Array = []
 
 
 func _ready() -> void:
+	# タブ名を行動ベースの日本語にする(H-09)。ノード名(LobbyList/CreateRoom/DirectConnect)や
+	# @onreadyパス、tabs.current_tab = ... の代入は変更しない
+	tabs.set_tab_title(0, "部屋をさがす")
+	tabs.set_tab_title(1, "部屋をつくる")
+	tabs.set_tab_title(2, "リンクで参加")
 	refresh_btn.pressed.connect(_on_refresh_pressed)
 	create_open_btn.pressed.connect(func(): tabs.current_tab = 1)
 	do_create_btn.pressed.connect(_on_do_create_pressed)
