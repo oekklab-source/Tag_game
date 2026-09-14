@@ -131,6 +131,7 @@ func _ready() -> void:
 	GameManager.runner_cpu_takeover.connect(_on_runner_cpu_takeover)
 	map_panel.setup(compass, distance_chip, distance_label)
 	lobby.open_overlay_requested.connect(_open_overlay)
+	lobby.toast_requested.connect(_toast)
 	result_skip_btn.pressed.connect(_on_result_skip_pressed)
 	_sb_full = _bar_style(Color(0.3, 0.95, 0.55))
 	_sb_mid = _bar_style(Color(1.0, 0.85, 0.25))

@@ -348,6 +348,22 @@ func set_wanted_runner_to(peer_id: int) -> void:
 		_set_wanted_runner.rpc(next)
 
 
+## ホスト専用。H-04: 参加者をロビーから退出させる(最小実装)。
+## notify_rejected RPC → disconnect_peer() は report_profile() のtier_lock拒否と
+## 全く同じ手順(既存のプロトコル・PROTOCOL_VERSION変更なしで動く実証済みの経路)。
+## EOSロビー経由(レーティング戦)はキック不可(切断=敗北扱いのレートペナルティ誤爆防止)。
+## lobby_panel.gd側も同じ条件でボタン自体を出していないが、サーバー側でも独立に弾く
+func kick_peer(peer_id: int) -> void:
+	if not multiplayer.is_server() or state != State.WAITING:
+		return
+	if NetworkManager.matched_via_eos_lobby:
+		return
+	if peer_id == multiplayer.get_unique_id() or peer_id not in multiplayer.get_peers():
+		return
+	notify_rejected.rpc_id(peer_id, "ホストによって退出させられました。")
+	multiplayer.multiplayer_peer.disconnect_peer(peer_id)
+
+
 ## ホスト専用。プレイヤーを順送りして逃走者を指名する（準備中の入れ替え）。
 ## 一巡に「未定(-1)」も含めるので、全員鬼＝ランダムに戻すこともできる
 func set_debug_cpu_runner(enabled: bool) -> void:

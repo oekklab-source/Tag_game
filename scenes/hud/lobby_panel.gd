@@ -9,6 +9,8 @@ extends CenterContainer
 ## ボタンが押されたことだけ signal で root に伝える
 
 signal open_overlay_requested(key: String)
+## M-09: 定員変更などの結果をトーストで知らせたいときに使う(hud.gdの_toastへそのまま繋ぐ)
+signal toast_requested(text: String, color: Color)
 
 ## scenes/hud.gd(ルート)の同名定数と値を揃えておくこと(役割バッジの色と一致させる)
 const COLOR_RUNNER := Color(0.35, 1.0, 0.55)
@@ -42,6 +44,10 @@ var _roster_key := ""
 var _max_members_row_was_visible := false
 var _sb_row: StyleBoxFlat
 var _public_address_confirmed := false
+## H-04: キック確認ダイアログは1つ使い回し、対象idだけ差し替える
+## (friend_screen.gdの_remove_confirm_dialogと同じパターン)
+var _pending_kick_id := -1
+var _kick_confirm_dialog: ConfirmationDialog
 
 
 func _ready() -> void:
@@ -70,6 +76,31 @@ func _ready() -> void:
 	version_label.text = "v%d" % GameManager.PROTOCOL_VERSION
 	if not NetworkManager.public_address.is_empty():
 		_on_public_address_ready(NetworkManager.public_address)
+	_build_kick_confirm_dialog()
+
+
+## H-04: キック確認ダイアログ(OK/キャンセルを1つ使い回し、対象は_pending_kick_idに保持する)
+func _build_kick_confirm_dialog() -> void:
+	_kick_confirm_dialog = ConfirmationDialog.new()
+	_kick_confirm_dialog.title = "参加者を退出させる"
+	_kick_confirm_dialog.ok_button_text = "退出させる"
+	_kick_confirm_dialog.cancel_button_text = "キャンセル"
+	_kick_confirm_dialog.confirmed.connect(_on_kick_confirmed)
+	add_child(_kick_confirm_dialog)
+
+
+func _on_kick_pressed(id: int) -> void:
+	_pending_kick_id = id
+	_kick_confirm_dialog.dialog_text = "%s をロビーから退出させますか？" \
+		% _display_name(id, multiplayer.get_unique_id())
+	_kick_confirm_dialog.popup_centered()
+
+
+func _on_kick_confirmed() -> void:
+	if _pending_kick_id < 0:
+		return
+	GameManager.kick_peer(_pending_kick_id)
+	_pending_kick_id = -1
 
 
 ## 招待リンクの画面内表示(C-04)。ホスト開始/トンネル確定/ホストマイグレーション後の
@@ -183,8 +214,12 @@ func _update_max_members_row(is_host: bool) -> void:
 func _on_max_members_apply_pressed() -> void:
 	var new_max := int(max_members_spin.value)
 	var ok: bool = await EosManager.update_max_members(new_max)
-	if not ok:
+	if ok:
+		toast_requested.emit("定員を%d人に変更しました" % new_max, COLOR_RUNNER)
+	else:
 		max_members_spin.value = EosManager.get_current_lobby_max_members()
+		toast_requested.emit(
+			"定員の変更に失敗しました（現在: %d人）" % int(max_members_spin.value), COLOR_HUNTER)
 
 
 ## 一覧は毎フレーム作り直さず、中身が変わったときだけ組み直す。
@@ -246,6 +281,14 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	h.add_child(tier_badge)
 	h.add_child(rating_label)
 	h.add_child(badge)
+	if is_host and not is_eos_matched and id != me:
+		# H-04: キックボタン(_kick_slot)の当たり判定と役割バッジが重ならないよう、
+		# バッジの後ろに当たり判定と同じ幅の透明スペーサーを確保しておく
+		# (_kick_slot が実際に出る条件と完全に一致させる。出ない行にまで空けると
+		# 全員の行が右に詰まって見える無駄な余白になる)
+		var kick_spacer := Control.new()
+		kick_spacer.custom_minimum_size = Vector2(44, 0)
+		h.add_child(kick_spacer)
 	row.add_child(h)
 	if not is_host or is_eos_matched:
 		return row
@@ -257,7 +300,37 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	btn.pressed.connect(func() -> void: GameManager.set_wanted_runner_to(id))
 	btn.set_anchors_preset(Control.PRESET_FULL_RECT)
 	row.add_child(btn)
+	# H-04: 自分以外の行にだけキック用の当たり判定を重ねる
+	if id != me:
+		row.add_child(_kick_slot(id))
 	return row
+
+
+## H-04: rowの右端に小さく重なる「キック」当たり判定。
+## row は PanelContainer で直接の子をすべて同じフルレクトへ強制的に引き伸ばすため、
+## キックボタンを row へ直接 add すると btn と同じく行全体を覆ってしまう。
+## 非Containerのラッパー(このslot自身)でその強制から一度抜け、中だけ普通の
+## アンカー計算をさせて小さい当たり判定にする。slot自身は mouse_filter=IGNORE なので、
+## kbtn の矩形外のクリックは slot を素通りして btn (前の兄弟)の役割指名にフォールバックする
+func _kick_slot(id: int) -> Control:
+	var slot := Control.new()
+	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var kbtn := Button.new()
+	kbtn.flat = true
+	kbtn.focus_mode = Control.FOCUS_NONE
+	kbtn.text = "✕"
+	kbtn.tooltip_text = "この人をロビーから退出させる"
+	kbtn.anchor_left = 1.0
+	kbtn.anchor_right = 1.0
+	kbtn.anchor_top = 0.5
+	kbtn.anchor_bottom = 0.5
+	kbtn.offset_left = -40.0
+	kbtn.offset_right = 0.0
+	kbtn.offset_top = -18.0
+	kbtn.offset_bottom = 18.0
+	kbtn.pressed.connect(func() -> void: _on_kick_pressed(id))
+	slot.add_child(kbtn)
+	return slot
 
 
 ## ⑥見た目プレビュー(costume_preview.tscnの小型埋め込み)。peer_profilesが届くまでは
