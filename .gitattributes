@@ -1,0 +1,14 @@
+# テキストファイルはリポジトリ内・チェックアウト後ともLFに統一する。
+# Godotエディタ自身が生成する.gd/.tscn/.import/.uid等は常にLFで書き出すため、
+# Windows側の git config core.autocrlf=true と組み合わせると触るたびに
+# 「LF will be replaced by CRLF」警告と改行コードのみの差分が発生していた。
+# このファイルはユーザーごとのcore.autocrlf設定に関係なくリポジトリ側で
+# 改行コードを固定するためのもの。
+* text=auto eol=lf
+
+# バイナリ資産は明示的にbinary指定し、万一にもテキストとして改行変換されないようにする
+*.glb binary
+*.blend binary
+*.dll binary
+*.ttf binary
+*.png binary
