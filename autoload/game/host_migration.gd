@@ -60,4 +60,8 @@ func snapshot_for_host_disconnect_penalty() -> Dictionary:
 ## 「鬼が人間、逃げる役がCPU」のセンチネル値で、get_runner()がそのまま流用できる
 @rpc("authority", "call_local", "reliable")
 func _set_runner_cpu() -> void:
+	# H-02: 呼び出し元(GameManager.on_player_left())がプロフィール消去より前にこのRPCを送るため、
+	# 代入前ならまだ切断した本人の表示名をpeer_profilesから引ける
+	var peer_name := String(GameManager.peer_profiles.get(GameManager.runner_id, {}).get("name", "?"))
+	GameManager.runner_cpu_takeover.emit(peer_name)
 	GameManager.runner_id = GameManager.CPU_RUNNER_ID

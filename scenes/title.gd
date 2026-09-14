@@ -26,6 +26,10 @@ extends Control
 @onready var name_confirm_change_btn: Button = $NameConfirmDialog/Panel/VBox/Buttons/ChangeButton
 @onready var name_confirm_join_btn: Button = $NameConfirmDialog/Panel/VBox/Buttons/JoinButton
 
+@onready var penalty_notice_dialog: Control = $PenaltyNoticeDialog
+@onready var penalty_notice_message: Label = $PenaltyNoticeDialog/Panel/VBox/MessageLabel
+@onready var penalty_notice_close_btn: Button = $PenaltyNoticeDialog/Panel/VBox/Buttons/CloseButton
+
 const COSTUME_SCENE := "res://scenes/costume_screen.tscn"
 const SHOP_SCENE := "res://scenes/shop_screen.tscn"
 const FRIEND_SCENE := "res://scenes/friend_screen.tscn"
@@ -46,9 +50,14 @@ func _ready() -> void:
 	profile_badge_btn.pressed.connect(_on_profile_pressed)
 	name_confirm_change_btn.pressed.connect(_on_name_confirm_change_pressed)
 	name_confirm_join_btn.pressed.connect(_on_name_confirm_join_pressed)
+	penalty_notice_close_btn.pressed.connect(penalty_notice_dialog.hide)
 
 	ProfileManager.profile_updated.connect(_update_badge)
 	_update_badge()
+
+	# H-01: 前回対戦中の切断ペナルティは起動後、EOS初期化完了(非同期)を待って反映されるため
+	# ここで一度だけ購読しておけば、発火タイミングによらず必ず通知できる
+	RankingManager.pending_penalty_applied.connect(_on_pending_penalty_applied)
 
 	# Web版では Quit ボタンを非表示
 	if OS.has_feature("web"):
@@ -62,6 +71,7 @@ func _ready() -> void:
 	room_match_dialog.hide()
 	ranking_dialog.hide()
 	name_confirm_dialog.hide()
+	penalty_notice_dialog.hide()
 
 	# 直前の切断理由（ホストが落ちた等）があれば表示する。
 	# 以前は scenes/main.gd がロビー画面としてこれを表示していたが、
@@ -139,6 +149,12 @@ func _update_badge() -> void:
 	profile_badge_name.text = ProfileManager.player_name
 	profile_badge_rating.text = "%s %d Pt" % [RankingManager.tier_name(ProfileManager.rating), ProfileManager.rating]
 	profile_badge_color.color = RankingManager.tier_color(ProfileManager.rating)
+
+
+## H-01: 前回対戦中に切断して課されたレートペナルティを起動時に一度だけ知らせる
+func _on_pending_penalty_applied(delta: int) -> void:
+	penalty_notice_message.text = "対戦中に切断したため、レートが%d Pt減少しました（現在%d Pt）。" % [abs(delta), ProfileManager.rating]
+	penalty_notice_dialog.show()
 
 
 func _on_play_pressed() -> void:

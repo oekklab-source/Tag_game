@@ -15,6 +15,8 @@ signal roles_changed
 ## ②④ peer_profiles（他ピアのレート/ティア/コスチューム）が更新された
 signal profiles_changed
 signal debug_mode_changed(enabled: bool)
+## H-02: 逃げる役の切断でCPU代行に切り替わったことをHUDのトースト表示に伝える
+signal runner_cpu_takeover(peer_name: String)
 
 enum State { WAITING, PLAYING, RESULT }
 
@@ -712,6 +714,10 @@ func on_player_left(peer_id: int, cpu_took_over: bool = false) -> void:
 		_host_migration._report_participant_disconnect_penalty(peer_id, true)
 	elif round_is_ranked and state == State.PLAYING and peer_id != runner_id:
 		_host_migration._report_participant_disconnect_penalty(peer_id, false)
+	# H-02: CPU代行RPCも、_set_runner_cpu()内で切断者の表示名をpeer_profilesから引くため、
+	# 上と同じ理由(プロフィール消去より前)でここに置く
+	if cpu_took_over:
+		_host_migration._set_runner_cpu.rpc()
 	_version_gate._awaiting_version.erase(peer_id)
 	if peer_profiles.has(peer_id):
 		peer_profiles.erase(peer_id)
@@ -719,9 +725,7 @@ func on_player_left(peer_id: int, cpu_took_over: bool = false) -> void:
 	# 抜けた人が指名されたままだと、次のラウンドで誰も逃走者にならない
 	if wanted_runner == peer_id:
 		_set_wanted_runner.rpc(-1)
-	if cpu_took_over:
-		_host_migration._set_runner_cpu.rpc()
-	elif state == State.PLAYING and peer_id == runner_id:
+	if not cpu_took_over and state == State.PLAYING and peer_id == runner_id:
 		_end_round.rpc(false, EndReason.RUNNER_LEFT)
 
 

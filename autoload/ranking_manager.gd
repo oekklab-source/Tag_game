@@ -4,6 +4,9 @@ extends Node
 ## 1人 (Runner) vs 多人数 (Hunter) の非対称対戦に合わせたレート変動を算出する。
 
 signal rating_changed(old_rating: int, new_rating: int, delta: int)
+## H-01: 前回対戦中の切断ペナルティが起動時に反映されたことをUI側へ通知するための専用シグナル。
+## rating_changed は通常の試合終了時にも発火するため、こちらだけを購読すれば二重通知にならない
+signal pending_penalty_applied(delta: int)
 
 ## ⑦RankingManagerはEosManagerよりも先にautoload初期化されるため、ここで
 ## eos_initializedへ接続してもシグナルの発火を取りこぼす心配は無い(project.godotの
@@ -28,6 +31,7 @@ func _on_eos_initialized(success: bool) -> void:
 	var new_r := ProfileManager.rating
 	EosManager.upload_rating(new_r)
 	rating_changed.emit(old_r, new_r, delta)
+	pending_penalty_applied.emit(delta)
 
 # --- 基本設定定数 ---
 const K_BASE: float = 16.0

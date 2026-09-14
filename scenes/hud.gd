@@ -123,6 +123,7 @@ func _ready() -> void:
 	item_icon.draw.connect(_on_item_icon_draw)
 	GameManager.state_changed.connect(_on_state_changed)
 	GameManager.spotted_changed.connect(_on_spotted_changed)
+	GameManager.runner_cpu_takeover.connect(_on_runner_cpu_takeover)
 	map_panel.setup(compass, distance_chip, distance_label)
 	lobby.open_overlay_requested.connect(_open_overlay)
 	result_skip_btn.pressed.connect(_on_result_skip_pressed)
@@ -703,6 +704,11 @@ func _pop_in(node: Control) -> void:
 
 func _on_effect_gained(effect: int) -> void:
 	_toast(TOAST_TEXT.get(effect, "!"), TOAST_COLOR.get(effect, Color.WHITE))
+
+
+## H-02: 逃げる役の切断でCPUが代行を始めたことをその場で気づけるようにする
+func _on_runner_cpu_takeover(peer_name: String) -> void:
+	_toast("%s が切断 ― CPUが代わりに逃げます" % peer_name, Color(1.0, 0.75, 0.4))
 
 
 func _toast(text: String, color: Color) -> void:
