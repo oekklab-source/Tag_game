@@ -19,6 +19,14 @@ const SCHEMA_VERSION := 5
 const INSTANCE_LOCK_PATH := "user://instance.lock"
 var _holds_instance_lock := false
 
+## M-11: 名前バリデーション(sanitize_name/name_error)で使う定数
+const MAX_NAME_LENGTH := 16
+## NGワードの最小セット(運営/管理者への成りすまし対策のみ)。実運用の辞書拡張は
+## コンテンツポリシー側の判断であり、ここはプレースホルダー
+const NG_WORDS: PackedStringArray = [
+	"admin", "administrator", "gm", "運営", "モデレーター", "management",
+]
+
 var player_name: String = "Player"
 ## ④現在選択中のコスチュームの色見本1つ目のミラー。costume_colors[0] と常に一致させ、
 ## 旧セーブとの互換・タイトルバッジ等の簡易表示に使う
@@ -261,12 +269,42 @@ func save_profile() -> void:
 	profile_updated.emit()
 
 
-## プロフィール名の更新
-func update_profile(new_name: String) -> void:
-	player_name = new_name.strip_edges()
-	if player_name.is_empty():
-		player_name = "Player"
+## 前後・連続する空白の圧縮、16文字への切り詰め、空文字のフォールバックを行う。
+## 失敗しない(例外を投げない)自動整形のみを担当する
+static func sanitize_name(raw: String) -> String:
+	var s := raw.strip_edges()
+	s = s.replace("　", " ")
+	var re := RegEx.new()
+	re.compile("[ \\t]+")
+	s = re.sub(s, " ", true)
+	s = s.strip_edges()
+	if s.length() > MAX_NAME_LENGTH:
+		s = s.substr(0, MAX_NAME_LENGTH).strip_edges()
+	if s.is_empty():
+		s = "Player"
+	return s
+
+
+## sanitize_name()適用後の名前を検査し、NGワードを含む場合はエラー文言を返す。
+## 問題なければ空文字を返す
+static func name_error(name: String) -> String:
+	var lower := name.to_lower()
+	for w in NG_WORDS:
+		if lower.contains(w.to_lower()):
+			return "使用できない言葉が含まれています"
+	return ""
+
+
+## プロフィール名の更新。整形→検査の順で行い、エラーがあれば保存せず文言を返す
+## (空文字="" は成功を表す)
+func update_profile(new_name: String) -> String:
+	var sanitized := sanitize_name(new_name)
+	var err := name_error(sanitized)
+	if not err.is_empty():
+		return err
+	player_name = sanitized
 	save_profile()
+	return ""
 
 
 ## ④指定コスチュームを所持しているか

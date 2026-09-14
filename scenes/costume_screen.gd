@@ -32,6 +32,10 @@ signal closed
 @onready var save_btn: Button = $ContentMargin/ContentRow/RightPane/ButtonRow/SaveButton
 @onready var back_btn: Button = $TopBar/BackButton
 @onready var shop_btn: Button = $TopBar/ShopButton
+@onready var confirm_overlay: Control = $ConfirmOverlay
+@onready var confirm_message_label: Label = $ConfirmOverlay/Panel/VBox/MessageLabel
+@onready var confirm_cancel_btn: Button = $ConfirmOverlay/Panel/VBox/Buttons/CancelButton
+@onready var confirm_discard_btn: Button = $ConfirmOverlay/Panel/VBox/Buttons/DiscardButton
 
 # 色スロット編集用のプリセットパレット（コスチュームの色スロット共通）
 const PALETTE_COLORS: Array[Color] = [
@@ -57,6 +61,12 @@ var _selected_costume_id: StringName = CostumeCatalog.DEFAULT_ID
 var _selected_colors: PackedColorArray = PackedColorArray()
 var _selected_hat_id: StringName = HatCatalog.DEFAULT_ID
 
+# M-10: 「戻る」時の未保存判定の基準値(refresh()で保存済みの値を捕捉する)
+var _initial_name: String
+var _initial_costume_id: StringName
+var _initial_colors: PackedColorArray
+var _initial_hat_id: StringName
+
 
 func _ready() -> void:
 	save_btn.pressed.connect(_on_save_pressed)
@@ -70,6 +80,9 @@ func _ready() -> void:
 	category_color_btn.pressed.connect(_on_category_pressed.bind(1))
 	category_hat_btn.pressed.connect(_on_category_pressed.bind(2))
 	PurchaseManager.currency_changed.connect(_update_gem_label)
+	confirm_cancel_btn.pressed.connect(confirm_overlay.hide)
+	confirm_discard_btn.pressed.connect(_on_confirm_discard_pressed)
+	confirm_overlay.hide()
 	refresh()
 
 
@@ -78,6 +91,11 @@ func refresh() -> void:
 	_selected_costume_id = ProfileManager.costume_id
 	_selected_colors = ProfileManager.costume_colors.duplicate()
 	_selected_hat_id = ProfileManager.hat_id
+	# M-10: リサイズ(_ensure_color_slot_count)前の保存済みの値を基準にする
+	_initial_name = ProfileManager.sanitize_name(ProfileManager.player_name)
+	_initial_costume_id = _selected_costume_id
+	_initial_colors = _selected_colors.duplicate()
+	_initial_hat_id = _selected_hat_id
 	_ensure_color_slot_count()
 	_setup_costume_grid()
 	_setup_color_slots()
@@ -291,7 +309,10 @@ func _update_preview() -> void:
 
 
 func _on_save_pressed() -> void:
-	ProfileManager.update_profile(name_edit.text)
+	var err := ProfileManager.update_profile(name_edit.text)
+	if not err.is_empty():
+		hint_label.text = "⚠ " + err
+		return
 	if ProfileManager.owns_costume(_selected_costume_id):
 		ProfileManager.set_costume(_selected_costume_id, _selected_colors)
 	if ProfileManager.owns_hat(_selected_hat_id):
@@ -300,6 +321,37 @@ func _on_save_pressed() -> void:
 
 
 func _on_back_pressed() -> void:
+	if _is_dirty():
+		_open_confirm_overlay()
+	else:
+		_leave()
+
+
+## M-10: 未所持アイテムの「試着」は_on_save_pressed()が保存しない(所持ガード)ため、
+## hint_labelの「試着のみ・保存では反映されません」という説明と矛盾しないよう
+## 判定の対象からも除外する
+func _is_dirty() -> bool:
+	if ProfileManager.sanitize_name(name_edit.text) != _initial_name:
+		return true
+	if ProfileManager.owns_costume(_selected_costume_id):
+		if _selected_costume_id != _initial_costume_id or _selected_colors != _initial_colors:
+			return true
+	if ProfileManager.owns_hat(_selected_hat_id) and _selected_hat_id != _initial_hat_id:
+		return true
+	return false
+
+
+## shop_screenのConfirmOverlayと同じ既定フォーカス思想(誤ってEnterで破棄しないよう
+## 既定は「やめる」)。用途がここでは1つだけなので、shop_screenのような汎用Callable
+## 保持は行わず直接_leave()を呼ぶ
+func _open_confirm_overlay() -> void:
+	confirm_message_label.text = "保存していない変更があります。破棄して戻りますか？"
+	confirm_overlay.show()
+	confirm_cancel_btn.grab_focus()
+
+
+func _on_confirm_discard_pressed() -> void:
+	confirm_overlay.hide()
 	_leave()
 
 

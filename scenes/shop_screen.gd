@@ -27,6 +27,10 @@ signal closed
 @onready var confirm_cancel_btn: Button = $ConfirmOverlay/Panel/VBox/Buttons/CancelButton
 @onready var confirm_buy_btn: Button = $ConfirmOverlay/Panel/VBox/Buttons/BuyButton
 
+## M-01: lobby_panel.gd._roster_preview()と同じ3Dプレビュー部品を再利用する
+const COSTUME_PREVIEW_SCENE := preload("res://scenes/costume_preview.tscn")
+const PREVIEW_SIZE := 96
+
 const RARITY_COLORS := {
 	&"common": Color(0.6, 0.6, 0.65),
 	&"rare": Color(0.35, 0.7, 1.0),
@@ -216,12 +220,14 @@ func _build_item_card(kind: StringName, id: StringName, def: Dictionary) -> Cont
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
 
+	var owned := _owns(kind, id)
+	vbox.add_child(_build_preview(kind, id, owned))
+
 	var name_lbl := Label.new()
 	name_lbl.text = String(def.get("name", String(id)))
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(name_lbl)
 
-	var owned := _owns(kind, id)
 	var price := int(def.get("price", 0))
 
 	var price_lbl := Label.new()
@@ -252,6 +258,40 @@ func _build_item_card(kind: StringName, id: StringName, def: Dictionary) -> Cont
 
 	box.add_child(vbox)
 	return box
+
+
+## M-01: costumeカード=そのコスチュームを試着+自分の現在の帽子、hatカード=自分の
+## 現在のコスチューム+その帽子を試着、という基準見た目にする(組み合わせ映えが
+## 分かるように、かつcostume/hat両カードで対称的な実装にするため)
+func _build_preview(kind: StringName, id: StringName, owned: bool) -> Control:
+	var preview: Control = COSTUME_PREVIEW_SCENE.instantiate()
+	preview.custom_minimum_size = Vector2(PREVIEW_SIZE, PREVIEW_SIZE)
+	preview.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	preview.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
+	var skin := ProfileManager.skin
+	var costume_id := ProfileManager.costume_id
+	var colors := ProfileManager.costume_colors
+	var hat_id := ProfileManager.hat_id
+	match kind:
+		&"costume":
+			costume_id = id
+			colors = CostumeCatalog.default_colors(id)   # 未所持のため保存済み色が無い
+		&"hat":
+			hat_id = id
+
+	# lobby_panel.gd._roster_previewと同じ理由: この時点ではまだitem_gridに未接続で
+	# costume_preview.gdの@onready参照(_ready()で解決)が未解決のため、call_deferredで
+	# 1フレーム遅らせて接続後に実行させる
+	preview.call_deferred("set_interactive", false)
+	preview.call_deferred("show_skin", skin)
+	preview.call_deferred("show_costume", costume_id, colors)
+	preview.call_deferred("show_hat", hat_id)
+	preview.call_deferred("set_locked", not owned)
+	# 見た目反映後の1フレームだけ描いて止める(最大10件同時生成でもGPU負荷が
+	# 跳ねないよう、lobby_panelと同じ静止化を必ず適用する)
+	preview.call_deferred("request_static_render")
+	return preview
 
 
 func _owns(kind: StringName, id: StringName) -> bool:

@@ -51,14 +51,21 @@ func _server_from_query() -> String:
 
 
 ## ニックネームと着せ替えのキャラを保存する。ホスト・参加のどちらから始めても
-## 同じものが player.gd の _ready() とプロフィール同期で全ピアへ配られる
-func _save_prefs() -> void:
-	ProfileManager.update_profile(nickname_edit.text)
+## 同じものが player.gd の _ready() とプロフィール同期で全ピアへ配られる。
+## 名前バリデーションに失敗した場合はエラー文言を返す(空文字="" は成功)
+func _save_prefs() -> String:
+	var err := ProfileManager.update_profile(nickname_edit.text)
+	if not err.is_empty():
+		return err
 	ProfileManager.set_skin(skin_option.selected)
+	return ""
 
 
 func _on_host_pressed() -> void:
-	_save_prefs()
+	var err := _save_prefs()
+	if not err.is_empty():
+		status_label.text = err
+		return
 	if NetworkManager.start_host():
 		return
 	# 始められなかった（たいていはポートの取り合い）。理由をその場で見せる
@@ -71,5 +78,8 @@ func _on_join_pressed() -> void:
 	if address.is_empty():
 		status_label.text = "ホストのアドレスを入力してください"
 		return
-	_save_prefs()
+	var err := _save_prefs()
+	if not err.is_empty():
+		status_label.text = err
+		return
 	NetworkManager.start_client(address)

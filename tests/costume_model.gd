@@ -38,6 +38,13 @@ func _ready() -> void:
 	print("==================================================")
 	test_currency_pack_catalog_integrity()
 
+	print("\n==================================================")
+	print("【TEST】M-11 名前バリデーション（sanitize_name/name_error） 検証")
+	print("==================================================")
+	test_sanitize_name_normalizes_whitespace_and_length()
+	test_sanitize_name_empty_fallback()
+	test_name_error_detects_ng_words_and_allows_clean_name()
+
 	print("==================================================")
 	print("【TEST COMPLETED】全テストケースの検証完了")
 	print("==================================================")
@@ -264,3 +271,34 @@ func test_currency_pack_catalog_integrity() -> void:
 		assert(int(def.get("gems", 0)) > 0)
 		assert(not String(def.get("display_price", "")).is_empty())
 	print("   => 全パックがstripe_price_id/正のジェム数を持つことを確認 [OK]")
+
+
+## 全角/半角混在の連続空白が1個に圧縮され、16文字を超える名前が切り詰められることを確認する
+func test_sanitize_name_normalizes_whitespace_and_length() -> void:
+	print("\n--- [12] sanitize_name() の空白圧縮・文字数制限検証 ---")
+	var collapsed := ProfileManager.sanitize_name("  A　  B\tC  ")
+	print("   collapsed: '%s'" % collapsed)
+	assert(collapsed == "A B C")
+	var truncated := ProfileManager.sanitize_name("12345678901234567890")
+	print("   truncated: '%s' (len=%d)" % [truncated, truncated.length()])
+	assert(truncated.length() == ProfileManager.MAX_NAME_LENGTH)
+	assert(truncated == "1234567890123456")
+	print("   => 連続空白の圧縮・16文字切り詰めを確認 [OK]")
+
+
+## 空文字・空白のみの名前が "Player" にフォールバックすることを確認する
+func test_sanitize_name_empty_fallback() -> void:
+	print("\n--- [13] sanitize_name() の空文字フォールバック検証 ---")
+	assert(ProfileManager.sanitize_name("") == "Player")
+	assert(ProfileManager.sanitize_name("   　  ") == "Player")
+	print("   => 空文字・空白のみの名前が Player になることを確認 [OK]")
+
+
+## NGワードを含む名前はエラー文言を返し、含まない名前は空文字を返すことを確認する
+func test_name_error_detects_ng_words_and_allows_clean_name() -> void:
+	print("\n--- [14] name_error() のNGワード検出検証 ---")
+	assert(not ProfileManager.name_error("admin").is_empty())
+	assert(not ProfileManager.name_error("Administrator99").is_empty())
+	assert(not ProfileManager.name_error("運営です").is_empty())
+	assert(ProfileManager.name_error("TestHero99").is_empty())
+	print("   => NGワードを含む名前のみエラーになることを確認 [OK]")

@@ -238,6 +238,7 @@ text = "この名前で参加します"
 
 [node name="NameEdit" type="LineEdit" parent="NameConfirmDialog/Panel/VBox"]
 layout_mode = 2
+max_length = 16
 
 [node name="WarningLabel" type="Label" parent="NameConfirmDialog/Panel/VBox"]
 layout_mode = 2

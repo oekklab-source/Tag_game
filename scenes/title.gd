@@ -154,7 +154,13 @@ func _on_name_confirm_change_pressed() -> void:
 func _on_name_confirm_join_pressed() -> void:
 	var new_name := name_confirm_edit.text.strip_edges()
 	if not new_name.is_empty() and new_name != ProfileManager.player_name:
-		ProfileManager.update_profile(new_name)  # profile_updated経由でバッジ表示も自動更新される
+		# profile_updated経由でバッジ表示も自動更新される
+		var err := ProfileManager.update_profile(new_name)
+		if not err.is_empty():
+			name_confirm_warning.text = err
+			name_confirm_edit.grab_focus()
+			name_confirm_edit.select_all()
+			return
 	name_confirm_dialog.hide()
 	status_label.text = "参加リンクからホストへ接続中..."
 	# _ready() の最中はまだ親がこのシーンの子を追加中で、そこから change_scene すると

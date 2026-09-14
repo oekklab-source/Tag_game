@@ -25,6 +25,7 @@ func _ready() -> void:
 	await _test_cloud_merge_logic()
 	await _test_purchase_provider_selection()
 	await _test_settings_save_load()
+	await _test_update_profile_validation()
 
 	print("==================================================")
 	print("Phase 5 結果: PASS=%d, FAIL=%d" % [passed_count, failed_count])
@@ -237,3 +238,23 @@ func _test_settings_save_load() -> void:
 	SettingsManager.mouse_sensitivity = orig_sensitivity
 	SettingsManager.master_volume = orig_volume
 	SettingsManager.save_settings()
+
+
+## 6. M-11: update_profile() のバリデーション(正常系は保存されて空文字が返る、
+## NGワードを含む場合はplayer_nameが変化せずエラー文言が返る)。save_profile()を
+## 呼ぶため(=ディスク書き込みを伴う)実データを退避してから検証し、最後に復元する
+func _test_update_profile_validation() -> void:
+	print("\n--- [6] update_profile() バリデーション検証 ---")
+	var orig_name: String = ProfileManager.player_name
+
+	var err := ProfileManager.update_profile("  Yuki   Tanaka  ")
+	_assert(err.is_empty(), "正常な名前は保存され空文字が返る")
+	_assert(ProfileManager.player_name == "Yuki Tanaka", "連続空白が圧縮されて保存される")
+
+	var before_ng := ProfileManager.player_name
+	var ng_err := ProfileManager.update_profile("admin")
+	_assert(not ng_err.is_empty(), "NGワードを含む名前はエラー文言が返る")
+	_assert(ProfileManager.player_name == before_ng, "NGワード時はplayer_nameが変化しない")
+
+	ProfileManager.player_name = orig_name
+	ProfileManager.save_profile()
