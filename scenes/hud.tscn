@@ -470,6 +470,13 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 22
 horizontal_alignment = 1
 
+[node name="ResultDetail" type="Label" parent="ResultPanel/Box/Col"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.75)
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+text = ""
+
 [node name="ResultNext" type="Label" parent="ResultPanel/Box/Col"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
@@ -478,4 +485,4 @@ horizontal_alignment = 1
 [node name="ResultSkipButton" type="Button" parent="ResultPanel/Box/Col"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
-text = "スキップ"
+text = "もう1戦（なかま待ちへ）"

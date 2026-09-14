@@ -65,6 +65,9 @@ var _spinning := false
 var _spin_index := 0
 var _spin_next := 0.0
 var _last_rating_delta := 0
+## H-03: RankingManager.last_delta_breakdown の退避（結果画面のレート内訳表示用）
+var _last_rating_base := 0
+var _last_rating_bonus := 0
 var _rating_applied := false
 var _rating_shown := false  # ①CPU戦や離脱中断ではレート行を表示しない
 
@@ -111,6 +114,8 @@ var _icon_tween: Tween
 @onready var result_panel: CenterContainer = $ResultPanel
 @onready var result_title: Label = $ResultPanel/Box/Col/ResultTitle
 @onready var result_sub: Label = $ResultPanel/Box/Col/ResultSub
+## H-03: 生存時間・鬼人数・トドメ役の事実行＋レート内訳（低レート帯ボーナス分のみ）
+@onready var result_detail: Label = $ResultPanel/Box/Col/ResultDetail
 @onready var result_next: Label = $ResultPanel/Box/Col/ResultNext
 ## M-14対策: 結果画面唯一の操作可能ボタン。lobbyと同じ理由で_ignore_mouse()の対象外にする
 @onready var result_skip_btn: Button = $ResultPanel/Box/Col/ResultSkipButton
@@ -377,9 +382,56 @@ func _update_result(is_runner: bool) -> void:
 		else:
 			sub_text += "\n練習モード（レート変動なし）"
 		result_sub.text = sub_text
-		
+
+	result_detail.text = _result_detail_text()
 	result_next.text = "%d秒後になかま待ちにもどります" % maxi(ceili(GameManager.result_left), 0)
 	result_next.modulate = COLOR_GOLD
+
+
+## H-03: 「何が起きたか」の事実行(生存時間/鬼人数/トドメ役)と、レート内訳
+## (低レート帯ボーナス分のみ)。毎フレーム呼ばれるが、参照する値は RESULT 中は
+## 固定されている(time_left は RESULT 中は減らない)ので表示は安定する。
+## 生存スコア分・鬼人数ハンデ分は式の上で加算項ではなく(ロジスティック期待値の
+## 入力なので)Pt単位に分解できない。分解できるのは最後に純加算される低レート帯
+## ボーナス(ranking_manager.gd の手順8)だけなので、残りは「事実」として並べる
+func _result_detail_text() -> String:
+	var facts: Array[String] = []
+	var elapsed := GameManager.ROUND_TIME - GameManager.time_left
+	var time_label := "経過" if GameManager.result_reason == GameManager.EndReason.RUNNER_LEFT else "生存"
+	facts.append("%s %s" % [time_label, _mmss(elapsed)])
+	if GameManager.round_hunter_count > 0:
+		facts.append("鬼 %d人" % GameManager.round_hunter_count)
+	var tagger := _tagger_display_name()
+	if not tagger.is_empty():
+		facts.append("トドメ: %s" % tagger)
+
+	var lines: Array[String] = ["　／　".join(facts)]
+	# ボーナスが0(ダイヤ帯以上)のときは合計＝基礎なので内訳行そのものを出さない
+	if _rating_shown and _last_rating_bonus != 0:
+		lines.append("内訳: 基礎 %s ／ 低レート帯ボーナス %s"
+			% [_signed(_last_rating_base), _signed(_last_rating_bonus)])
+	return "\n".join(lines)
+
+
+## 捕まった試合でだけ「誰がタッチしたか」を返す。逃げ切り・中断では空文字
+func _tagger_display_name() -> String:
+	if GameManager.result_reason != GameManager.EndReason.TAGGED:
+		return ""
+	if GameManager.tagger_peer_id < 0:
+		return "CPU"
+	if GameManager.tagger_peer_id == multiplayer.get_unique_id():
+		return "あなた"
+	return GameManager.nickname_for(GameManager.tagger_peer_id)
+
+
+static func _mmss(sec: float) -> String:
+	var s := maxi(int(sec), 0)
+	return "%d:%02d" % [s / 60, s % 60]
+
+
+## 既存のレート行(_update_result内)と同じ「+12 / -12」表記に揃える
+static func _signed(n: int) -> String:
+	return "+%d" % n if n >= 0 else str(n)
 
 
 ## M-14対策: 結果画面に唯一の操作(自動カウントダウンを待たずに次へ進む)を足す
@@ -638,6 +690,8 @@ func _on_state_changed(new_state: int) -> void:
 		if not _rating_applied:
 			_rating_applied = true
 			_last_rating_delta = 0
+			_last_rating_base = 0
+			_last_rating_bonus = 0
 			# ①VS CPU戦（round_is_ranked==false）と、逃走者離脱による中断はレート非適用
 			_rating_shown = GameManager.round_is_ranked \
 				and GameManager.result_reason != GameManager.EndReason.RUNNER_LEFT
@@ -650,6 +704,9 @@ func _on_state_changed(new_state: int) -> void:
 				var opp_rating := RankingManager.opponent_avg_rating(is_runner)
 				_last_rating_delta = RankingManager.apply_match_end(
 					is_runner, won, survival, GameManager.round_hunter_count, is_tagger, opp_rating)
+				# H-03: 結果画面の内訳表示用（低レート帯ボーナス分だけを分離して見せる）
+				_last_rating_base = int(RankingManager.last_delta_breakdown.get("base", _last_rating_delta))
+				_last_rating_bonus = int(RankingManager.last_delta_breakdown.get("bonus", 0))
 			elif not GameManager.round_is_ranked:
 				# 離脱中断（オンライン）はどちらの戦績にも数えない。CPU戦のみ練習回数に加算
 				ProfileManager.record_casual_match()

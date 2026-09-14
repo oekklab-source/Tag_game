@@ -8,6 +8,13 @@ signal rating_changed(old_rating: int, new_rating: int, delta: int)
 ## rating_changed は通常の試合終了時にも発火するため、こちらだけを購読すれば二重通知にならない
 signal pending_penalty_applied(delta: int)
 
+## H-03: 結果画面がレート内訳を表示するための退避場所（calculate_rating_delta() の
+## 直近の呼び出し結果）。既存の戻り値(int)とそれに依存するテスト(tests/rating_model.gd)を
+## 変えないため、戻り値をDictionary化せずここへ退避する方式にした。
+## base + bonus は必ず total と一致する（個別にround()すると1Pt合わないことがあるため、
+## bonus をroundしてから base = total - bonus で求めている）
+var last_delta_breakdown := {"total": 0, "base": 0, "bonus": 0}
+
 ## ⑦RankingManagerはEosManagerよりも先にautoload初期化されるため、ここで
 ## eos_initializedへ接続してもシグナルの発火を取りこぼす心配は無い(project.godotの
 ## [autoload]順で保証されている)
@@ -283,17 +290,29 @@ func calculate_rating_delta(
 		for i in range(hunter_count):
 			hunter_ratings.append(float(opponent_avg_rating))
 		var res := calculate_all_rating_changes(float(my_rating), hunter_ratings, survival_time, toucher_idx)
-		return int(round(res["runner_delta"]))
+		var total := int(round(res["runner_delta"]))
+		_store_breakdown(total, int(round(res["bonus_runner"])))
+		return total
 	else:
 		var hunter_ratings: Array[float] = []
 		for i in range(hunter_count):
 			hunter_ratings.append(float(my_rating))
 		var res := calculate_all_rating_changes(float(opponent_avg_rating), hunter_ratings, survival_time, toucher_idx)
 		var h_deltas: Array = res["hunter_deltas"]
+		var h_bonus: Array = res["bonus_hunters"]
 		var target_idx := 0 if is_tagger else mini(1, hunter_count - 1)
-		if target_idx < h_deltas.size():
-			return int(round(h_deltas[target_idx]))
-		return int(round(h_deltas[0]))
+		if target_idx >= h_deltas.size():
+			target_idx = 0
+		var total := int(round(h_deltas[target_idx]))
+		var bonus := int(round(h_bonus[target_idx])) if target_idx < h_bonus.size() else 0
+		_store_breakdown(total, bonus)
+		return total
+
+
+## H-03: last_delta_breakdown の更新のみを行うヘルパー。base はここで
+## total - bonus として求め、内訳を足し合わせた時に必ず合計と一致するようにする
+func _store_breakdown(total: int, bonus: int) -> void:
+	last_delta_breakdown = {"total": total, "base": total - bonus, "bonus": bonus}
 
 
 ## 試合終了時に呼び出し、ProfileManager および EosManager に反映する
@@ -312,6 +331,7 @@ func apply_match_end(
 	if not GameManager.round_is_ranked:
 		var r := ProfileManager.rating
 		rating_changed.emit(r, r, 0)
+		_store_breakdown(0, 0)
 		return 0
 	var old_r := ProfileManager.rating
 	var delta := calculate_rating_delta(
