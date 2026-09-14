@@ -14,6 +14,7 @@ extends Control
 @onready var shop_button: Button = $CenterMenu/VBox/ShopButton
 @onready var friend_button: Button = $CenterMenu/VBox/FriendButton
 @onready var ranking_button: Button = $CenterMenu/VBox/RankingButton
+@onready var settings_button: Button = $CenterMenu/VBox/SettingsButton
 @onready var quit_button: Button = $CenterMenu/VBox/QuitButton
 @onready var status_label: Label = $CenterMenu/VBox/StatusLabel
 
@@ -33,6 +34,7 @@ extends Control
 const COSTUME_SCENE := "res://scenes/costume_screen.tscn"
 const SHOP_SCENE := "res://scenes/shop_screen.tscn"
 const FRIEND_SCENE := "res://scenes/friend_screen.tscn"
+const SETTINGS_SCENE := "res://scenes/settings_screen.tscn"
 
 ## C-05: ?s= 経由の自動参加直前に挟む名前確認ダイアログの、参加先アドレスの一時退避
 var _pending_join_server := ""
@@ -46,6 +48,7 @@ func _ready() -> void:
 	shop_button.pressed.connect(_on_shop_pressed)
 	friend_button.pressed.connect(_on_friend_pressed)
 	ranking_button.pressed.connect(_on_ranking_pressed)
+	settings_button.pressed.connect(_on_settings_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	profile_badge_btn.pressed.connect(_on_profile_pressed)
 	name_confirm_change_btn.pressed.connect(_on_name_confirm_change_pressed)
@@ -183,6 +186,11 @@ func _on_friend_pressed() -> void:
 
 func _on_ranking_pressed() -> void:
 	ranking_dialog.open()
+
+
+## H-07: 設定画面への遷移
+func _on_settings_pressed() -> void:
+	get_tree().change_scene_to_file(SETTINGS_SCENE)
 
 
 func _on_quit_pressed() -> void:

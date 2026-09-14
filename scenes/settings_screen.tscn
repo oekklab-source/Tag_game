@@ -1,0 +1,148 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
+[ext_resource type="Script" path="res://scenes/settings_screen.gd" id="2_script"]
+
+[sub_resource type="Gradient" id="Gradient_bg"]
+colors = PackedColorArray(0.1, 0.12, 0.22, 1, 0.05, 0.05, 0.1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_bg"]
+gradient = SubResource("Gradient_bg")
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
+
+[node name="SettingsScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("1_theme")
+script = ExtResource("2_script")
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("GradientTexture2D_bg")
+
+[node name="TopBar" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 24.0
+offset_top = 20.0
+offset_right = -24.0
+offset_bottom = 68.0
+grow_horizontal = 2
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="TopBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.75, 0.25, 1)
+theme_override_font_sizes/font_size = 30
+text = "設定"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ContentMargin" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 76.0
+offset_left = 24.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Scroll" type="ScrollContainer" parent="ContentMargin"]
+layout_mode = 2
+
+[node name="MainVBox" type="VBoxContainer" parent="ContentMargin/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 24
+
+[node name="SensitivitySection" type="VBoxContainer" parent="ContentMargin/Scroll/MainVBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SectionTitle" type="Label" parent="ContentMargin/Scroll/MainVBox/SensitivitySection"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
+theme_override_font_sizes/font_size = 22
+text = "マウス感度"
+
+[node name="Row" type="HBoxContainer" parent="ContentMargin/Scroll/MainVBox/SensitivitySection"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Slider" type="HSlider" parent="ContentMargin/Scroll/MainVBox/SensitivitySection/Row"]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0005
+max_value = 0.01
+step = 0.0001
+value = 0.003
+
+[node name="ValueLabel" type="Label" parent="ContentMargin/Scroll/MainVBox/SensitivitySection/Row"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "×1.00"
+
+[node name="VolumeSection" type="VBoxContainer" parent="ContentMargin/Scroll/MainVBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SectionTitle" type="Label" parent="ContentMargin/Scroll/MainVBox/VolumeSection"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
+theme_override_font_sizes/font_size = 22
+text = "マスター音量"
+
+[node name="Row" type="HBoxContainer" parent="ContentMargin/Scroll/MainVBox/VolumeSection"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Slider" type="HSlider" parent="ContentMargin/Scroll/MainVBox/VolumeSection/Row"]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 1.0
+step = 0.01
+value = 0.8
+
+[node name="ValueLabel" type="Label" parent="ContentMargin/Scroll/MainVBox/VolumeSection/Row"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "80%"
+
+[node name="NoteLabel" type="Label" parent="ContentMargin/Scroll/MainVBox/VolumeSection"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.65, 0.65, 0.7, 1)
+theme_override_font_sizes/font_size = 14
+text = "※まだBGM・効果音がありません"
+
+[node name="ButtonsRow" type="HBoxContainer" parent="ContentMargin/Scroll/MainVBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 16
+
+[node name="ResetButton" type="Button" parent="ContentMargin/Scroll/MainVBox/ButtonsRow"]
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+text = "既定に戻す"
+
+[node name="SaveButton" type="Button" parent="ContentMargin/Scroll/MainVBox/ButtonsRow"]
+custom_minimum_size = Vector2(160, 0)
+layout_mode = 2
+text = "保存してもどる"

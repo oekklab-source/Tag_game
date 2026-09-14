@@ -149,6 +149,10 @@ text = "フレンド"
 layout_mode = 2
 text = "ランキング"
 
+[node name="SettingsButton" type="Button" parent="CenterMenu/VBox"]
+layout_mode = 2
+text = "設定"
+
 [node name="QuitButton" type="Button" parent="CenterMenu/VBox"]
 layout_mode = 2
 text = "ゲーム終了"

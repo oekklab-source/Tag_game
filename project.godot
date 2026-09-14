@@ -38,6 +38,7 @@ HSessions="*res://addons/epic-online-services-godot/heos/hsessions.gd"
 HPlayerDataStorage="*res://addons/epic-online-services-godot/heos/hplayerdatastorage.gd"
 EosManager="*res://autoload/eos_manager.gd"
 QuitMenu="*res://autoload/quit_menu.tscn"
+SettingsManager="*res://autoload/settings_manager.gd"
 
 [display]
 

@@ -24,6 +24,7 @@ func _ready() -> void:
 	await _test_profile_corrupted_fallback()
 	await _test_cloud_merge_logic()
 	await _test_purchase_provider_selection()
+	await _test_settings_save_load()
 
 	print("==================================================")
 	print("Phase 5 結果: PASS=%d, FAIL=%d" % [passed_count, failed_count])
@@ -205,3 +206,34 @@ func _test_purchase_provider_selection() -> void:
 
 	var unknown_result: Dictionary = await mock.buy_pack(&"no_such_pack")
 	_assert(unknown_result.get("ok", true) == false, "MockPurchaseProviderは未知パックでok=falseを返す")
+
+
+## 5. H-07: SettingsManager の保存と復元(ProfileManagerの_test_profile_save_load()と同じ
+## 「退避->書き換え->保存/読込->アサート->復元」パターン)
+func _test_settings_save_load() -> void:
+	print("\n--- [5] SettingsManager 保存・読み込み ---")
+	var orig_sensitivity: float = SettingsManager.mouse_sensitivity
+	var orig_volume: float = SettingsManager.master_volume
+
+	SettingsManager.mouse_sensitivity = 0.005
+	SettingsManager.master_volume = 0.3
+	SettingsManager.save_settings()
+
+	SettingsManager.mouse_sensitivity = SettingsManager.DEFAULT_MOUSE_SENSITIVITY
+	SettingsManager.master_volume = SettingsManager.DEFAULT_MASTER_VOLUME
+
+	SettingsManager.load_settings()
+
+	_assert(is_equal_approx(SettingsManager.mouse_sensitivity, 0.005), "マウス感度が正しく復元 (0.005)")
+	_assert(is_equal_approx(SettingsManager.master_volume, 0.3), "マスター音量が正しく復元 (0.3)")
+
+	# 範囲外の値は安全にクランプされる(破損/改ざんデータ対策)
+	SettingsManager._apply_data({"mouse_sensitivity": 999.0, "master_volume": -5.0})
+	_assert(is_equal_approx(SettingsManager.mouse_sensitivity, SettingsManager.MOUSE_SENSITIVITY_MAX),
+		"範囲外のマウス感度は上限にクランプされる")
+	_assert(is_equal_approx(SettingsManager.master_volume, 0.0),
+		"範囲外のマスター音量は0にクランプされる")
+
+	SettingsManager.mouse_sensitivity = orig_sensitivity
+	SettingsManager.master_volume = orig_volume
+	SettingsManager.save_settings()

@@ -58,7 +58,6 @@ const SLIDE_GRACE := 0.12     # Area を出た直後の1〜2フレームの取�
 ## 無入力時は目標速度＝ゼロへ即座に上書きされ、出口の水平速度が消える。
 ## その間は空中と同じ扱いにして、is_on_floor() の値を無視する
 const WARP_GRACE := 0.2
-const MOUSE_SENSITIVITY := 0.003
 const PITCH_MIN := -60.0
 const PITCH_MAX := 30.0
 
@@ -268,9 +267,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	# Esc でのマウス解放は QuitMenu が開くときに行う
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
+		rotate_y(-event.relative.x * SettingsManager.mouse_sensitivity)
 		spring_arm.rotation.x = clampf(
-			spring_arm.rotation.x - event.relative.y * MOUSE_SENSITIVITY,
+			spring_arm.rotation.x - event.relative.y * SettingsManager.mouse_sensitivity,
 			deg_to_rad(PITCH_MIN), deg_to_rad(PITCH_MAX))
 
 
