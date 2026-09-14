@@ -165,6 +165,23 @@ horizontal_alignment = 1
 autowrap_mode = 2
 text = ""
 
+[node name="ErrorActionsRow" type="HBoxContainer" parent="CenterMenu/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="FindAnotherRoomButton" type="Button" parent="CenterMenu/VBox/ErrorActionsRow"]
+layout_mode = 2
+visible = false
+theme_override_font_sizes/font_size = 14
+text = "別の部屋をさがす"
+
+[node name="ErrorHistoryButton" type="Button" parent="CenterMenu/VBox/ErrorActionsRow"]
+layout_mode = 2
+visible = false
+theme_override_font_sizes/font_size = 14
+text = "接続エラーの履歴"
+
 [node name="RoomMatchDialog" parent="." instance=ExtResource("4_room")]
 visible = false
 layout_mode = 1
@@ -303,6 +320,72 @@ layout_mode = 2
 alignment = 1
 
 [node name="CloseButton" type="Button" parent="PenaltyNoticeDialog/Panel/VBox/Buttons"]
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+text = "閉じる"
+
+[node name="ErrorLogDialog" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dimmer" type="ColorRect" parent="ErrorLogDialog"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.65)
+
+[node name="Panel" type="PanelContainer" parent="ErrorLogDialog"]
+custom_minimum_size = Vector2(460, 380)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -230.0
+offset_top = -190.0
+offset_right = 230.0
+offset_bottom = 190.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="VBox" type="VBoxContainer" parent="ErrorLogDialog/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TitleLabel" type="Label" parent="ErrorLogDialog/Panel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 1
+autowrap_mode = 2
+text = "接続エラーの履歴"
+
+[node name="Scroll" type="ScrollContainer" parent="ErrorLogDialog/Panel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+custom_minimum_size = Vector2(0, 260)
+
+[node name="ListLabel" type="Label" parent="ErrorLogDialog/Panel/VBox/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+autowrap_mode = 2
+text = ""
+
+[node name="Buttons" type="HBoxContainer" parent="ErrorLogDialog/Panel/VBox"]
+layout_mode = 2
+alignment = 1
+
+[node name="CloseButton" type="Button" parent="ErrorLogDialog/Panel/VBox/Buttons"]
 custom_minimum_size = Vector2(140, 0)
 layout_mode = 2
 text = "閉じる"

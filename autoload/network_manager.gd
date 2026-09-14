@@ -32,7 +32,20 @@ const PAGES_URL := "https://oekklab-source.github.io/Tag_game"
 var mode := Mode.NONE
 var session_kind := SessionKind.SOLO
 var join_address := "127.0.0.1"
-var last_error := ""
+
+## M-07: last_errorのsetterで自動的に追記される直近のエラー履歴(最大ERROR_LOG_MAX件、
+## 超えたら古い方からpop_front)。last_error自体の「読んだら空文字を代入してクリアする」
+## 既存パターン(title.gd/main.gd)はそのまま動作する(空文字への代入はここに追記されない)
+const ERROR_LOG_MAX := 10
+var error_log: Array[String] = []
+
+var last_error: String = "":
+	set(v):
+		last_error = v
+		if not v.is_empty():
+			error_log.append(v)
+			if error_log.size() > ERROR_LOG_MAX:
+				error_log.pop_front()
 ## ②EOSロビー参加者が実際に接続すべきアドレス（LAN IP、後にトンネルのホスト名で
 ## 上書きされることがある）。host_addr としてロビーデータに載せる
 var public_address := ""

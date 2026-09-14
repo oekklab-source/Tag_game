@@ -10,6 +10,7 @@ signal closed
 @onready var refresh_btn: Button = $Panel/VBox/TabContainer/LobbyList/TopRow/RefreshButton
 @onready var tier_filter: OptionButton = $Panel/VBox/TabContainer/LobbyList/TopRow/TierFilter
 @onready var quick_match_btn: Button = $Panel/VBox/TabContainer/LobbyList/TopRow/QuickMatchButton
+@onready var quick_match_cancel_btn: Button = $Panel/VBox/TabContainer/LobbyList/TopRow/QuickMatchCancelButton
 @onready var create_open_btn: Button = $Panel/VBox/TabContainer/LobbyList/TopRow/CreateOpenButton
 @onready var status_label: Label = $Panel/VBox/StatusLabel
 
@@ -31,7 +32,17 @@ signal closed
 ## TierFilter の選択肢。0=自分の帯のみ, 1=自分の帯±1, 2=すべて
 const FILTER_LABELS := ["自分のレート帯のみ", "近いレート帯まで(±1)", "すべて表示"]
 
+## H-05: おまかせマッチの検索間隔・タイムアウト
+const QUICK_MATCH_RETRY_INTERVAL := 3.0
+const QUICK_MATCH_TIMEOUT := 20.0
+
 var _all_lobbies: Array = []
+
+## H-05: おまかせマッチの進行状態。_quick_match_tokenは実行中ループの世代識別子で、
+## 中断/クローズ/多重起動のたびにインクリメントし、古いループがチェックポイントで
+## 気づいて静かに終了できるようにする
+var _quick_match_active := false
+var _quick_match_token := 0
 
 
 func _ready() -> void:
@@ -47,6 +58,10 @@ func _ready() -> void:
 	direct_host_btn.pressed.connect(_on_direct_host_pressed)
 	close_btn.pressed.connect(_on_close_pressed)
 	quick_match_btn.pressed.connect(_on_quick_match_pressed)
+	quick_match_cancel_btn.pressed.connect(_on_quick_match_cancel_pressed)
+	# H-05: 中断ボタン・_on_close_pressed()のhide()・その他のhide()経路すべてを、
+	# visible変化を監視する単一のキャンセル処理に統一する
+	visibility_changed.connect(_on_visibility_changed)
 	tier_filter.item_selected.connect(func(_i): _render_lobbies())
 
 	for label in FILTER_LABELS:
@@ -85,15 +100,19 @@ func _on_refresh_pressed() -> void:
 
 
 func _on_lobbies_received(lobbies: Array) -> void:
-	refresh_btn.disabled = false
-	status_label.text = "ロビー一覧を更新しました (%d件)" % lobbies.size()
-	# EOS未接続時はrequest_lobby_list()がモックデータを返すため、本物と誤認しないよう明示する
-	# (受信のたびに再チェックしないと、リスト到着時にこの注記が上の行で上書きされて消える)
-	if not EosManager.is_eos_available:
-		status_label.text = "EOSに接続されていないため、ロビー一覧はサンプル表示です。"
-		status_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
-	else:
-		status_label.remove_theme_color_override("font_color")
+	# H-05: おまかせマッチのリトライループが能動的にrequest_lobby_list()を呼んでいる間は、
+	# このハンドラの通常時の文言/色/refresh_btn再有効化で進行表示を上書きしないようにする
+	# (_all_lobbies更新とリスト再描画は検索の副産物として毎回行ってよい)
+	if not _quick_match_active:
+		refresh_btn.disabled = false
+		status_label.text = "ロビー一覧を更新しました (%d件)" % lobbies.size()
+		# EOS未接続時はrequest_lobby_list()がモックデータを返すため、本物と誤認しないよう明示する
+		# (受信のたびに再チェックしないと、リスト到着時にこの注記が上の行で上書きされて消える)
+		if not EosManager.is_eos_available:
+			status_label.text = "EOSに接続されていないため、ロビー一覧はサンプル表示です。"
+			status_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
+		else:
+			status_label.remove_theme_color_override("font_color")
 	_all_lobbies = lobbies
 	_render_lobbies()
 
@@ -176,12 +195,70 @@ func _build_lobby_row(lobby: Dictionary, my_rating: int) -> Control:
 	return row
 
 
-## ②近いレート帯・空きのある部屋へ自動参加する。無ければ自分の帯で新規作成する
+## H-05: request_lobby_list()を能動的に呼び出し、その結果(lobby_match_list)を待つ。
+## モック分岐(EOS未接続)はrequest_lobby_list()の呼び出し中に同期的にemitするため、
+## 素朴に「呼んでからawait」すると登録がemitより後になり永久に待ってしまう
+## (tests/test_eos_lobby_mock.gdの_test_request_lobby_list()と同じ理由でCONNECT_ONE_SHOTを
+## 先に張ってから呼ぶ)。実EOS分岐は内部で非同期に待ってから戻るため、
+## 戻ってきた時点で既に結果が届いていれば素直にそれを返す
+func _await_lobby_list() -> Array:
+	var captured := {}
+	var cb := func(lobbies: Array) -> void:
+		captured["lobbies"] = lobbies
+	EosManager.lobby_match_list.connect(cb, CONNECT_ONE_SHOT)
+	EosManager.request_lobby_list()
+	if captured.has("lobbies"):
+		return captured["lobbies"]
+	return await EosManager.lobby_match_list
+
+
+## H-05: 能動的にロビー一覧を検索し続け、空きあり・レート帯適合の部屋が見つかれば参加、
+## QUICK_MATCH_TIMEOUT秒見つからなければ新規作成にフォールバックする
 func _on_quick_match_pressed() -> void:
+	if _quick_match_active:
+		return
+	_quick_match_active = true
+	_quick_match_token += 1
+	var token := _quick_match_token
+	_set_quick_match_ui_busy(true)
+	_show_quick_match_status("マッチング中… 空いている部屋を探しています")
+
+	var start_ms := Time.get_ticks_msec()
+	while true:
+		var lobbies: Array = await _await_lobby_list()
+		if token != _quick_match_token:
+			return  # 中断/クローズ済み。UIは_cancel_quick_match()側が既に戻している
+		var best = _find_best_quick_match_lobby(lobbies)
+		if best != null:
+			_show_quick_match_status("近いレート帯の部屋に参加中...")
+			EosManager.join_lobby(String(best.get("id", "")))
+			_finish_quick_match(token)
+			return
+		if (Time.get_ticks_msec() - start_ms) / 1000.0 >= QUICK_MATCH_TIMEOUT:
+			break
+		_show_quick_match_status("マッチング中… 空いている部屋を探しています")
+		var waited := 0.0
+		while waited < QUICK_MATCH_RETRY_INTERVAL:
+			await get_tree().create_timer(0.5).timeout
+			if token != _quick_match_token:
+				return
+			waited += 0.5
+
+	if token != _quick_match_token:
+		return
+	_show_quick_match_status("空いている部屋が無いので新規作成します...")
+	GameManager.tier_lock_enabled = false
+	EosManager.create_lobby(2, 8, "%sの部屋(%s)" % [ProfileManager.player_name, RankingManager.tier_name(ProfileManager.rating)])
+	_finish_quick_match(token)
+
+
+## ②近いレート帯・空きのある部屋を選ぶ(旧・同期版おまかせマッチと同じ選定基準)。
+## 見つからなければnullを返す
+func _find_best_quick_match_lobby(lobbies: Array) -> Variant:
 	var my_rating := ProfileManager.rating
 	var best = null
 	var best_gap := 999999
-	for lobby in _all_lobbies:
+	for lobby in lobbies:
 		if int(lobby.get("members", 1)) >= int(lobby.get("max_members", 8)):
 			continue
 		var host_rating := int(lobby.get("host_rating", 1500))
@@ -191,13 +268,50 @@ func _on_quick_match_pressed() -> void:
 		if gap < best_gap:
 			best_gap = gap
 			best = lobby
-	if best != null:
-		status_label.text = "近いレート帯の部屋に参加中..."
-		EosManager.join_lobby(String(best.get("id", "")))
-	else:
-		status_label.text = "空いている部屋が無いので新規作成します..."
-		GameManager.tier_lock_enabled = false
-		EosManager.create_lobby(2, 8, "%sの部屋(%s)" % [ProfileManager.player_name, RankingManager.tier_name(my_rating)])
+	return best
+
+
+func _finish_quick_match(token: int) -> void:
+	if token != _quick_match_token:
+		return
+	_quick_match_active = false
+	_set_quick_match_ui_busy(false)
+
+
+## リトライ中はRefreshButton/TierFilter/CreateOpenButton/QuickMatchButton自体をdisabledにし、
+## 手動Refreshとの二重request_lobby_list()呼び出しリスクを回避する
+func _set_quick_match_ui_busy(busy: bool) -> void:
+	quick_match_btn.disabled = busy
+	quick_match_cancel_btn.visible = busy
+	refresh_btn.disabled = busy
+	tier_filter.disabled = busy
+	create_open_btn.disabled = busy
+
+
+## C-01のオレンジ色オーバーライド(EOS未接続時、_on_lobbies_received参照)が検索の合間に
+## 再適用されている可能性があるため、進行表示テキストでは必ず解除する
+func _show_quick_match_status(text: String) -> void:
+	status_label.text = text
+	status_label.remove_theme_color_override("font_color")
+
+
+func _on_quick_match_cancel_pressed() -> void:
+	_cancel_quick_match()
+
+
+func _on_visibility_changed() -> void:
+	if not visible:
+		_cancel_quick_match()
+
+
+func _cancel_quick_match() -> void:
+	if not _quick_match_active:
+		return
+	_quick_match_token += 1
+	_quick_match_active = false
+	_set_quick_match_ui_busy(false)
+	if visible:
+		_show_quick_match_status("おまかせマッチを中断しました")
 
 
 func _on_do_create_pressed() -> void:

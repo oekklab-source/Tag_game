@@ -31,6 +31,14 @@ extends Control
 @onready var penalty_notice_message: Label = $PenaltyNoticeDialog/Panel/VBox/MessageLabel
 @onready var penalty_notice_close_btn: Button = $PenaltyNoticeDialog/Panel/VBox/Buttons/CloseButton
 
+## M-07/M-08: エラー履歴・再探索導線
+@onready var find_another_room_btn: Button = $CenterMenu/VBox/ErrorActionsRow/FindAnotherRoomButton
+@onready var error_history_btn: Button = $CenterMenu/VBox/ErrorActionsRow/ErrorHistoryButton
+
+@onready var error_log_dialog: Control = $ErrorLogDialog
+@onready var error_log_list_label: Label = $ErrorLogDialog/Panel/VBox/Scroll/ListLabel
+@onready var error_log_close_btn: Button = $ErrorLogDialog/Panel/VBox/Buttons/CloseButton
+
 const COSTUME_SCENE := "res://scenes/costume_screen.tscn"
 const SHOP_SCENE := "res://scenes/shop_screen.tscn"
 const FRIEND_SCENE := "res://scenes/friend_screen.tscn"
@@ -54,6 +62,9 @@ func _ready() -> void:
 	name_confirm_change_btn.pressed.connect(_on_name_confirm_change_pressed)
 	name_confirm_join_btn.pressed.connect(_on_name_confirm_join_pressed)
 	penalty_notice_close_btn.pressed.connect(penalty_notice_dialog.hide)
+	find_another_room_btn.pressed.connect(_on_find_another_room_pressed)
+	error_history_btn.pressed.connect(_on_error_history_pressed)
+	error_log_close_btn.pressed.connect(error_log_dialog.hide)
 
 	ProfileManager.profile_updated.connect(_update_badge)
 	_update_badge()
@@ -75,6 +86,7 @@ func _ready() -> void:
 	ranking_dialog.hide()
 	name_confirm_dialog.hide()
 	penalty_notice_dialog.hide()
+	error_log_dialog.hide()
 
 	# 直前の切断理由（ホストが落ちた等）があれば表示する。
 	# 以前は scenes/main.gd がロビー画面としてこれを表示していたが、
@@ -82,6 +94,8 @@ func _ready() -> void:
 	if not NetworkManager.last_error.is_empty():
 		status_label.text = NetworkManager.last_error
 		NetworkManager.last_error = ""
+	# M-07/M-08: エラー表示・エラー履歴の有無に応じてアクションボタンの表示を更新
+	_update_error_action_buttons()
 
 	# Web版: 参加リンク（.../?s=xxxx.trycloudflare.com）から開かれた場合はそのまま参加する。
 	# 以前は scenes/main.gd だけが対応しており、エントリーシーンの変更で
@@ -197,3 +211,34 @@ func _on_quit_pressed() -> void:
 	# H-06: 終了確認の経路を QuitMenu に統一(Web版はquit_buttonごと非表示のままなので、
 	# ここに来るのは常にデスクトップ版。QuitMenu.open()のWeb分岐とは競合しない)
 	QuitMenu.open()
+
+
+## M-07/M-08: 直前のエラー表示・エラー履歴に応じてアクションボタンの表示を切り替える。
+## 「別の部屋をさがす」: status_label.textが非空の時だけ
+## 「接続エラーの履歴」: error_logが空でない時だけ(見るべき履歴が無いのに常に見える
+## クラッターを避けるため)
+func _update_error_action_buttons() -> void:
+	find_another_room_btn.visible = not status_label.text.is_empty()
+	error_history_btn.visible = not NetworkManager.error_log.is_empty()
+
+
+func _on_find_another_room_pressed() -> void:
+	room_match_dialog.open()
+
+
+func _on_error_history_pressed() -> void:
+	_refresh_error_log_dialog()
+	error_log_dialog.show()
+
+
+## 新しいエラーを上に表示する(error_logは古い→新しい順の配列のため反転する)
+func _refresh_error_log_dialog() -> void:
+	if NetworkManager.error_log.is_empty():
+		error_log_list_label.text = "エラー履歴はありません。"
+		return
+	var reversed := NetworkManager.error_log.duplicate()
+	reversed.reverse()
+	var lines: Array[String] = []
+	for i in reversed.size():
+		lines.append("%d. %s" % [i + 1, reversed[i]])
+	error_log_list_label.text = "\n\n".join(lines)
