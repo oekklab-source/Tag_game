@@ -119,6 +119,7 @@ func start_host(is_online: bool = false) -> bool:
 	public_address = _resolve_lan_address()
 	if not public_address.is_empty():
 		public_address_ready.emit(public_address)
+	MusicManager.stop_lobby_bgm()
 	get_tree().change_scene_to_file(WORLD_SCENE)
 	return true
 
@@ -159,6 +160,7 @@ func start_client(address: String) -> void:
 	mode = Mode.CLIENT
 	session_kind = SessionKind.ONLINE
 	join_address = address
+	MusicManager.stop_lobby_bgm()
 	get_tree().change_scene_to_file(WORLD_SCENE)
 
 
@@ -326,6 +328,7 @@ func leave() -> void:
 	# ロビーがゴースト状態(検索には出るがホストの実体はもう無い)のまま残り続ける
 	if not EosManager.current_lobby_id.is_empty():
 		EosManager.leave_lobby()
+	MusicManager.play_lobby_bgm()
 	get_tree().change_scene_to_file(MAIN_SCENE)
 
 

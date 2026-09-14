@@ -9,7 +9,7 @@ Google の **Antigravity**）向けの指示・ルールが格納されていま
 | [rules/workspace-basic.md](../rules/workspace-basic.md) | Antigravity | 基本システム指示（`trigger: always_on`）。日本語要件・GUI日本語化・推測禁止 |
 | [rules/coexistence-rules.md](../rules/coexistence-rules.md) | Antigravity | Claude Codeとの共存・ファイル保護・コード不介入・RPC鉄則の周知 |
 | [rules/model-routing-rules.md](../rules/model-routing-rules.md) | Antigravity | モデルとサブエージェントの使い分け（`trigger: always_on`）。Claude側の対応物は`~/.claude/skills/model-routing/SKILL.md` |
-| [rules/audio-pipeline-rules.md](../rules/audio-pipeline-rules.md) | 共通（Claude / Antigravity） | 音楽・SE制作規約の正本。フォーマット・出力先の分離・検証事項 |
+| [rules/audio-pipeline-rules.md](../rules/audio-pipeline-rules.md) | 共通（Claude / Antigravity） | 音楽・SE制作規約の正本。フォーマット・出力先の分離・品質基準（プロ品質）・検証事項 |
 
 ## Antigravity のワークフロー（.agents/workflows/）
 
@@ -18,8 +18,15 @@ Antigravity（Gemini）に作業を渡すためのスラッシュコマンドで
 
 | コマンド | 内容 | 成果物の置き場 |
 |---|---|---|
-| [/tag-music](tag-music.md) | シーン別BGM/SEの参考トラック生成＋作曲仕様書の執筆 | `docs/concept/audio/<用途>/` |
-| [/tag-music-review](tag-music-review.md) | 生成済み参考トラックの客観/主観レビュー（作曲した会話とは別会話で実行）、PASS/NEEDS-REVISION判定 | `docs/concept/audio/<用途>/REVIEW.md` |
+| [/tag-music](tag-music.md) | シーン別BGM/SEの作曲仕様書（SPEC.md）の執筆（アイデア出し含む） | `docs/concept/audio/<用途>/SPEC.md` |
+
+> **2026-09-14以降: 音声の生成・レビューはWeb版Gemini（gemini.google.com）へ移管しました。**
+> `/tag-music-review` はAntigravityのスラッシュコマンドとしてはもう実行しません
+> ([tag-music-review.md](tag-music-review.md)参照)。参考音源の生成もWeb版Geminiで行い、
+> Antigravityは`SPEC.md`の執筆までを担当します。Web版Geminiとのやり取り（依頼文の作成・
+> `REVIEW.md`への転記）はClaude Codeが仲介します。詳細は
+> [rules/audio-pipeline-rules.md](../rules/audio-pipeline-rules.md) の「7. Claude Codeの
+> 組み込みゲート」を参照してください。
 
 > **ワークフローを新規に追加したら、Antigravity で会話を開始し直してください。**
 > ワークフローの一覧は**会話の開始時に**システムプロンプトへ差し込まれる仕組みのため
@@ -36,8 +43,10 @@ Antigravity（Gemini）に作業を渡すためのスラッシュコマンドで
 
 | 仕事 | 担当 | 理由 |
 |---|---|---|
-| BGM/SEの**参考トラック生成**・作曲仕様書の執筆 | **Antigravity**（`/tag-music`） | Claude Code に音声生成手段が無い |
-| ゲームへの実際の組み込み（バス構成・再生コード・シーンへの配置） | **Claude Code** | `.gd`/`.tscn`/`project.godot`の変更はAntigravityが行わない設計にしているため |
+| BGM/SEの**作曲仕様書（SPEC.md）の執筆・アイデア出し** | **Antigravity**（`/tag-music`） | ゲームの世界観・シーン構成を深く理解している |
+| **参考音声ファイルの生成・レビュー** | **Web版Gemini**（ユーザーが手動実行、2026-09-14以降） | 音声の生成・評価精度がWeb版Geminiの方が高いことが実地で確認できたため |
+| Web版Gemini向け依頼文の作成、結果の`SPEC.md`/`REVIEW.md`への転記 | **Claude Code** | Web版Geminiはこのリポジトリのファイルを読めないため、仲介が必要 |
+| ゲームへの実際の組み込み（バス構成・再生コード・シーンへの配置） | **Claude Code** | `.gd`/`.tscn`/`project.godot`の変更はAntigravity/Web版Geminiが行わない設計にしているため |
 
 ## 関連する正本ドキュメント
 

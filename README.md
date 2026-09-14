@@ -1124,6 +1124,8 @@ autoload/game/host_migration.gd  GameManagerの子ノード。切断時のCPU代
 autoload/ranking_manager.gd   非対称 Elo レーティング計算・ランキング管理
 autoload/profile_manager.gd   プレイヤー名・カスタムカラー・戦績・レートのローカル/EOS管理
 autoload/backend_config.gd    friend-api/commerce-api の URL と USE_LIVE_* フラグを一元管理
+autoload/music_manager.gd     タイトル/ロビー系画面のBGMを保持するAutoload。change_scene_to_file()を
+                              またいで鳴り続けさせる（NetworkManagerの対戦開始/終了と連動して停止/再生）
 scenes/main.tscn(.gd)         ロビー（HOST / JOIN）
 scenes/world.tscn(.gd)        シーンの骨組み（空・光・ナビ領域・スポーン管理）
 scenes/world_data.gd          マップとギミック配置の唯一の定義（定数テーブル）
