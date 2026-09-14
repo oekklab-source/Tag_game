@@ -6,11 +6,13 @@ extends CanvasLayer
 @onready var dim: ColorRect = $Dim
 @onready var question: Label = $Dim/Center/Box/Col/Question
 @onready var yes_button: Button = $Dim/Center/Box/Col/Buttons/YesButton
+@onready var leave_match_button: Button = $Dim/Center/Box/Col/Buttons/LeaveMatchButton
 @onready var no_button: Button = $Dim/Center/Box/Col/Buttons/NoButton
 
 
 func _ready() -> void:
 	yes_button.pressed.connect(_on_yes_pressed)
+	leave_match_button.pressed.connect(_on_leave_match_pressed)
 	no_button.pressed.connect(close)
 
 
@@ -33,6 +35,9 @@ func open() -> void:
 		question.text = "タイトルにもどりますか？"
 	else:
 		question.text = "ゲームを終わりますか？"
+	# H-06: 「アプリを終了」と「試合だけ退出してタイトルへ」を分離。試合中でなければ
+	# 戻る先が無い(既にタイトル)ので出さない
+	leave_match_button.visible = NetworkManager.mode != NetworkManager.Mode.NONE
 	dim.visible = true
 	# マウスキャプチャ中だとボタンを押せない
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -50,6 +55,12 @@ func _on_yes_pressed() -> void:
 		NetworkManager.leave()
 	else:
 		get_tree().quit()
+
+
+## H-06: アプリは終了せず、試合だけ抜けてタイトルへ戻る
+func _on_leave_match_pressed() -> void:
+	close()
+	NetworkManager.leave()
 
 
 func _on_title() -> bool:

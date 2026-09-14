@@ -35,6 +35,7 @@ func _ready() -> void:
 	_ok("既定のフォーカスは「いいえ」", QuitMenu.no_button.has_focus())
 	_ok("「はい」が終了処理につながっている",
 		QuitMenu.yes_button.pressed.is_connected(QuitMenu._on_yes_pressed))
+	_ok("試合中でないのでLeaveMatchButtonは非表示", not QuitMenu.leave_match_button.visible)
 	if not shots.is_empty():
 		await _shot(shots, "quit_menu")
 

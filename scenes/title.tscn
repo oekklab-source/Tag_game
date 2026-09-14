@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://b1evf5y28l0x8"]
+[gd_scene load_steps=8 format=3 uid="uid://b1evf5y28l0x8"]
 
 [ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://scenes/title.gd" id="2_script"]
@@ -12,6 +12,13 @@ colors = PackedColorArray(0.1, 0.12, 0.22, 1, 0.05, 0.05, 0.1, 1)
 gradient = SubResource("Gradient_bg")
 fill_from = Vector2(0.5, 0)
 fill_to = Vector2(0.5, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_box"]
+bg_color = Color(0.08, 0.08, 0.12, 0.7)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_badge"]
 bg_color = Color(0.12, 0.14, 0.22, 0.85)
@@ -161,3 +168,75 @@ layout_mode = 1
 [node name="RankingDialog" parent="." instance=ExtResource("5_ranking")]
 visible = false
 layout_mode = 1
+
+[node name="NameConfirmDialog" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dimmer" type="ColorRect" parent="NameConfirmDialog"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.65)
+
+[node name="Panel" type="PanelContainer" parent="NameConfirmDialog"]
+custom_minimum_size = Vector2(420, 280)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -210.0
+offset_top = -140.0
+offset_right = 210.0
+offset_bottom = 140.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="VBox" type="VBoxContainer" parent="NameConfirmDialog/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TitleLabel" type="Label" parent="NameConfirmDialog/Panel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 1
+autowrap_mode = 2
+text = "この名前で参加します"
+
+[node name="NameEdit" type="LineEdit" parent="NameConfirmDialog/Panel/VBox"]
+layout_mode = 2
+
+[node name="WarningLabel" type="Label" parent="NameConfirmDialog/Panel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.4, 0.3, 1)
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+autowrap_mode = 2
+text = ""
+
+[node name="Buttons" type="HBoxContainer" parent="NameConfirmDialog/Panel/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 16
+
+[node name="ChangeButton" type="Button" parent="NameConfirmDialog/Panel/VBox/Buttons"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "変更する"
+
+[node name="JoinButton" type="Button" parent="NameConfirmDialog/Panel/VBox/Buttons"]
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+text = "この名前で参加"

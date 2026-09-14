@@ -20,9 +20,18 @@ extends Control
 @onready var room_match_dialog: Control = $RoomMatchDialog
 @onready var ranking_dialog: Control = $RankingDialog
 
+@onready var name_confirm_dialog: Control = $NameConfirmDialog
+@onready var name_confirm_edit: LineEdit = $NameConfirmDialog/Panel/VBox/NameEdit
+@onready var name_confirm_warning: Label = $NameConfirmDialog/Panel/VBox/WarningLabel
+@onready var name_confirm_change_btn: Button = $NameConfirmDialog/Panel/VBox/Buttons/ChangeButton
+@onready var name_confirm_join_btn: Button = $NameConfirmDialog/Panel/VBox/Buttons/JoinButton
+
 const COSTUME_SCENE := "res://scenes/costume_screen.tscn"
 const SHOP_SCENE := "res://scenes/shop_screen.tscn"
 const FRIEND_SCENE := "res://scenes/friend_screen.tscn"
+
+## C-05: ?s= 経由の自動参加直前に挟む名前確認ダイアログの、参加先アドレスの一時退避
+var _pending_join_server := ""
 
 
 func _ready() -> void:
@@ -35,6 +44,8 @@ func _ready() -> void:
 	ranking_button.pressed.connect(_on_ranking_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	profile_badge_btn.pressed.connect(_on_profile_pressed)
+	name_confirm_change_btn.pressed.connect(_on_name_confirm_change_pressed)
+	name_confirm_join_btn.pressed.connect(_on_name_confirm_join_pressed)
 
 	ProfileManager.profile_updated.connect(_update_badge)
 	_update_badge()
@@ -43,10 +54,14 @@ func _ready() -> void:
 	if OS.has_feature("web"):
 		quit_button.visible = false
 
+	# H-09: ボタン文言を実際の遷移先(Web=DirectConnectタブ既定, デスクトップ=ロビー全体)に合わせる
+	play_button.text = "参加する（リンク/アドレス指定）" if OS.has_feature("web") else "オンラインプレイ（部屋を探す・作る）"
+
 	# 初期状態ではダイアログを隠す（①きせかえは専用シーンへ遷移するため、
 	# ここで隠すダイアログには含まれない）
 	room_match_dialog.hide()
 	ranking_dialog.hide()
+	name_confirm_dialog.hide()
 
 	# 直前の切断理由（ホストが落ちた等）があれば表示する。
 	# 以前は scenes/main.gd がロビー画面としてこれを表示していたが、
@@ -78,10 +93,46 @@ func _try_auto_join_from_query() -> void:
 	if s.is_empty() or NetworkManager.auto_join_done:
 		return
 	NetworkManager.auto_join_done = true
+	_open_name_confirm_dialog(s)
+
+
+## C-05: 自動参加の直前に、参加する名前を確認・変更する機会を挟む
+## (?s= 経由の初回プレイヤーはデフォルト名のまま気づかず参加しがちなため)
+func _open_name_confirm_dialog(server: String) -> void:
+	_pending_join_server = server
+	name_confirm_edit.text = ProfileManager.player_name
+	var is_default := _is_default_name(ProfileManager.player_name)
+	name_confirm_warning.text = "名前がまだ設定されていません。変更をおすすめします" if is_default else ""
+	name_confirm_dialog.show()
+	name_confirm_edit.grab_focus()
+	name_confirm_edit.select_all()
+
+
+## 初回自動生成名("Runner_1234"形式)か既定値("Player")のままかを判定する
+## (「初回生成名か」を表す永続フラグが無いため、ProfileManager側の生成パターンで代用する)
+func _is_default_name(n: String) -> bool:
+	if n == "Player":
+		return true
+	if not n.begins_with("Runner_"):
+		return false
+	var suffix := n.substr(7)
+	return suffix.length() == 4 and suffix.is_valid_int()
+
+
+func _on_name_confirm_change_pressed() -> void:
+	name_confirm_edit.grab_focus()
+	name_confirm_edit.select_all()
+
+
+func _on_name_confirm_join_pressed() -> void:
+	var new_name := name_confirm_edit.text.strip_edges()
+	if not new_name.is_empty() and new_name != ProfileManager.player_name:
+		ProfileManager.update_profile(new_name)  # profile_updated経由でバッジ表示も自動更新される
+	name_confirm_dialog.hide()
 	status_label.text = "参加リンクからホストへ接続中..."
 	# _ready() の最中はまだ親がこのシーンの子を追加中で、そこから change_scene すると
 	# 「Parent node is busy adding/removing children」で失敗する。フレーム境界まで遅らせる
-	NetworkManager.start_client.call_deferred(s)
+	NetworkManager.start_client.call_deferred(_pending_join_server)
 
 
 func _update_badge() -> void:
@@ -119,4 +170,6 @@ func _on_ranking_pressed() -> void:
 
 
 func _on_quit_pressed() -> void:
-	get_tree().quit()
+	# H-06: 終了確認の経路を QuitMenu に統一(Web版はquit_buttonごと非表示のままなので、
+	# ここに来るのは常にデスクトップ版。QuitMenu.open()のWeb分岐とは競合しない)
+	QuitMenu.open()

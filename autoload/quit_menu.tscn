@@ -67,6 +67,12 @@ custom_minimum_size = Vector2(160, 56)
 layout_mode = 2
 text = "はい"
 
+[node name="LeaveMatchButton" type="Button" parent="Dim/Center/Box/Col/Buttons"]
+visible = false
+custom_minimum_size = Vector2(220, 56)
+layout_mode = 2
+text = "試合を退出してタイトルへ"
+
 [node name="NoButton" type="Button" parent="Dim/Center/Box/Col/Buttons"]
 custom_minimum_size = Vector2(160, 56)
 layout_mode = 2
