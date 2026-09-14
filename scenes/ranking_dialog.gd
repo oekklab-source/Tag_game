@@ -35,6 +35,13 @@ func refresh() -> void:
 
 func _on_leaderboard_loaded(entries: Array) -> void:
 	status_label.text = "最新ランキングを取得しました"
+	# EOS未接続時はrequest_leaderboard()がモックデータを返すため、本物と誤認しないよう明示する
+	# (受信のたびに再チェックしないと、リスト到着時にこの注記が上の行で上書きされて消える)
+	if not EosManager.is_eos_available:
+		status_label.text = "EOSに接続されていないため、ランキングはサンプル表示です。"
+		status_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
+	else:
+		status_label.remove_theme_color_override("font_color")
 	for child in rank_list_container.get_children():
 		child.queue_free()
 		
@@ -53,7 +60,7 @@ func _on_leaderboard_loaded(entries: Array) -> void:
 		var entry_puid = str(entry.get("puid", ""))
 		
 		var row := HBoxContainer.new()
-		row.theme_override_constants.separation = 16
+		row.add_theme_constant_override("separation", 16)
 		
 		var rank_lbl := Label.new()
 		rank_lbl.custom_minimum_size = Vector2(50, 0)

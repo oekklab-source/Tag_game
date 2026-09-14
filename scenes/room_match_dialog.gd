@@ -87,6 +87,13 @@ func _on_refresh_pressed() -> void:
 func _on_lobbies_received(lobbies: Array) -> void:
 	refresh_btn.disabled = false
 	status_label.text = "ロビー一覧を更新しました (%d件)" % lobbies.size()
+	# EOS未接続時はrequest_lobby_list()がモックデータを返すため、本物と誤認しないよう明示する
+	# (受信のたびに再チェックしないと、リスト到着時にこの注記が上の行で上書きされて消える)
+	if not EosManager.is_eos_available:
+		status_label.text = "EOSに接続されていないため、ロビー一覧はサンプル表示です。"
+		status_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
+	else:
+		status_label.remove_theme_color_override("font_color")
 	_all_lobbies = lobbies
 	_render_lobbies()
 
