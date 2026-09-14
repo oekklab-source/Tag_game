@@ -43,6 +43,9 @@ Tag_Game（マリオ風カラフルな160×160mマップのオンライン鬼ご
 3. そのうえで、実装用の仕様（BPM・キー・ループ開始/終了秒・尺・使用シーン・ムード）をテキストで添える
 4. `docs/concept/audio/<用途>/`（例: `docs/concept/audio/title_bgm/`）に保存し、
    同ディレクトリに簡単な説明（何のための曲か、どのシーンのどこで流す想定か）を書く
+5. 生成後は必ず**別の(新規)Antigravity会話**で `/tag-music-review` を実行してもらって
+   ください。`REVIEW.md` が PASS になるまで、Claude Codeはこの音源をゲームに
+   組み込みません（`.agents/rules/audio-pipeline-rules.md` の組み込みゲート参照）。
 
 ## 音声とテキストで求めるものが違います（重要）
 

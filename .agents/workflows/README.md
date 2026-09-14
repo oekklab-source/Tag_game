@@ -19,6 +19,7 @@ Antigravity（Gemini）に作業を渡すためのスラッシュコマンドで
 | コマンド | 内容 | 成果物の置き場 |
 |---|---|---|
 | [/tag-music](tag-music.md) | シーン別BGM/SEの参考トラック生成＋作曲仕様書の執筆 | `docs/concept/audio/<用途>/` |
+| [/tag-music-review](tag-music-review.md) | 生成済み参考トラックの客観/主観レビュー（作曲した会話とは別会話で実行）、PASS/NEEDS-REVISION判定 | `docs/concept/audio/<用途>/REVIEW.md` |
 
 > **ワークフローを新規に追加したら、Antigravity で会話を開始し直してください。**
 > ワークフローの一覧は**会話の開始時に**システムプロンプトへ差し込まれる仕組みのため
