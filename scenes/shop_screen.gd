@@ -22,6 +22,11 @@ signal closed
 @onready var gift_cancel_btn: Button = $GiftPickerOverlay/Panel/VBox/CancelButton
 @onready var gift_title_label: Label = $GiftPickerOverlay/Panel/VBox/TitleLabel
 
+@onready var confirm_overlay: Control = $ConfirmOverlay
+@onready var confirm_message_label: Label = $ConfirmOverlay/Panel/VBox/MessageLabel
+@onready var confirm_cancel_btn: Button = $ConfirmOverlay/Panel/VBox/Buttons/CancelButton
+@onready var confirm_buy_btn: Button = $ConfirmOverlay/Panel/VBox/Buttons/BuyButton
+
 const RARITY_COLORS := {
 	&"common": Color(0.6, 0.6, 0.65),
 	&"rare": Color(0.35, 0.7, 1.0),
@@ -41,10 +46,15 @@ const FAILURE_MESSAGES := {
 var _pending_gift_kind: StringName = &""
 var _pending_gift_id: StringName = &""
 
+## C-02対策: 購入は必ずこの確認オーバーレイを経由させ、即時実行を防ぐ
+var _pending_confirm_action: Callable
+
 
 func _ready() -> void:
 	back_btn.pressed.connect(_on_back_pressed)
 	gift_cancel_btn.pressed.connect(_close_gift_picker)
+	confirm_cancel_btn.pressed.connect(_close_confirm_overlay)
+	confirm_buy_btn.pressed.connect(_on_confirm_buy_pressed)
 	PurchaseManager.currency_changed.connect(_refresh_gem_label)
 	PurchaseManager.purchase_failed.connect(_on_purchase_failed)
 	GiftManager.gift_received.connect(_on_gift_received)
@@ -55,6 +65,7 @@ func _ready() -> void:
 	# 表示だけ古いまま、という実機報告)を防ぐ
 	get_window().focus_entered.connect(_refresh_gem_label)
 	gift_overlay.hide()
+	confirm_overlay.hide()
 	refresh()
 
 
@@ -101,10 +112,39 @@ func _setup_pack_row() -> void:
 		pack_row.add_child(box)
 
 
+## C-02対策: 購入確認モーダルを開く(パック/アイテム共通)。「購入する」を押すまで
+## on_confirmは実行されない
+func _open_confirm_overlay(message: String, on_confirm: Callable) -> void:
+	confirm_message_label.text = message
+	_pending_confirm_action = on_confirm
+	confirm_overlay.show()
+	# 誤ってEnterで即購入しないよう、既定は「やめる」(quit_menu.gdと同じ思想)
+	confirm_cancel_btn.grab_focus()
+
+
+func _close_confirm_overlay() -> void:
+	confirm_overlay.hide()
+	_pending_confirm_action = Callable()
+
+
+func _on_confirm_buy_pressed() -> void:
+	var action := _pending_confirm_action
+	_close_confirm_overlay()
+	if action.is_valid():
+		action.call()
+
+
+func _on_buy_pack_pressed(pack_id: StringName, btn: Button) -> void:
+	var def := CurrencyPackCatalog.get_def(pack_id)
+	var msg := "『%s』を%sで購入します。よろしいですか？" % [
+		String(def.get("name", "")), String(def.get("display_price", ""))]
+	_open_confirm_overlay(msg, _do_buy_pack_pressed.bind(pack_id, btn))
+
+
 ## ⑥実課金プロバイダはブラウザでのStripe決済を挟むため、処理中(最大約31分)は
 ## 二重購入防止のため元のボタンを一時的にキャンセルボタンへ差し替える
 ## (無効化するだけだと、長い待ち時間の間ユーザーが購入を諦める手段が無くなるため)
-func _on_buy_pack_pressed(pack_id: StringName, btn: Button) -> void:
+func _do_buy_pack_pressed(pack_id: StringName, btn: Button) -> void:
 	var original_text := btn.text
 	var buy_callable := _on_buy_pack_pressed.bind(pack_id, btn)
 	var cancel_callable := _on_cancel_pack_pressed.bind(btn)
@@ -225,6 +265,15 @@ func _owns(kind: StringName, id: StringName) -> bool:
 
 
 func _on_buy_item_pressed(kind: StringName, id: StringName) -> void:
+	var def := CostumeCatalog.get_def(id) if kind == &"costume" else HatCatalog.get_def(id)
+	var price := int(def.get("price", 0))
+	var after := ProfileManager.premium_currency - price
+	var msg := "『%s』を💎%dで購入します。（購入後の残高: 💎%d）" % [
+		String(def.get("name", String(id))), price, after]
+	_open_confirm_overlay(msg, _do_buy_item_pressed.bind(kind, id))
+
+
+func _do_buy_item_pressed(kind: StringName, id: StringName) -> void:
 	if PurchaseManager.purchase_item(kind, id):
 		var def := CostumeCatalog.get_def(id) if kind == &"costume" else HatCatalog.get_def(id)
 		status_label.text = "「%s」を購入しました！" % String(def.get("name", String(id)))
