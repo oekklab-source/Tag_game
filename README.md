@@ -524,7 +524,7 @@ godot --headless --path . res://tests/emote.tscn -- client 127.0.0.1
 
 ### 着せ替えと、役割の見せかた
 
-最初の画面（`scenes/main.tscn`）でニックネームと**キャラ**を選ぶ。キャラは
+きせかえ画面（`scenes/costume_screen.tscn`）でニックネームと**キャラ**を選ぶ。キャラは
 `Humanoid.SKINS` の一覧（きょうりゅう / しのび）で、`ProfileManager.skin` に保存され、
 `GameManager` のプロフィール同期（`peer_profiles` の `"skin"`）で全ピアへ配られる。
 `humanoid.gd` の `set_skin()` が `Model` ノードを丸ごと差し替えるだけで済むのは、
@@ -935,7 +935,7 @@ python -m http.server 8123 --directory export/web
    https://<owner>.github.io/<repo>/?s=xxxx.trycloudflare.com
    ```
 
-3. 友達はリンクを開くだけで自動的に参加する（`?s=` を [scenes/main.gd](scenes/main.gd) が読む）
+3. 友達はリンクを開くだけで自動的に参加する（`?s=` を [scenes/title.gd](scenes/title.gd) が読む）
 4. 全員揃ったらホスト画面で Enter
 
 `?s=` が無ければ従来どおりロビーが出る。入力欄は IP でもホスト名でも受け付け、
@@ -1126,7 +1126,8 @@ autoload/profile_manager.gd   プレイヤー名・カスタムカラー・戦�
 autoload/backend_config.gd    friend-api/commerce-api の URL と USE_LIVE_* フラグを一元管理
 autoload/music_manager.gd     タイトル/ロビー系画面のBGMを保持するAutoload。change_scene_to_file()を
                               またいで鳴り続けさせる（NetworkManagerの対戦開始/終了と連動して停止/再生）
-scenes/main.tscn(.gd)         ロビー（HOST / JOIN）
+scenes/title.tscn(.gd)        タイトル画面（エントリーシーン）。メインメニュー・プロフィールバッジ・
+                              ルームマッチ/ランキングダイアログの起動・?s=経由の自動参加を統括
 scenes/world.tscn(.gd)        シーンの骨組み（空・光・ナビ領域・スポーン管理）
 scenes/world_data.gd          マップとギミック配置の唯一の定義（定数テーブル）
 scenes/world_builder.gd       テーブルからの地形・ギミック・装飾の生成

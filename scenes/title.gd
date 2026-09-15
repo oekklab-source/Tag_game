@@ -89,7 +89,7 @@ func _ready() -> void:
 	error_log_dialog.hide()
 
 	# 直前の切断理由（ホストが落ちた等）があれば表示する。
-	# 以前は scenes/main.gd がロビー画面としてこれを表示していたが、
+	# 以前は旧ロビー画面(main.gd、削除済み)がこれを表示していたが、
 	# エントリーシーンが title.tscn に変わってから表示先が無くなっていた
 	if not NetworkManager.last_error.is_empty():
 		status_label.text = NetworkManager.last_error
@@ -98,7 +98,7 @@ func _ready() -> void:
 	_update_error_action_buttons()
 
 	# Web版: 参加リンク（.../?s=xxxx.trycloudflare.com）から開かれた場合はそのまま参加する。
-	# 以前は scenes/main.gd だけが対応しており、エントリーシーンの変更で
+	# 以前は旧ロビー画面(main.gd、削除済み)だけが対応しており、エントリーシーンの変更で
 	# リンク共有機能（tools/serve.ps1 が組み立てる参加リンク）が機能しなくなっていた
 	_try_auto_join_from_query()
 

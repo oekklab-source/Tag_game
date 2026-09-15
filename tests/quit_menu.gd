@@ -21,7 +21,7 @@ func _ready() -> void:
 	# _ready() の最中は root が子を追加中で add_child できない
 	await get_tree().process_frame
 
-	var title: Node = load("res://scenes/main.tscn").instantiate()
+	var title: Node = load("res://scenes/title.tscn").instantiate()
 	get_tree().root.add_child(title)
 	get_tree().current_scene = title
 	await get_tree().process_frame

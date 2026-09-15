@@ -1,6 +1,6 @@
 extends Node
 
-## 実際の起動経路（main.tscn -> NetworkManager -> world.tscn）と
+## 実際の起動経路（title.tscn -> NetworkManager -> world.tscn）と
 ## 本物のキー入力で、通信対戦がちゃんと始まるかを確かめる。
 ##
 ##   ホスト:     godot --headless --path . res://tests/net_live.tscn -- host
@@ -41,7 +41,7 @@ func _run() -> void:
 	# いつまでも進まない。理由が表示されてタイトルへ戻ることだけを見る
 	if not is_host and OS.get_cmdline_user_args().has("badver"):
 		await _sleep(6.0)
-		# last_error は main.gd がラベルへ移した時点で消えるので、画面から読む
+		# last_error は title.gd がラベルへ移した時点で消えるので、画面から読む
 		var scene := get_tree().current_scene
 		var label := scene.find_child("StatusLabel", true, false) as Label if scene else null
 		print("[CLIENT] 戻り先=%s" % (scene.name if scene else "<null>"))

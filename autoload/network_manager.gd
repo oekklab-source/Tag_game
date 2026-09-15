@@ -12,7 +12,7 @@ enum SessionKind { SOLO, ONLINE }
 
 const PORT := 9999
 const WORLD_SCENE := "res://scenes/world.tscn"
-const MAIN_SCENE := "res://scenes/title.tscn"
+const TITLE_SCENE := "res://scenes/title.tscn"
 const MIGRATION_OVERLAY_SCENE := "res://scenes/migration_overlay.tscn"
 ## ⑨EOSがオーナー消失を検知して新オーナーを確定させるまでの待ち時間。この間に
 ## host_migratedが来なければ諦める(EOSのハートビート検知は疎通確認ベースで
@@ -35,7 +35,7 @@ var join_address := "127.0.0.1"
 
 ## M-07: last_errorのsetterで自動的に追記される直近のエラー履歴(最大ERROR_LOG_MAX件、
 ## 超えたら古い方からpop_front)。last_error自体の「読んだら空文字を代入してクリアする」
-## 既存パターン(title.gd/main.gd)はそのまま動作する(空文字への代入はここに追記されない)
+## 既存パターン(title.gd)はそのまま動作する(空文字への代入はここに追記されない)
 const ERROR_LOG_MAX := 10
 var error_log: Array[String] = []
 
@@ -50,7 +50,7 @@ var last_error: String = "":
 ## 上書きされることがある）。host_addr としてロビーデータに載せる
 var public_address := ""
 signal public_address_ready(addr: String)
-## URL の ?s= による自動参加は1回だけ。接続失敗時は leave() が main.tscn へ戻すので、
+## URL の ?s= による自動参加は1回だけ。接続失敗時は leave() が title.tscn へ戻すので、
 ## ガードが無いと同じアドレスへ無限に再接続しに行く
 var auto_join_done := false
 ## ③このセッションがEOSロビー(ルームマッチ/クイックマッチ、見知らぬ相手との
@@ -342,7 +342,7 @@ func leave() -> void:
 	if not EosManager.current_lobby_id.is_empty():
 		EosManager.leave_lobby()
 	MusicManager.play_lobby_bgm()
-	get_tree().change_scene_to_file(MAIN_SCENE)
+	get_tree().change_scene_to_file(TITLE_SCENE)
 
 
 func _on_connection_failed() -> void:

@@ -61,7 +61,7 @@ const STAR_UP := 0.26         # 頭のてっぺんからどれだけ浮かせる
 ## 向きが変わるため、この値と向きは tests/slip.tscn が実測して確かめている
 const HEAD_FROM_CHEST := 0.56
 
-## 着せ替えのキャラ。ロビー（main.gd）で選び、ProfileManager.skin に保存され、
+## 着せ替えのキャラ。きせかえ画面（costume_screen.gd）で選び、ProfileManager.skin に保存され、
 ## GameManager のプロフィール同期（peer_profiles の "skin"）で全ピアに配られる。
 ## 並び順がそのまま保存値なので、**既存の項目の順番は変えないこと**
 ## （入れ替えると保存済みの設定が別のキャラになる）。

@@ -14,7 +14,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 
 	# 1) タイトル画面
-	var title: Node = load("res://scenes/main.tscn").instantiate()
+	var title: Node = load("res://scenes/title.tscn").instantiate()
 	get_tree().root.add_child(title)
 	get_tree().current_scene = title
 	await _shot(out, "title")
@@ -62,6 +62,40 @@ func _ready() -> void:
 	for i in 5:
 		await get_tree().physics_frame
 	await _shot(out, "result")
+
+	# M-15: world.tscn配下の単体画面(ranking_dialog/room_match_dialog/migration_overlay)は
+	# title.tscnの子として埋め込まれた状態でなくても単体instantiateで開けるため、
+	# world.tscnを片付けてから撮る(worldとダイアログを同時に映すと見た目の判断がしづらいため)
+	world.queue_free()
+	await get_tree().process_frame
+
+	# 5) ランキングダイアログ
+	var ranking: Control = load("res://scenes/ranking_dialog.tscn").instantiate()
+	get_tree().root.add_child(ranking)
+	ranking.open()
+	await get_tree().process_frame
+	await _shot(out, "ranking_dialog")
+	ranking.queue_free()
+	await get_tree().process_frame
+
+	# 6) ルームマッチダイアログ
+	var room_match: Control = load("res://scenes/room_match_dialog.tscn").instantiate()
+	get_tree().root.add_child(room_match)
+	room_match.open()
+	await get_tree().process_frame
+	await _shot(out, "room_match_dialog")
+	room_match.queue_free()
+	await get_tree().process_frame
+
+	# 7) ホストマイグレーション中のオーバーレイ
+	var migration: CanvasLayer = load("res://scenes/migration_overlay.tscn").instantiate()
+	get_tree().root.add_child(migration)
+	migration.set_text("新しいホストへ引き継ぎ中…")
+	await get_tree().process_frame
+	await _shot(out, "migration_overlay")
+	migration.queue_free()
+	await get_tree().process_frame
+
 	get_tree().quit()
 
 

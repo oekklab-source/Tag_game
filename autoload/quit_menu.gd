@@ -65,4 +65,4 @@ func _on_leave_match_pressed() -> void:
 
 func _on_title() -> bool:
 	var scene := get_tree().current_scene
-	return scene != null and scene.scene_file_path == NetworkManager.MAIN_SCENE
+	return scene != null and scene.scene_file_path == NetworkManager.TITLE_SCENE
