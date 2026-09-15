@@ -43,6 +43,9 @@ properties/8/replication_mode = 1
 properties/9/path = NodePath(".:sync_respawn_left")
 properties/9/spawn = true
 properties/9/replication_mode = 1
+properties/10/path = NodePath(".:sync_facing_yaw")
+properties/10/spawn = true
+properties/10/replication_mode = 1
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2

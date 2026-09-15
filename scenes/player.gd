@@ -47,6 +47,9 @@ const SLIP_DRAG := 9.0
 
 ## --- 滑り台 -------------------------------------------------------------
 const SLIDE_STEER := 9.0      # 滑走中の左右の寄せ
+## 滑走中に設置ブロックへ止められた時だけ保証する横速度。
+## 通常滑走の操作感は変えず、入力した側へブロックを回り込めるようにする。
+const SLIDE_BLOCK_SIDE_SPEED := 2.0
 ## 走路上で維持される最低前進速度。毎フレーム強制するので、
 ## 前フレームの入力で上りに転じても必ず下りへ押し戻される（＝登れない保証）
 const SLIDE_MIN_SPEED := 3.5
@@ -59,6 +62,9 @@ const WARP_GRACE := 0.2
 const MOUSE_SENSITIVITY := 0.003
 const PITCH_MIN := -60.0
 const PITCH_MAX := 30.0
+## 通常移動中、カメラ軸は動かさず見た目だけを入力方向へ向ける速さ。
+## 20rad/s の補間で、およそ0.15秒で新しい向きが読める。
+const FACING_TURN_SPEED := 20.0
 
 const STAMINA_MAX := 100.0
 const STAMINA_DRAIN := 20.0   # ダッシュ中の消費 /秒（連続5秒ダッシュできる）
@@ -142,6 +148,9 @@ var _stuck_kick_left := 0.0
 ## Euler をそのまま lerp すると ±PI をまたぐ瞬間に一回転する
 @export var sync_position := Vector3.ZERO
 @export var sync_yaw := 0.0
+## カメラ基準の移動入力から求めた、Humanoid のローカルY回転。
+## Player本体の向きとは分けて同期し、相手からも横走り・手前走りを再現する。
+@export var sync_facing_yaw := 0.0
 ## 歩行モーション用の水平速度と滞空。権威ピアが実測して配る。
 ##
 ## 受け取る側で「同期位置が前回からどれだけ動いたか」から割り出してはいけない。
@@ -206,7 +215,9 @@ func _process(delta: float) -> void:
 	humanoid.set_stunned(stunned)
 	humanoid.set_respawn(sync_respawn_left)
 	humanoid.set_emote(sync_emote)
-	humanoid.set_slide(sync_slide, global_rotation.y, delta)
+	var special_pose := diving or stunned or sync_respawn_left > 0.0
+	var facing_yaw := 0.0 if special_pose else sync_facing_yaw
+	humanoid.set_slide(sync_slide, global_rotation.y, delta, facing_yaw, FACING_TURN_SPEED)
 	humanoid.update_motion(sync_speed, not sync_air, delta)
 	# ダイブ中は前へ倒れ込む。diving はレプリケートされるので他ピアからも見える
 	if diving or stunned or int(sync_slide.x) == SlideRide.Phase.NONE:
@@ -289,6 +300,10 @@ func _physics_process(delta: float) -> void:
 	var input_dir := Vector2.ZERO
 	if not frozen:
 		input_dir = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	if input_dir != Vector2.ZERO:
+		# -Z がモデルの正面。Player本体はカメラの基準なので回さず、
+		# Humanoid のローカル角だけを更新する。
+		sync_facing_yaw = atan2(-input_dir.x, -input_dir.y)
 	var direction := (transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
 	slide_ride.tick(delta)
 
@@ -313,6 +328,7 @@ func _physics_process(delta: float) -> void:
 		velocity.z = bumper_bounce_velocity.z
 	elif slide_ride.active():
 		velocity = slide_ride.move(velocity, delta, direction, SLIDE_STEER, SLIDE_MIN_SPEED)
+		velocity = _assist_slide_block_escape(velocity, direction)
 		floor_snap_length = SLIDE_SNAP
 	elif slide_ride.phase == SlideRide.Phase.RECOVER and grounded:
 		velocity = slide_ride.recover_motion(velocity, target, delta)
@@ -468,6 +484,31 @@ func _update_stuck(delta: float, direction: Vector3, grounded: bool, frozen: boo
 	if kick != Vector3.ZERO:
 		_stuck_kick = kick
 		_stuck_kick_left = STUCK_ESCAPE.KICK_TIME
+
+
+## 滑走中の汎用スタック脱出は、斜面を逆走させたり手すりの外へ押し出すため使わない。
+## 代わりに設置ブロックとの接触が残っている間だけ、滑り台を横切る入力へ
+## 最低速度を与える。左右を選ぶのはプレイヤーで、自動回避は行わない。
+func _assist_slide_block_escape(v: Vector3, input_direction: Vector3) -> Vector3:
+	if input_direction == Vector3.ZERO:
+		return v
+	var side := Vector3.UP.cross(slide_ride.direction).normalized()
+	var side_input := input_direction.dot(side)
+	if absf(side_input) < 0.1:
+		return v
+	var touching_block := false
+	for i in get_slide_collision_count():
+		var collider := get_slide_collision(i).get_collider() as Node
+		if collider != null and collider.is_in_group("placed_blocks"):
+			touching_block = true
+			break
+	if not touching_block:
+		return v
+	var target_side := signf(side_input) * SLIDE_BLOCK_SIDE_SPEED
+	var current_side := v.dot(side)
+	if current_side * signf(target_side) >= SLIDE_BLOCK_SIDE_SPEED:
+		return v
+	return v + side * (target_side - current_side)
 
 
 func _update_stamina(delta: float, moving: bool, frozen: bool) -> void:

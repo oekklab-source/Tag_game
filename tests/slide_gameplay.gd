@@ -120,6 +120,11 @@ func _ready() -> void:
 		check_cpu()
 		check_cpu("cpu_runner")
 		await check_held_uphill()
+		await check_placed_block_escape()
+		await check_placed_block_shatter(0.0, "正面ブロック")
+		await check_placed_block_shatter(PI * 0.25, "斜め45度ブロック")
+		await check_collapsing_block_side_escape()
+		await check_block_stays_outside_slide()
 	print("SLIDE GAMEPLAY: ", "ALL OK" if failures == 0 else str(failures) + " FAILED")
 	if net_host:
 		await frames(120)
@@ -166,6 +171,175 @@ func check_held_uphill() -> void:
 	Input.action_release("move_forward")
 	check(retried, "上入力を離した後は再挑戦できる")
 	player.teleport(Vector3(0, 0.1, 3))
+
+
+## 幅5mの設置ブロックを走路中央へ置き、接触して停止してから左右入力する。
+## 最初から横入力するとブロックへ着く前に避けてしまい、接触時補助の検証にならない。
+func check_placed_block_escape() -> void:
+	check(is_equal_approx(WorldBuilder.SLIDE_WIDTH, 10.0), "滑り台のデッキ幅は10m")
+	var clear_width := WorldBuilder.SLIDE_WIDTH - WorldBuilder.SLIDE_RAIL_W * 2.0
+	var side_gap := (clear_width - 5.0) * 0.5
+	check(is_equal_approx(clear_width, 9.0) and is_equal_approx(side_gap, 2.0),
+		"中央ブロックの左右に各2mの隙間を確保")
+	check(is_equal_approx(Player.SLIDE_STEER, 9.0), "通常滑走の左右操作量を維持")
+
+	var block: StaticBody3D = load("res://scenes/gimmicks/placed_block.tscn").instantiate()
+	block.name = "SlideTestBlock"
+	block.position = Vector3(0.0, 1.5, -4.0)
+	add_child(block)
+	# このテストは接触中2m/s補助だけを単独確認する。破砕は次のテストで扱う。
+	block.hit_area.monitoring = false
+	await frames(2)
+
+	await check_block_side(block, "move_right", 1.0, "右側")
+	await check_block_side(block, "move_left", -1.0, "左側")
+	block.queue_free()
+	await frames(2)
+
+
+func check_placed_block_shatter(yaw: float, label: String) -> void:
+	var block: StaticBody3D = load("res://scenes/gimmicks/placed_block.tscn").instantiate()
+	block.name = "CollapseTestBlock"
+	block.position = Vector3(0.0, 1.5, -4.0)
+	block.rotation.y = yaw
+	add_child(block)
+	await frames(2)
+	player.teleport(Vector3(0, 2.95, -7.6))
+	await frames(8)
+
+	var started := false
+	for i in 180:
+		await frames(1)
+		if is_instance_valid(block) and block._break_started:
+			started = true
+			break
+	check(started, label + "は滑走接触で破砕予告を始める")
+	if not is_instance_valid(block):
+		return
+	check(is_equal_approx(block.SLIDE_HIT_SPEED, 4.0),
+		label + "への接触直後の下り速度上限は4m/s")
+	await frames(30)
+	check(not block._shattered and not block.solid_shape.disabled,
+		label + "は予告中も有限の当たり判定を維持")
+	check(block.mesh.visible and block._fragments.is_empty(),
+		label + "は1秒経過前には砕けない")
+	var passed_before_shatter := player.position.z > -3.0
+	for i in 60:
+		await frames(1)
+		if block._shattered:
+			break
+		if player.position.z > -3.0:
+			passed_before_shatter = true
+	if is_zero_approx(yaw):
+		check(not passed_before_shatter, label + "は砕ける前に正面から貫通できない")
+	check(block._shattered and block._break_elapsed >= block.SHATTER_DELAY,
+		label + "は接触から約1秒後に砕ける")
+	check(block.solid_shape.disabled and not block.mesh.visible,
+		label + "は砕けた瞬間に本体の当たり判定と表示を解除")
+	check(block._fragments.size() == block.FRAGMENT_COLS * block.FRAGMENT_ROWS,
+		label + "は8個の破片へ分かれる")
+	var targets_on_slope := true
+	var rotations_on_slope := true
+	for i in block._fragment_targets.size():
+		var height: float = block._fragment_targets[i].dot(block._slide_normal_local)
+		targets_on_slope = targets_on_slope and absf(height - block.FRAGMENT_SIZE.y * 0.5) < 0.02
+		var piece_up: Vector3 = block._fragment_rotations[i] * Vector3.UP
+		rotations_on_slope = rotations_on_slope and piece_up.dot(block._slide_normal_local) > 0.98
+	check(targets_on_slope and rotations_on_slope,
+		label + "の破片は斜面へ沿う終点と姿勢を持つ")
+	await frames(30)
+	var slid_downhill := true
+	for i in block._fragments.size():
+		var delta: Vector3 = block._fragments[i].position - block._fragment_starts[i]
+		slid_downhill = slid_downhill and delta.dot(block._slide_tangent_local) > 0.2
+	check(slid_downhill, label + "の破片は斜面の下方向へ滑る")
+	check(block._material.albedo_color.a < 0.9, label + "の破片は滑りながら薄くなる")
+	for i in 45:
+		await frames(1)
+		if not is_instance_valid(block):
+			break
+	check(not is_instance_valid(block), label + "の破片は約1秒後に消える")
+	await frames(60)
+	check(player.position.z > -3.0, label + "は破砕後に滑走を再開する")
+
+
+func check_collapsing_block_side_escape() -> void:
+	var block: StaticBody3D = load("res://scenes/gimmicks/placed_block.tscn").instantiate()
+	block.name = "SideEscapeCollapseBlock"
+	block.position = Vector3(0.0, 1.5, -4.0)
+	add_child(block)
+	await frames(2)
+	player.teleport(Vector3(2.2, 2.95, -7.6))
+	await frames(8)
+	for i in 180:
+		await frames(1)
+		if block._break_started:
+			break
+	Input.action_press("move_right")
+	var escaped_before_shatter := false
+	for i in 60:
+		await frames(1)
+		if (not block._shattered and not touching(player, block)
+				and player.position.x > 2.8 and player.velocity.dot(Vector3.BACK) > 0.5):
+			escaped_before_shatter = true
+			break
+	Input.action_release("move_right")
+	check(escaped_before_shatter,
+		"破砕前でも左右からブロック範囲外へ出れば滑走を再開できる")
+	block.queue_free()
+	await frames(2)
+
+
+func check_block_stays_outside_slide() -> void:
+	var block: StaticBody3D = load("res://scenes/gimmicks/placed_block.tscn").instantiate()
+	block.name = "NormalBlock"
+	block.position = Vector3(7.0, 0.0, 5.0)
+	add_child(block)
+	await frames(2)
+	player.teleport(Vector3(7.0, 0.05, 3.5))
+	await frames(5)
+	block._on_slide_hit(player)
+	await frames(2)
+	check(not block._break_started and not block.solid_shape.disabled,
+		"滑走状態でなければ通常ブロックのまま")
+	block.queue_free()
+	await frames(2)
+
+
+func check_block_side(block: StaticBody3D, action: String, side_sign: float, label: String) -> void:
+	for key in ["move_left", "move_right", "move_forward", "move_back"]:
+		Input.action_release(key)
+	player.teleport(Vector3(0, 2.95, -7.6))
+	await frames(8)
+	var touched := false
+	for i in 180:
+		await frames(1)
+		if touching(player, block):
+			touched = true
+			break
+	check(touched, label + "回避前に中央ブロックへ接触")
+	Input.action_press(action)
+	var assisted := false
+	var passed := false
+	for i in 180:
+		await frames(1)
+		var side_speed := player.velocity.x * side_sign
+		if touching(player, block) and side_speed >= Player.SLIDE_BLOCK_SIDE_SPEED - 0.1:
+			assisted = true
+		if player.position.z > -2.8:
+			passed = true
+			break
+	Input.action_release(action)
+	check(assisted, label + "入力で接触中の横速度2m/sを確保")
+	check(passed and player.position.x * side_sign > 2.8,
+		label + "の隙間からブロックを通過")
+
+
+func touching(body: CharacterBody3D, target: CollisionObject3D) -> bool:
+	for i in body.get_slide_collision_count():
+		if body.get_slide_collision(i).get_collider() == target:
+			return true
+	return false
 
 
 func check_cpu(kind := "cpu_hunter") -> void:

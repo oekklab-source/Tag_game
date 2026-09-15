@@ -19,7 +19,7 @@ const RAMP_RUN_PER_RISE := 3.5  # 高低差1mあたりの水平距離（傾斜�
 ## 継ぎ目（最大11°の折れ）で足が引っかかった。1枚板なら継ぎ目が存在しない
 const SLIDE_RUN_PER_RISE := 2.0
 const SLIDE_MIN_RUN := 10.0
-const SLIDE_WIDTH := 8.0
+const SLIDE_WIDTH := 10.0
 const SLIDE_THICK := 0.6
 ## 下端だけこの分だけ低い側の床へ潜り込ませる。
 ## 上端は絶対に伸ばさない。傾いた板を上へ伸ばすと角が高い側の床から突き出て、
@@ -28,7 +28,7 @@ const SLIDE_THICK := 0.6
 ## 凸の折れになる（凸側は引っかからない）
 const SLIDE_END_TUCK := 0.5
 const SLIDE_RAIL_W := 0.5
-## レールはデッキの内側に載せる（通行幅は 5.0 - 0.5*2 = 4.0m）。
+## レールはデッキの内側に載せる（通行幅は 10.0 - 0.5*2 = 9.0m）。
 ## 高さ1mに抑えるのは SpringArm(長さ4/y+1.6)がレールに引っかかって
 ## カメラが寄ってしまうのを避けるため
 const SLIDE_RAIL_H := 1.0
@@ -45,7 +45,7 @@ const PARAPET_MIN_DROP := 3.0
 ## 「画面では見えているのに can_see は false」の破綻は起こさない
 const PARAPET_HEIGHT := 2.5
 const PARAPET_THICK := 0.8
-const PARAPET_SLIDE_GAP := 11.0  # 滑り台の入口を通す開口（走路8m + 余裕）
+const PARAPET_SLIDE_GAP := 11.0  # 滑り台の入口を通す開口（走路10m + 左右0.5mの余裕）
 const PARAPET_RAMP_GAP := 18.0   # スロープの取り付け口。十字通路がそのまま残る幅
 ## ジャンプ台の着地口。ここからは飛び降りもできてしまうが、狭い1箇所に限定される。
 ## 落ちても着地時の速度は歩行のままなので、18m/s 出る滑り台の価値は残る

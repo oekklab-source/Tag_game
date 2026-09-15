@@ -65,7 +65,7 @@ func _ready() -> void:
 	_play("Idle")
 
 
-## 色を変えるのは体だけ。ニット帽とビブは元の配色のまま残して衣装らしさを保つ
+## 色を変えるのは体だけ。バスケ衣装とヘッドバンドは固定色を保つ
 ## （体が最大面積なので役割色はこれだけで十分読み取れる）。
 ## 広くてカラフルなマップで床に埋もれないよう、体色は弱く自己発光させる
 func set_color(color: Color) -> void:
@@ -155,14 +155,17 @@ func set_respawn(left: float) -> void:
 		_respawn_birds.visible = left > 0.0
 
 
-## 視点（親の向き）とキャラの滑走方向を分離する。カメラを回しても姿勢は走路に沿う。
-func set_slide(value: Vector4, body_yaw: float, delta: float) -> void:
+## 視点（親の向き）とキャラの見た目の向きを分離する。
+## 滑走中は走路、通常移動中は入力方向へ向け、カメラを一緒に回さない。
+func set_slide(value: Vector4, body_yaw: float, delta: float,
+		fallback_yaw := 0.0, fallback_turn_speed := 24.0) -> void:
 	_slide = value
 	var enabled := int(value.x) > SlideRide.Phase.NONE and not _diving and not _stunned
-	var yaw := wrapf(value.z - body_yaw, -PI, PI) if enabled else 0.0
+	var yaw := wrapf(value.z - body_yaw, -PI, PI) if enabled else fallback_yaw
 	if int(value.x) == SlideRide.Phase.RECOVER:
 		yaw *= 1.0 - clampf(value.y / SlideRide.RECOVER_TIME, 0.0, 1.0)
-	rotation.y = lerp_angle(rotation.y, yaw, minf(delta * 24.0, 1.0))
+	var turn_speed := 24.0 if enabled else fallback_turn_speed
+	rotation.y = lerp_angle(rotation.y, yaw, minf(delta * turn_speed, 1.0))
 	if enabled:
 		rotation.x = lerpf(rotation.x, value.w, minf(delta * 24.0, 1.0))
 

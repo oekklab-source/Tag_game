@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scenes/humanoid.gd" id="1_humanoid"]
-[ext_resource type="PackedScene" path="res://assets/character/fallguy.glb" id="2_model"]
+[ext_resource type="PackedScene" path="res://assets/character/outfits/basketball_prototype.glb" id="2_model"]
 
 ; ルートは Node3D のまま。player / cpu_hunter がダイブの前傾で rotation.x を直接倒す
 [node name="Humanoid" type="Node3D"]
