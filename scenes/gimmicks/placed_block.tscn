@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scenes/gimmicks/placed_block.gd" id="1_block"]
 
@@ -20,6 +20,9 @@ subdivide_height = 1
 [sub_resource type="BoxShape3D" id="block_shape"]
 size = Vector3(5, 4.5, 1)
 
+[sub_resource type="BoxShape3D" id="slide_hit_shape"]
+size = Vector3(5.2, 4.7, 1.2)
+
 ; 位置と向きをスポーン時に一度だけ配る。壁は視線と通行を塞ぐ実体なので、
 ; これが無いとクライアントだけ原点に壁があることになる
 [sub_resource type="SceneReplicationConfig" id="repl_config"]
@@ -35,13 +38,23 @@ collision_layer = 8
 collision_mask = 0
 script = ExtResource("1_block")
 
-[node name="Mesh" type="MeshInstance3D" parent="."]
+[node name="ImpactPivot" type="Node3D" parent="."]
+
+[node name="Mesh" type="MeshInstance3D" parent="ImpactPivot"]
 position = Vector3(0, 2.25, 0)
 mesh = SubResource("block_mesh")
 
 [node name="Shape" type="CollisionShape3D" parent="."]
 position = Vector3(0, 2.25, 0)
 shape = SubResource("block_shape")
+
+[node name="SlideHitArea" type="Area3D" parent="."]
+collision_layer = 0
+collision_mask = 2
+
+[node name="Shape" type="CollisionShape3D" parent="SlideHitArea"]
+position = Vector3(0, 2.25, 0)
+shape = SubResource("slide_hit_shape")
 
 [node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
 root_path = NodePath("..")

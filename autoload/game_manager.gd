@@ -49,7 +49,8 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## notify_rejected RPCを追加したため
 ## v8: 「カモン」を挑発3種にして sync_emote が取る値に COME_HIP / COME_COOL が増えた。
 ## あわせて着せ替えのキャラ（Humanoid.SKINS）をプロフィールの "skin" に載せた
-const PROTOCOL_VERSION := 8
+## v9: Player/CPU の滑走状態同期と、滑走中の設置ブロック破砕RPCを追加した
+const PROTOCOL_VERSION := 9
 
 const ROUND_TIME := 180.0
 const RESULT_TIME := 5.0
@@ -184,6 +185,8 @@ func _on_profile_updated() -> void:
 
 
 func reset() -> void:
+	var debug_was_enabled := debug_cpu_runner
+	debug_cpu_runner = false
 	state = State.WAITING
 	runner_id = -1
 	wanted_runner = -1
@@ -204,6 +207,8 @@ func reset() -> void:
 	peer_profiles.clear()
 	tier_lock_enabled = false
 	_clear_intel()
+	if debug_was_enabled:
+		debug_mode_changed.emit(false)
 
 
 func _clear_intel() -> void:

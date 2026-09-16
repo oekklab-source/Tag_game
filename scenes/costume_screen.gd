@@ -15,12 +15,15 @@ signal closed
 
 @onready var name_edit: LineEdit = $ContentMargin/ContentRow/RightPane/NameRow/NameEdit
 @onready var preview: Control = $ContentMargin/ContentRow/PreviewPane/CostumePreview
+@onready var category_skin_btn: Button = $ContentMargin/ContentRow/RightPane/CategoryRow/CategorySidebar/SkinTabButton
 @onready var category_costume_btn: Button = $ContentMargin/ContentRow/RightPane/CategoryRow/CategorySidebar/CostumeTabButton
 @onready var category_color_btn: Button = $ContentMargin/ContentRow/RightPane/CategoryRow/CategorySidebar/ColorTabButton
 @onready var category_hat_btn: Button = $ContentMargin/ContentRow/RightPane/CategoryRow/CategorySidebar/HatTabButton
+@onready var skin_panel: Control = $ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/SkinPanel
 @onready var costume_panel: Control = $ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/CostumePanel
 @onready var color_panel: Control = $ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/ColorPanel
 @onready var hat_panel: Control = $ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/HatPanel
+@onready var skin_grid: GridContainer = $ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/SkinPanel/Scroll/SkinGrid
 @onready var costume_grid: GridContainer = $ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/CostumePanel/Scroll/CostumeGrid
 @onready var slots_container: VBoxContainer = $ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/ColorPanel/SlotsContainer
 @onready var hat_grid: GridContainer = $ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/HatPanel/Scroll/HatGrid
@@ -53,6 +56,13 @@ const RARITY_COLORS := {
 	&"legendary": Color(1.0, 0.75, 0.2),
 }
 
+const SKIN_SWATCHES: Array[Color] = [
+	Color(0.35, 0.85, 0.55), # きょうりゅう
+	Color(0.22, 0.30, 0.42), # しのび
+	Color(0.95, 0.35, 0.35), # バスケ08（コーラル）
+]
+
+var _selected_skin := 0
 var _selected_costume_id: StringName = CostumeCatalog.DEFAULT_ID
 var _selected_colors: PackedColorArray = PackedColorArray()
 var _selected_hat_id: StringName = HatCatalog.DEFAULT_ID
@@ -66,22 +76,26 @@ func _ready() -> void:
 	# 導線ごと隠す(閉じてからhud側の「ショップ」ボタンで開き直せば良い)
 	if get_tree().current_scene != self:
 		shop_btn.hide()
-	category_costume_btn.pressed.connect(_on_category_pressed.bind(0))
-	category_color_btn.pressed.connect(_on_category_pressed.bind(1))
-	category_hat_btn.pressed.connect(_on_category_pressed.bind(2))
+	category_skin_btn.pressed.connect(_on_category_pressed.bind(0))
+	category_costume_btn.pressed.connect(_on_category_pressed.bind(1))
+	category_color_btn.pressed.connect(_on_category_pressed.bind(2))
+	category_hat_btn.pressed.connect(_on_category_pressed.bind(3))
 	PurchaseManager.currency_changed.connect(_update_gem_label)
 	refresh()
 
 
 func refresh() -> void:
 	name_edit.text = ProfileManager.player_name
+	_selected_skin = ProfileManager.skin
 	_selected_costume_id = ProfileManager.costume_id
 	_selected_colors = ProfileManager.costume_colors.duplicate()
 	_selected_hat_id = ProfileManager.hat_id
 	_ensure_color_slot_count()
+	_setup_skin_grid()
 	_setup_costume_grid()
 	_setup_color_slots()
 	_setup_hat_grid()
+	_update_category_availability()
 	_on_category_pressed(0)
 	preview.reset_view()
 	_update_preview()
@@ -101,14 +115,81 @@ func _update_gem_label() -> void:
 	gem_label.text = "💎 %d" % ProfileManager.premium_currency
 
 
-## ①カテゴリの切り替え（縦サイドバー方式）。0=スキン柄, 1=カラー, 2=帽子
+## ①カテゴリの切り替え（縦サイドバー方式）。
+## 0=キャラクター, 1=スキン柄, 2=カラー, 3=帽子
 func _on_category_pressed(index: int) -> void:
-	costume_panel.visible = index == 0
-	color_panel.visible = index == 1
-	hat_panel.visible = index == 2
-	category_costume_btn.button_pressed = index == 0
-	category_color_btn.button_pressed = index == 1
-	category_hat_btn.button_pressed = index == 2
+	skin_panel.visible = index == 0
+	costume_panel.visible = index == 1
+	color_panel.visible = index == 2
+	hat_panel.visible = index == 3
+	category_skin_btn.button_pressed = index == 0
+	category_costume_btn.button_pressed = index == 1
+	category_color_btn.button_pressed = index == 2
+	category_hat_btn.button_pressed = index == 3
+
+
+## キャラクターは全員が最初から使用できる。番号は ProfileManager.skin と
+## Humanoid.SKINS の添字をそのまま使い、既存セーブとの互換を保つ。
+func _setup_skin_grid() -> void:
+	for child in skin_grid.get_children():
+		child.queue_free()
+
+	for index in range(Humanoid.SKINS.size()):
+		var entry: Dictionary = Humanoid.SKINS[index]
+		skin_grid.add_child(_build_skin_card(index, String(entry.get("name", "キャラクター"))))
+
+
+func _build_skin_card(index: int, display_name: String) -> Control:
+	const CARD_SIZE := Vector2(148, 108)
+
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+
+	var btn := Button.new()
+	btn.custom_minimum_size = CARD_SIZE
+	btn.toggle_mode = true
+	btn.button_pressed = index == _selected_skin
+	btn.text = display_name
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = SKIN_SWATCHES[index] if index < SKIN_SWATCHES.size() else Color(0.4, 0.45, 0.5)
+	style.set_corner_radius_all(14)
+	var border := 4 if index == _selected_skin else 2
+	style.border_width_left = border
+	style.border_width_top = border
+	style.border_width_right = border
+	style.border_width_bottom = border
+	style.border_color = Color(0.95, 0.95, 1.0)
+	btn.add_theme_stylebox_override("normal", style)
+	btn.add_theme_stylebox_override("hover", style)
+	btn.add_theme_stylebox_override("pressed", style)
+	btn.pressed.connect(_on_skin_button_pressed.bind(index))
+	box.add_child(btn)
+
+	var caption := Label.new()
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	caption.text = "使用できます"
+	caption.add_theme_color_override("font_color", Color(0.5, 0.9, 0.6))
+	box.add_child(caption)
+	return box
+
+
+func _on_skin_button_pressed(index: int) -> void:
+	_selected_skin = clampi(index, 0, Humanoid.SKINS.size() - 1)
+	_setup_skin_grid()
+	_update_category_availability()
+	_update_hint_label()
+	_update_preview()
+
+
+## 柄とカラーは恐竜モデルの面構成専用。しのびとバスケ08は固定デザインのため
+## 選択できないが、帽子は共通リグを使っているので全キャラクターで変更できる。
+func _update_category_availability() -> void:
+	var fixed_design := _selected_skin != 0
+	category_costume_btn.disabled = fixed_design
+	category_color_btn.disabled = fixed_design
+	category_costume_btn.tooltip_text = "このキャラクターは固定デザインです" if fixed_design else ""
+	category_color_btn.tooltip_text = "このキャラクターは固定デザインです" if fixed_design else ""
 
 
 ## _selected_colors のサイズを現在のコスチュームの color_slots に合わせる。
@@ -269,7 +350,8 @@ func _on_hat_button_pressed(id: StringName) -> void:
 	_update_preview()
 
 
-## スキン柄・帽子どちらのタブでも共通の「未所持です」ヒントを出す
+## スキン柄・帽子どちらのタブでも共通の「未所持です」ヒントを出す。
+## 固定デザインのキャラクターでは、柄・カラーが対象外であることも案内する。
 func _update_hint_label() -> void:
 	if not ProfileManager.owns_costume(_selected_costume_id):
 		var name: String = String(CostumeCatalog.get_def(_selected_costume_id).get("name", String(_selected_costume_id)))
@@ -277,12 +359,14 @@ func _update_hint_label() -> void:
 	elif not ProfileManager.owns_hat(_selected_hat_id):
 		var name: String = String(HatCatalog.get_def(_selected_hat_id).get("name", String(_selected_hat_id)))
 		hint_label.text = "「%s」は未所持です（試着のみ・保存では反映されません。ショップで購入できます）" % name
+	elif _selected_skin != 0:
+		hint_label.text = "%sは固定デザインです。帽子は変更できます" % Humanoid.SKINS[_selected_skin]["name"]
 	else:
 		hint_label.text = ""
 
 
 func _update_preview() -> void:
-	preview.show_skin(ProfileManager.skin)
+	preview.show_skin(_selected_skin)
 	preview.show_costume(_selected_costume_id, _selected_colors)
 	preview.show_hat(_selected_hat_id)
 	var locked := not ProfileManager.owns_costume(_selected_costume_id) \
@@ -292,6 +376,7 @@ func _update_preview() -> void:
 
 func _on_save_pressed() -> void:
 	ProfileManager.update_profile(name_edit.text)
+	ProfileManager.set_skin(_selected_skin)
 	if ProfileManager.owns_costume(_selected_costume_id):
 		ProfileManager.set_costume(_selected_costume_id, _selected_colors)
 	if ProfileManager.owns_hat(_selected_hat_id):

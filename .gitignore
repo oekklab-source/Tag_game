@@ -18,8 +18,9 @@ export/
 # Blender の自動バックアップ
 *.blend1
 
-# tools/blender の build_*.py を import したときに出る Python キャッシュ
+# Python の実行時キャッシュ
 __pycache__/
+*.py[cod]
 
 # シークレット（Stripe APIキーなど）
 .env
@@ -32,6 +33,9 @@ node_modules/
 # EOS (Epic Online Services) の実クレデンシャル。Client Secret を含むため平文コミット禁止。
 # テンプレートは eos_credentials.cfg.example を参照。
 eos_credentials.cfg
+
+# EOS GDExtension がWindowsでロード中に作る一時DLL
+addons/epic-online-services-godot/bin/windows/~*
 
 # 確認用に生成される PNG（tests/screenshot.tscn --shots、build_*.py --render の出力）
 tests/shots/

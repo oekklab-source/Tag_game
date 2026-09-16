@@ -54,6 +54,7 @@ func _ready() -> void:
 
 	await _check("相手の頭の上に置いた場合", player, cpu, base + Vector3(0, 1.9, 0), base.y)
 	await _check("ほぼ同座標に重ねた場合", player, cpu, base + Vector3(0.05, 0, 0.05), base.y)
+	await _check_respawn(player, cpu)
 
 	print("--- 結果: %s ---" % ("ALL OK" if _fails == 0 else "%d 件 FAIL" % _fails))
 	get_tree().quit()
@@ -73,6 +74,25 @@ func _check(title: String, player: CharacterBody3D, cpu: CharacterBody3D,
 	_report("地面からの高さ %.2f m" % height, height < 0.6,
 		"相手の上に乗ったまま空中で静止している")
 	_report("接地 %s" % player.is_on_floor(), player.is_on_floor(), "床に立てていない")
+
+
+func _check_respawn(player: CharacterBody3D, cpu: CharacterBody3D) -> void:
+	var center := WorldData.zone_center(4) + Vector3.UP * WorldData.RESPAWN_HEIGHT
+	cpu.teleport(center)
+	player.teleport(Vector3(60.0, WorldData.FALL_LIMIT - 1.0, 60.0))
+	for i in 4:
+		await get_tree().physics_frame
+	var from_center := Vector2(player.global_position.x - center.x,
+		player.global_position.z - center.z).length()
+	var from_cpu := Vector2(player.global_position.x - cpu.global_position.x,
+		player.global_position.z - cpu.global_position.z).length()
+	print("--- 外周落下時の中央リスポーン ---")
+	_report("中央からの距離 %.2f m" % from_center,
+		from_center <= WorldData.RESPAWN_RADIUS + 0.05,
+		"落下した外側エリアへ戻っている")
+	_report("既存キャラとの距離 %.2f m" % from_cpu,
+		from_cpu >= WorldData.RESPAWN_MIN_GAP - 0.05,
+		"中央のキャラと重なっている")
 
 
 func _report(what: String, ok: bool, why: String) -> void:

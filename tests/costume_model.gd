@@ -18,6 +18,8 @@ func _ready() -> void:
 	test_invalid_costume_id_fallback()
 	test_unowned_costume_id_not_auto_granted()
 	test_costume_catalog_integrity()
+	test_skin_catalog_compatibility()
+	test_fixed_skin_designs()
 
 	print("\n==================================================")
 	print("【TEST】⑤帽子 データモデル 検証")
@@ -85,6 +87,44 @@ func test_current_schema_roundtrip() -> void:
 	assert(ProfileManager.costume_colors.size() == 2)
 	assert(ProfileManager.owns_costume(&"neon"))
 	print("   => 現行スキーマの値がそのまま反映されることを確認 [OK]")
+
+
+## 既存セーブのskin番号を変えず、バスケ08が3番目に追加されていることを確認する。
+func test_skin_catalog_compatibility() -> void:
+	assert(Humanoid.SKINS.size() >= 3)
+	assert(Humanoid.SKINS[0]["path"] == "res://assets/character/fallguy.glb")
+	assert(Humanoid.SKINS[1]["path"] == "res://assets/character/ninja.glb")
+	assert(Humanoid.SKINS[2]["path"] == "res://assets/character/outfits/basketball_prototype.glb")
+	var required_anims := ["Idle", "Run", "Jump", "Dive", "Slip", "Nice", "Come",
+		"ComeHip", "ComeCool", "SlideEnter", "SlideSit", "SlideReverseFall",
+		"SlideProne", "SlideRecover", "RespawnDizzy"]
+	var humanoid: Node3D = load("res://scenes/humanoid.tscn").instantiate()
+	add_child(humanoid)
+	for skin_id in range(3):
+		humanoid.set_skin(skin_id)
+		var player: AnimationPlayer = humanoid._anim
+		for anim_name in required_anims:
+			assert(player.has_animation(anim_name), "%s に %s がありません" % [Humanoid.SKINS[skin_id]["name"], anim_name])
+	humanoid.queue_free()
+	print("   => 既存skin番号を維持し、バスケ08が3番目にあることを確認 [OK]")
+	print("   => 3キャラクターに共通の15アニメが揃っていることを確認 [OK]")
+
+
+## しのびとバスケ08は固定デザインで、面構成が一致しても柄・カラーの
+## マテリアル上書きを受けないことを確認する。帽子は別処理なので影響しない。
+func test_fixed_skin_designs() -> void:
+	var humanoid: Node3D = load("res://scenes/humanoid.tscn").instantiate()
+	add_child(humanoid)
+	var colors := PackedColorArray([Color.RED, Color.BLUE])
+	for skin_id in [1, 2]:
+		humanoid.set_skin(skin_id)
+		humanoid.apply_costume(&"neon", colors)
+		assert(humanoid._override_keys.is_empty())
+	humanoid.set_skin(0)
+	humanoid.apply_costume(&"neon", colors)
+	assert(not humanoid._override_keys.is_empty())
+	humanoid.queue_free()
+	print("   => しのび・バスケ08の固定デザインが柄で上書きされないことを確認 [OK]")
 
 
 ## 壊れた/未知の costume_id が入っていた場合、default にフォールバックすることを確認する
