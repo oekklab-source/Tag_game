@@ -1,31 +1,46 @@
 extends SceneTree
 
 ## humanoid.tscn を実際に描画して見た目を確認するスクリーンショット用スクリプト。
-## 実行: godot --path <project> --script res://tools/shot_humanoid.gd -- <出力ディレクトリ>
+## 実行: godot --path <project> --script res://tools/shot_humanoid.gd -- <出力ディレクトリ> [スキンID]
+##
+## --headless では動かない（root のテクスチャを読むので描画ドライバが要る）。
+## 装備がポーズで体や床を突き抜けないかは、静止画の Blender レンダーでは
+## 分からない。忍びの刀・マフラー・帯は必ずここで Slip / Dive / Come を見ること
 
 const POSES := [
-	# 名前, アニメ, 再生位置(秒), ダイブ中か, 体色
-	["idle", "Idle", 0.5, false, Color(0.35, 0.78, 0.45)],
-	["run", "Run", 0.0, false, Color(0.35, 0.78, 0.45)],
-	["run_pass", "Run", 0.2, false, Color(0.35, 0.78, 0.45)],
-	["jump", "Jump", 0.33, false, Color(0.35, 0.78, 0.45)],
-	["dive", "Dive", 0.75, true, Color(0.9, 0.25, 0.25)],
-	["slip_fall", "Slip", 0.13, false, Color(0.35, 0.78, 0.45)],
-	["slip_land", "Slip", 0.40, false, Color(0.35, 0.78, 0.45)],
-	["slip_sit", "Slip", 0.87, false, Color(0.35, 0.78, 0.45)],
-	["slip_rise", "Slip", 1.25, false, Color(0.35, 0.78, 0.45)],
-	["nice_down", "Nice", 0.0, false, Color(0.35, 0.78, 0.45)],
-	["nice_up", "Nice", 0.3, false, Color(0.35, 0.78, 0.45)],
-	["come_out", "Come", 0.0, false, Color(0.9, 0.25, 0.25)],
-	["come_in", "Come", 0.167, false, Color(0.9, 0.25, 0.25)],
+	# 名前, アニメ, 再生位置(秒), ダイブ中か
+	["idle", "Idle", 0.5, false],
+	["run", "Run", 0.0, false],
+	["run_pass", "Run", 0.2, false],
+	["jump", "Jump", 0.33, false],
+	["dive", "Dive", 0.75, true],
+	# 転倒は顔面ダイブ。つんのめる -> 顔から着地 -> べたっと伸びる -> 起き上がる
+	["slip_trip", "Slip", 0.10, false],
+	["slip_land", "Slip", 0.30, false],
+	["slip_flat", "Slip", 0.73, false],
+	["slip_rise", "Slip", 1.27, false],
+	["nice_down", "Nice", 0.0, false],
+	["nice_up", "Nice", 0.3, false],
+	# 挑発3種。各クリップの「構え」と「招いた瞬間」を1枚ずつ。
+	# 腕が顔の前で交差していないか・フードに埋まっていないかはここで見る
+	["come_lean_ready", "Come", 0.0, false],
+	["come_lean_beck", "Come", 0.133, false],
+	["come_hip_side", "ComeHip", 0.0, false],
+	["come_hip_beck", "ComeHip", 0.167, false],
+	["come_cool_ready", "ComeCool", 0.0, false],
+	["come_cool_pull", "ComeCool", 0.267, false],
 ]
 
 var _out_dir := "user://"
+var _skin := 0
 
 
 func _initialize() -> void:
-	for arg in OS.get_cmdline_user_args():
-		_out_dir = arg
+	var args := OS.get_cmdline_user_args()
+	if args.size() > 0:
+		_out_dir = args[0]
+	if args.size() > 1:
+		_skin = int(args[1])
 	_run()
 
 
@@ -59,23 +74,35 @@ func _run() -> void:
 
 	var humanoid: Node3D = load("res://scenes/humanoid.tscn").instantiate()
 	root.add_child(humanoid)
+	humanoid.set_skin(_skin)
 	var player: AnimationPlayer = humanoid.get_node("Model").find_child(
 		"AnimationPlayer", true, false)
 
 	for pose in POSES:
-		humanoid.set_color(pose[4])
 		humanoid.set_diving(pose[3])
+		# 転倒中は頭上に星が出る。ここで一緒に写しておく
+		humanoid.set_stunned(pose[1] == "Slip")
 		# ダイブ中は親が Humanoid ごと前へ倒す（player.gd の DIVE_PITCH と同じ）
 		humanoid.rotation.x = -1.2 if pose[3] else 0.0
-		# 前傾すると体が前下がりになるので、カメラの注視点も合わせて下げる
-		cam.look_at_from_position(cam.position,
-			Vector3(0.0, 0.45, -0.5) if pose[3] else Vector3(0.0, 0.85, 0.0), Vector3.UP)
+		# 前傾すると体が前下がりになるので、カメラの注視点も合わせて下げる。
+		# 転倒は足元を支点に倒れるぶん、頭が前方 1.6m まで出るのでさらに前・下を見る
+		var eye := Vector3(1.8, 1.5, -2.6)
+		var look := Vector3(0.0, 0.85, 0.0)
+		if pose[3]:
+			look = Vector3(0.0, 0.45, -0.5)
+		elif pose[1] == "Slip":
+			# 転倒は足元から頭まで 1.7m 横に伸びるので、寄ったままだと収まらない
+			eye = Vector3(2.8, 1.9, -4.2)
+			look = Vector3(0.0, 0.3, -0.85)
+		cam.look_at_from_position(eye, look, Vector3.UP)
 		player.play(pose[1])
 		player.seek(pose[2], true)
 		player.pause()
 		await process_frame
 		await process_frame
 		var img := root.get_texture().get_image()
-		var path := "%s/humanoid_%s.png" % [_out_dir, pose[0]]
+		# ファイル名はスキンの glb 名（fallguy / ninja）。表示名は日本語なので使わない
+		var skin_key: String = String(Humanoid.SKINS[_skin]["path"]).get_file().get_basename()
+		var path := "%s/%s_%s.png" % [_out_dir, skin_key, pose[0]]
 		print(path, " -> ", error_string(img.save_png(path)))
 	quit()

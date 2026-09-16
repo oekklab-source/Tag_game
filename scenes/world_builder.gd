@@ -321,7 +321,11 @@ static func _build_gimmicks(root: Node3D, mats: Array[StandardMaterial3D] = []) 
 	for i in WorldData.BOOST_PANELS.size():
 		var e: Array = WorldData.BOOST_PANELS[i]
 		var pos := _place(root, BOOST_SCENE, "BoostPanel%d" % i, e, e[3])
-		_assert_clear_of_ramps(e[0], pos, "BoostPanel%d" % i)
+		# パネルは8m角ある。中心1点だけでは GIMMICK_CLEARANCE(3.5m) が縁まで届かず、
+		# パネルの上に遮蔽ブロックやプロップが生えてしまうので四辺の中点も押さえる
+		for end_pos in boost_panel_edges(e):
+			_assert_clear_of_ramps(e[0], end_pos, "BoostPanel%d" % i)
+			occupied.append(end_pos)
 		occupied.append(pos)
 	for i in WorldData.QUESTION_BLOCKS.size():
 		var e: Array = WorldData.QUESTION_BLOCKS[i]
@@ -409,6 +413,22 @@ static func _nav_link(root: Node3D, node_name: String, from: Vector3, to: Vector
 	link.end_position = to
 	link.bidirectional = both
 	root.add_child(link)
+
+
+## ダッシュパネルの四辺の中点。WorldData.BOOST_PANELS の1行を渡す。
+## パネルは 8m 角あるので、中心1点では縁まで場所を確保できない。
+## **正方形なので四方ぶん要る。** 長方形だった頃は長辺の両端2点で足りたが、
+## 今は短い辺が無いので、2点だけだと残り2方向の縁が野ざらしになる。
+## PAD_HALF は当たり判定 BoxShape3D(8, 1.6, 8) の半分と揃えること
+const PAD_HALF := 4.0
+
+
+static func boost_panel_edges(e: Array) -> Array[Vector3]:
+	var center := WorldData.zone_point(e[0], e[1], e[2])
+	var yaw := deg_to_rad(float(e[3]))
+	var fwd := Vector3(-sin(yaw), 0.0, -cos(yaw)) * PAD_HALF
+	var side := Vector3(-fwd.z, 0.0, fwd.x)
+	return [center + fwd, center - fwd, center + side, center - side]
 
 
 static func _place(root: Node3D, scene: PackedScene, node_name: String,

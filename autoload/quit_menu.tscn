@@ -1,0 +1,73 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://autoload/quit_menu.gd" id="1_quit"]
+
+[sub_resource type="StyleBoxFlat" id="box"]
+content_margin_left = 48.0
+content_margin_top = 32.0
+content_margin_right = 48.0
+content_margin_bottom = 32.0
+bg_color = Color(0.07, 0.06, 0.15, 0.96)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(1, 0.82, 0.25, 0.9)
+corner_radius_top_left = 26
+corner_radius_top_right = 26
+corner_radius_bottom_right = 26
+corner_radius_bottom_left = 26
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_size = 18
+
+; HUD（layer 1）やロビーより必ず手前に出す。
+; 表示の切り替えは CanvasLayer ではなく Dim で行い、閉じている間は入力に一切触れない
+[node name="QuitMenu" type="CanvasLayer"]
+layer = 100
+script = ExtResource("1_quit")
+
+; 画面全体を覆って、開いている間は後ろのロビーやクリックでのマウスキャプチャに入力を渡さない
+[node name="Dim" type="ColorRect" parent="."]
+visible = false
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.55)
+
+[node name="Center" type="CenterContainer" parent="Dim"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Box" type="PanelContainer" parent="Dim/Center"]
+custom_minimum_size = Vector2(460, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("box")
+
+[node name="Col" type="VBoxContainer" parent="Dim/Center/Box"]
+layout_mode = 2
+theme_override_constants/separation = 26
+
+[node name="Question" type="Label" parent="Dim/Center/Box/Col"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 34
+text = "ゲームを終わりますか？"
+horizontal_alignment = 1
+
+[node name="Buttons" type="HBoxContainer" parent="Dim/Center/Box/Col"]
+layout_mode = 2
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="YesButton" type="Button" parent="Dim/Center/Box/Col/Buttons"]
+custom_minimum_size = Vector2(160, 56)
+layout_mode = 2
+text = "はい"
+
+[node name="NoButton" type="Button" parent="Dim/Center/Box/Col/Buttons"]
+custom_minimum_size = Vector2(160, 56)
+layout_mode = 2
+text = "いいえ"

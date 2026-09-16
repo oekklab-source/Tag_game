@@ -60,7 +60,24 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(320, 56)
 layout_mode = 2
 placeholder_text = "ニックネーム"
-max_length = 12
+max_length = 16
+
+; 着せ替えのキャラ。選んだものは ProfileManager.skin に保存され、参加/ホスト時に
+; GameManager のプロフィール同期へ乗って全ピアに配られる
+[node name="SkinRow" type="HBoxContainer" parent="CenterContainer/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SkinLabel" type="Label" parent="CenterContainer/VBox/SkinRow"]
+custom_minimum_size = Vector2(88, 56)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "ふく"
+vertical_alignment = 1
+
+[node name="SkinOption" type="OptionButton" parent="CenterContainer/VBox/SkinRow"]
+custom_minimum_size = Vector2(224, 56)
+layout_mode = 2
 
 [node name="HostButton" type="Button" parent="CenterContainer/VBox" unique_id=135365812]
 custom_minimum_size = Vector2(320, 56)

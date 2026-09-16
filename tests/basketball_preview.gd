@@ -1,6 +1,9 @@
 extends Node3D
 ## 独立した衣装試着シーン。左右キーで回転、Spaceで動作切り替え。
-const CLIPS := ["Idle", "Run", "Dive", "Slip", "SlideSit", "SlideProne", "RespawnDizzy", "Nice", "Come"]
+const CLIPS := [
+	"Idle", "Run", "Jump", "Dive", "Slip", "Nice", "Come", "ComeHip", "ComeCool",
+	"SlideEnter", "SlideSit", "SlideReverseFall", "SlideProne", "SlideRecover", "RespawnDizzy",
+]
 var model: Node3D
 var animation: AnimationPlayer
 var camera: Camera3D
@@ -24,6 +27,7 @@ func _ready() -> void:
 	animation = model.find_child("AnimationPlayer", true, false)
 	for clip in CLIPS:
 		assert(animation.has_animation(clip), "既存クリップ欠落: " + clip)
+	print("BASKETBALL GODOT: all %d clips OK" % CLIPS.size())
 	animation.play("Idle")
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -36,6 +40,8 @@ func _ready() -> void:
 	add_child(label)
 	if OS.get_cmdline_user_args().has("outfit-shots"):
 		await shots()
+	elif DisplayServer.get_name() == "headless":
+		get_tree().quit()
 func _process(delta: float) -> void:
 	angle += Input.get_axis("ui_left", "ui_right") * delta * 1.5
 	camera.look_at_from_position(Vector3(sin(angle)*4, 1.75, cos(angle)*4), Vector3(0, 0.87, 0), Vector3.UP)

@@ -7,11 +7,20 @@
     assets/props/item_box.glb         Godot が読むモデル
 
 見た目は「リボンを掛けたプレゼント箱」。下箱・フタ・十字のリボン・
-上面の蝶結びだけで作り、色も包装紙／リボンの2色に絞る。中身が何かは
-見せない（「？」も舞う結晶も置かない）。
+上面の蝶結びだけで作り、箱そのものの色は包装紙／リボンの2色に絞る。
+中身が何かは見せない（「？」も置かない）。
 
-メッシュは Base（下箱＋リボン下部）と Lid（フタ＋リボン上部＋蝶結び）の
-2オブジェクトに分ける。取得時にフタだけを跳ね上げる開封演出のため。
+メッシュは4オブジェクト。取得時にフタだけを跳ね上げる開封演出と、
+その周りに出るキラキラのために分けてある:
+
+    Base      下箱＋リボン下部
+    Lid       フタ＋リボン上部＋蝶結び（原点はフタの中心）
+    Burst     足元へ広がる光の輪（開封中だけ出す）
+    Confetti  外へ舞う紙吹雪（開封中だけ出す）
+
+Burst / Confetti はふだん Godot 側で隠してあり、開封の瞬間だけ出る。
+どちらも加算合成の beacon.gdshader に差し替えて光らせる前提なので、
+ここでのマテリアルはプレビュー用のフォールバック。
 
 アニメーションは書き出さない。回転演出・開封演出はどちらも Godot 側
 （question_block.gd）の _process()/Tween で行う（AnimationPlayer を増やさない）。
@@ -59,17 +68,34 @@ BOW_R = 0.20        # 蝶結びの輪の半径
 BOW_TUBE = 0.055
 BOW_Z = 0.72        # 輪の中心高さ（結び目の高さに合わせる）
 
+# ---- 開封エフェクト ----
+# 箱そのものではなく、開いた瞬間だけ出る飾り。ふだんは Godot 側で隠してある。
+CONFETTI_COUNT = 26  # 紙片の枚数。1メッシュに結合するのでいくら増やしてもドローコールは1
+CONFETTI_W = 0.085   # 紙片の幅
+CONFETTI_L = 0.22    # 紙片の長さ
+CONFETTI_T = 0.012   # 紙片の厚み。真の板にすると真横から消えるので薄い直方体にする
+BURST_R = 0.86       # 光の輪の内半径。Godot 側で scale して外へ広げる
+BURST_W = 0.20       # 輪の太さ
+# 輪は箱ではなく地面に敷く。question_block.tscn が Model を y=1.5 に置いていて、
+# 箱そのものは（？ブロックと同じく）宙に浮いているため、箱の高さに輪を置くと
+# 手前側の弧が箱の正面を横切って「箱が輪切りにされた」ように見えてしまう
+BURST_Z = -1.46      # 地面から 4cm。ぴたり 0 にすると床と Z ファイティングする
+
 # ---- 配色 ----
 # 包装紙とリボンの2色だけで構成する。色数を増やすより、
 # 「リボンの掛かった箱」という形の分かりやすさを優先する
 COLORS = {
-    "Wrap": (0.90, 0.20, 0.26),
-    "Lid": (0.98, 0.32, 0.36),   # 同系の明るい色。フタの段差を光ではなく色で見せる
+    "Wrap": (0.80, 0.01, 0.02),   # 深みと重厚感のある濃い赤（クリムゾンレッド）
+    "Lid": (0.88, 0.03, 0.04),    # フタの段差を際立たせる同系の濃い赤
     "Ribbon": (0.99, 0.93, 0.80),
+    # 開封エフェクト。リボン(0.99,0.93,0.80)に寄せた金〜クリーム白
+    "Spark": (1.00, 0.90, 0.62),
 }
-# 暗い場所でも沈まないよう、全体をわずかに発光させる
+# 暗い場所でも沈まないよう、全体をわずかに発光させる。
+# Spark だけ強いのは、Godot では加算合成シェーダに差し替わるため
+# ここの値は Blender プレビュー用のフォールバックだから
 EMISSION = {
-    "Wrap": 0.10, "Lid": 0.12, "Ribbon": 0.20,
+    "Wrap": 0.12, "Lid": 0.15, "Ribbon": 0.20, "Spark": 1.00,
 }
 
 
@@ -83,7 +109,7 @@ def make_mat(name):
     rgb = COLORS[name]
     bsdf = mat.node_tree.nodes["Principled BSDF"]
     bsdf.inputs["Base Color"].default_value = (*rgb, 1.0)
-    bsdf.inputs["Roughness"].default_value = 0.35
+    bsdf.inputs["Roughness"].default_value = 0.28
     bsdf.inputs["Emission Color"].default_value = (*rgb, 1.0)
     bsdf.inputs["Emission Strength"].default_value = EMISSION[name]
     mat.diffuse_color = (*rgb, 1.0)
@@ -289,6 +315,50 @@ def build_lid():
     return set_origin(lid, (0.0, 0.0, LID_Z))
 
 
+def build_burst_ring():
+    """開いた瞬間に足元へ広がる光の輪。厚みゼロの水平な円環1枚。
+
+    Godot 側は加算合成の unshaded・cull_disabled で描くので、
+    裏表のある板1枚で足りる（体積を持たせる必要がない）。
+
+    原点を輪自身の高さへ移すのは、Godot 側で scale した時に
+    高さを保ったまま水平に広がるようにするため（set_origin の説明を参照）。
+    set_origin は原点を動かすだけで輪そのものは動かないので、
+    高さは lathe のプロファイル側でも BURST_Z を指定してある。
+    """
+    ring = lathe("Burst", [(BURST_Z, BURST_R), (BURST_Z, BURST_R + BURST_W)], 32)
+    ring.data.name = "Burst"
+    paint(ring, "Spark")
+    return set_origin(ring, (0.0, 0.0, BURST_Z))
+
+
+def build_confetti():
+    """外へ舞う紙吹雪。細長い薄板を散らして1メッシュへ結合する（build_manhole の Shards と同じ作り）。
+
+    方位角を黄金角(2.4rad)で振るのは見た目の都合ではなく必須。
+    beacon.gdshader は 1 メッシュに結合された飾りを揺らすのに
+    頂点の方位角 atan(x, z) を位相として使うので、方位角が重なると
+    紙片が同じ位相で揃って動いてしまう。
+
+    傾きは i から決まる式で与える（乱数を使わない）。ビルドを
+    何度回しても同じ glb になるようにするため。
+
+    原点は箱の中心のまま。Godot 側で scale すると中心から外へ広がる。
+    """
+    parts = []
+    for i in range(CONFETTI_COUNT):
+        a = 2.4 * i
+        radius = 0.55 + 0.30 * (i % 4)
+        z = 0.10 + 0.13 * ((i * 5) % 7)
+        piece = box("Confetti%d" % i, (CONFETTI_L, CONFETTI_W, CONFETTI_T))
+        # 紙片ごとに向きを変えてから、方位角 a の位置へ置く
+        bake(piece, rot=(a * 1.7, a * 1.1 + 0.6, a))
+        parts.append(bake(piece, loc=(math.cos(a) * radius, math.sin(a) * radius, z)))
+    confetti = paint(cleanup(join_into(parts[0], parts[1:])), "Spark")
+    confetti.name = confetti.data.name = "Confetti"
+    return confetti
+
+
 # =====================================================================
 # 組み立て
 # =====================================================================
@@ -301,6 +371,8 @@ def build():
     clear_scene()
     build_base()
     build_lid()
+    build_burst_ring()
+    build_confetti()
     for obj in bpy.data.objects:
         print("object :", obj.name, "verts", len(obj.data.vertices),
               "loc", tuple(round(v, 3) for v in obj.location))
@@ -335,13 +407,11 @@ def render_previews(out_dir):
     bpy.context.collection.objects.link(cam)
     cam.data.lens = 50
     scene.camera = cam
-    # (名前, カメラ角度, 注視点の高さ, 距離)
-    shots = [
-        ("three_quarter", (68, 0, -35), 0.0, 4.2),
-        ("front", (85, 0, 0), 0.0, 3.8),
-        ("top", (10, 0, 0), 0.0, 3.8),
-    ]
-    for name, deg, target_z, dist in shots:
+
+    burst = bpy.data.objects["Burst"]
+    confetti = bpy.data.objects["Confetti"]
+
+    def shoot(name, deg, target_z, dist):
         euler = mathutils.Euler([math.radians(a) for a in deg], 'XYZ')
         cam.rotation_euler = euler
         cam.location = mathutils.Vector((0.0, 0.0, target_z)) + \
@@ -350,13 +420,38 @@ def render_previews(out_dir):
         bpy.ops.render.render(write_still=True)
         print("render :", scene.render.filepath)
 
+    # 通常の3ショットは箱そのものの形を見るためのものなので、
+    # ふだんは出ていない開封エフェクトを外しておく
+    burst.hide_render = confetti.hide_render = True
+    # (名前, カメラ角度, 注視点の高さ, 距離)
+    for name, deg, target_z, dist in [
+        ("three_quarter", (68, 0, -35), 0.0, 4.2),
+        ("front", (85, 0, 0), 0.0, 3.8),
+        ("top", (10, 0, 0), 0.0, 3.8),
+    ]:
+        shoot(name, deg, target_z, dist)
+
+    # 開封の瞬間。Godot 側の Tween が作る姿勢をだいたい再現して、
+    # 光の輪と紙吹雪が箱に埋もれていないかを確かめる
+    burst.hide_render = confetti.hide_render = False
+    burst.scale = (2.2, 2.2, 1.0)
+    confetti.scale = (1.9, 1.9, 1.9)
+    confetti.location = (0.0, 0.0, 1.0)
+    lid = bpy.data.objects["Lid"]
+    lid.location = (lid.location.x, lid.location.y, lid.location.z + 1.5)
+    lid.rotation_euler = (0.6, 0.9, 3.4)
+    shoot("burst", (72, 0, -35), 0.3, 5.6)
+
 
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     build()
     export()
     if "--render" in argv:
-        render_previews(argv[argv.index("--render") + 1])
+        out_dir = argv[argv.index("--render") + 1]
+        if not os.path.isabs(out_dir):
+            out_dir = os.path.join(PROJECT, out_dir)
+        render_previews(out_dir)
 
 
 main()

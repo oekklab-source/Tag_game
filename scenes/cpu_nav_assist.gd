@@ -13,7 +13,7 @@ const SPRING_AIRBORNE_HEIGHT := 2.0
 ## ダッシュパネルへ寄り道する条件。ナビ目標は差し替えず、進む向きに
 ## 上乗せするだけにする（目標を書き換えると経路探索が壊れる）
 const BOOST_SEEK_RANGE := 12.0
-const BOOST_SEEK_DOT := 0.64      # パネルの向きと目的地方向の一致（約50°）
+const BOOST_SEEK_DOT := 0.64      # パネルの居場所と目的地方向の一致（約50°）
 const BOOST_SEEK_WEIGHT := 1.2
 ## ？ブロックへ寄り道する条件。ダッシュパネル（BOOST_SEEK_*）と同じ形で、
 ## 「進路のついで」の範囲でしか曲げない。逃走者が手ぶらのときだけ使う
@@ -110,7 +110,9 @@ static func _xz_dist(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x - b.x, a.z - b.z).length()
 
 
-## 目的地の方を向いているダッシュパネルが進路の近くにあれば、そこを踏みに寄る。
+## 目的地の方にあるダッシュパネルが進路の近くにあれば、そこを踏みに寄る。
+## パネルはどの向きから乗っても進行方向へ蹴ってくれるので、
+## **見るのはパネルの居場所だけでよい**（向きは条件に入らない）。
 ## シーンではなく WorldData.BOOST_PANELS を直接見る（静的データなので
 ## ツリー探索が要らず、毎フレーム呼んでも安い）
 static func boost_assist(pos: Vector3, dir: Vector3, goal: Vector3) -> Vector3:
@@ -133,11 +135,8 @@ static func boost_assist(pos: Vector3, dir: Vector3, goal: Vector3) -> Vector3:
 			continue
 		if to_pad.normalized().dot(forward) <= 0.0:
 			continue  # 後ろのパネルのために引き返さない
-		# パネルは -Z へ蹴り出す。world_builder と同じくヨーから向きを起こす
-		var yaw := deg_to_rad(float(e[3]))
-		var kick := Vector3(-sin(yaw), 0.0, -cos(yaw))
-		if kick.dot(goal_dir) < BOOST_SEEK_DOT:
-			continue  # 目的地と違う方向へ蹴られるパネルは踏むだけ損
+		if to_pad.normalized().dot(goal_dir) < BOOST_SEEK_DOT:
+			continue  # 目的地と違う方向にあるパネルは寄るだけ損
 		var pull := (1.0 - pad_dist / BOOST_SEEK_RANGE) * BOOST_SEEK_WEIGHT
 		steer += to_pad.normalized() * pull
 	return steer.normalized() if steer.length_squared() > 0.01 else forward

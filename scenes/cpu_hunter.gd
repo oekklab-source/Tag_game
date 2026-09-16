@@ -82,6 +82,7 @@ const FLANK_DIRECT_DIST := 7.0
 ## 遠すぎると空振りして起き上がりの隙を晒すだけになる
 const DIVE_MIN := 3.0
 const DIVE_MAX := 9.0
+## 頭上の役割ラベルの文字色（体色ではない。理由は player.gd の COLOR_* を参照）
 const HUNTER_COLOR := Player.COLOR_HUNTER
 ## 滑走・ブースト・ロケットの勢いは player.gd と同じ値で扱う
 ## （鬼だけ勢いが残る/残らないの差が出ると追跡バランスが崩れる）
@@ -153,11 +154,13 @@ var _stuck_kick_left := 0.0
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
 @onready var humanoid: Node3D = $Humanoid
 @onready var name_label: Label3D = $NameLabel
+@onready var role_label: Label3D = $RoleLabel
 
 
 func _ready() -> void:
 	add_to_group("cpu_hunters")
-	humanoid.set_color(HUNTER_COLOR)
+	role_label.text = Player.ROLE_TEXT["hunter"]
+	role_label.modulate = HUNTER_COLOR
 	name_label.text = name
 	if multiplayer.is_server():
 		sync_position = position
@@ -194,10 +197,12 @@ func _process(delta: float) -> void:
 			DIVE_PITCH if diving else 0.0, minf(delta * 12.0, 1.0))
 
 
-## 頭上の名前ラベル。player.gd と同じく、味方ハンター（人間）にのみ見せる
+## 頭上のラベル。名前は味方ハンター（人間）にのみ見せるが、
+## 役割は逃走者にも見せる（体色をやめたので、これが唯一の「鬼だ」という手がかり）
 func _update_name_label() -> void:
-	name_label.visible = (GameManager.state == GameManager.State.PLAYING
-		and multiplayer.get_unique_id() != GameManager.runner_id)
+	var playing := GameManager.state == GameManager.State.PLAYING
+	name_label.visible = playing and multiplayer.get_unique_id() != GameManager.runner_id
+	role_label.visible = playing
 
 
 func _physics_process(delta: float) -> void:
