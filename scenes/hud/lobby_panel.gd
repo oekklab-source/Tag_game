@@ -23,6 +23,7 @@ const COSTUME_PREVIEW_SCENE := preload("res://scenes/costume_preview.tscn")
 const PREVIEW_SIZE := 96
 
 @onready var status: Label = $Box/Col/Status
+@onready var status_sub: Label = $Box/Col/StatusSub
 @onready var list: VBoxContainer = $Box/Col/ListBox/List
 @onready var role_button: Button = $Box/Col/RoleButton
 @onready var open_costume_button: Button = $Box/Col/OverlayButtonsRow/OpenCostumeButton
@@ -43,6 +44,7 @@ const PREVIEW_SIZE := 96
 var _roster_key := ""
 var _max_members_row_was_visible := false
 var _sb_row: StyleBoxFlat
+var _sb_row_hover: StyleBoxFlat
 var _public_address_confirmed := false
 ## H-04: キック確認ダイアログは1つ使い回し、対象idだけ差し替える
 ## (friend_screen.gdの_remove_confirm_dialogと同じパターン)
@@ -52,6 +54,7 @@ var _kick_confirm_dialog: ConfirmationDialog
 
 func _ready() -> void:
 	_sb_row = _row_style()
+	_sb_row_hover = _row_style_hover()
 	role_button.pressed.connect(GameManager.toggle_my_role)
 	open_costume_button.pressed.connect(func(): open_overlay_requested.emit("costume"))
 	open_shop_button.pressed.connect(func(): open_overlay_requested.emit("shop"))
@@ -131,6 +134,13 @@ func _row_style() -> StyleBoxFlat:
 	return sb
 
 
+## L-02: 役割指名ボタンのホバー時。_row_style()と同じ形でbg_colorだけ明るくする
+func _row_style_hover() -> StyleBoxFlat:
+	var sb := _row_style()
+	sb.bg_color = Color(1, 1, 1, 0.14)
+	return sb
+
+
 ## HUD で唯一クリックできる UI。誰が逃げる役かをひと目で分かるようにして、
 ## 「開始のしかたが分からない」を無くすのがここの役目。キー操作（R / Enter）も同じことができる。
 ## overlay_open は root(hud.gd)が管理するオーバーレイ表示中かどうか
@@ -160,12 +170,12 @@ func update_lobby(overlay_open: bool) -> void:
 	if GameManager.debug_cpu_runner:
 		cpu_fill = 0  # デバッグ（CPU逃走者）は1対1の検証用で CPU 鬼を足さない
 	var fill_text := "" if cpu_fill <= 0 else "（うち CPU の鬼 %d人）" % cpu_fill
-	status.text = "%s ／ 4人であそぶ: %d人が参加中%s" % ["ホスト（あなた）" if is_host
-		else "参加中（ホストは別の人）", ids.size(), fill_text]
+	status.text = "ホスト（あなた）" if is_host else "参加中（ホストは別の人）"
+	status_sub.text = "4人であそぶ: %d人が参加中%s" % [ids.size(), fill_text]
 
 	_rebuild_roster(ids, me, is_host, is_eos_matched)
 
-	var debug_available := is_host and ids.size() == 1
+	var debug_available := OS.is_debug_build() and is_host and ids.size() == 1
 	if is_host and GameManager.debug_cpu_runner and not debug_available:
 		GameManager.set_debug_cpu_runner(false)
 	debug_cpu_runner_button.visible = debug_available
@@ -189,11 +199,11 @@ func update_lobby(overlay_open: bool) -> void:
 		hint.text = "デバッグ中: あなたが鬼、CPUが逃げる役です。Enter キー: 開始"
 		hint.modulate = Color.WHITE
 	elif is_host:
-		hint.text = "R キー: 役割を切りかえ　Tab キー: 逃げる役を指名　Enter キー: 開始"
-		hint.modulate = Color.WHITE
+		hint.text = ""
 	else:
 		hint.text = "R キー: 役割を切りかえ　― ホストが始めるのを待っています"
 		hint.modulate = Color.WHITE
+	hint.visible = not hint.text.is_empty()
 
 
 ## 定員変更UIはホストかつEOSロビー経由(公開ロビーを持っている)の時だけ意味を持つ。
@@ -298,6 +308,8 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	btn.focus_mode = Control.FOCUS_NONE
 	btn.tooltip_text = "この人を逃げる役にする"
 	btn.pressed.connect(func() -> void: GameManager.set_wanted_runner_to(id))
+	btn.mouse_entered.connect(func(): row.add_theme_stylebox_override("panel", _sb_row_hover))
+	btn.mouse_exited.connect(func(): row.add_theme_stylebox_override("panel", _sb_row))
 	btn.set_anchors_preset(Control.PRESET_FULL_RECT)
 	row.add_child(btn)
 	# H-04: 自分以外の行にだけキック用の当たり判定を重ねる
@@ -329,6 +341,8 @@ func _kick_slot(id: int) -> Control:
 	kbtn.offset_top = -18.0
 	kbtn.offset_bottom = 18.0
 	kbtn.pressed.connect(func() -> void: _on_kick_pressed(id))
+	kbtn.mouse_entered.connect(func(): kbtn.modulate = Color(1.0, 0.55, 0.5))
+	kbtn.mouse_exited.connect(func(): kbtn.modulate = Color.WHITE)
 	slot.add_child(kbtn)
 	return slot
 
