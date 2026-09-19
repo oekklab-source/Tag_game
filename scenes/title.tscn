@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://b1evf5y28l0x8"]
+[gd_scene load_steps=12 format=3 uid="uid://b1evf5y28l0x8"]
 
 [ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://scenes/title.gd" id="2_script"]
@@ -35,6 +35,44 @@ content_margin_left = 16.0
 content_margin_top = 8.0
 content_margin_right = 16.0
 content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_badge_normal"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_badge_hover"]
+bg_color = Color(0.35, 0.7, 1, 0.18)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.35, 0.7, 1, 0.9)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_badge_pressed"]
+bg_color = Color(0.25, 0.55, 0.85, 0.32)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.25, 0.55, 0.85, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_badge_focus"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.4, 0.92, 1, 0.95)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
 
 [node name="Title" type="Control"]
 layout_mode = 3
@@ -88,7 +126,11 @@ text = "1500 Pt"
 
 [node name="BadgeButton" type="Button" parent="TopRightBadge"]
 layout_mode = 2
-flat = true
+flat = false
+theme_override_styles/normal = SubResource("StyleBoxEmpty_badge_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_badge_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_badge_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_badge_focus")
 
 [node name="CenterMenu" type="CenterContainer" parent="."]
 layout_mode = 1
@@ -126,35 +168,50 @@ layout_mode = 2
 
 [node name="PlayButton" type="Button" parent="CenterMenu/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 26
 text = "オンラインプレイ (EOS P2P)"
 
 [node name="SoloButton" type="Button" parent="CenterMenu/VBox"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 22
 text = "ソロ練習 (VS CPU・レート変動なし)"
+
+[node name="Spacer2" type="Control" parent="CenterMenu/VBox"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
 
 [node name="ProfileButton" type="Button" parent="CenterMenu/VBox"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 18
 text = "きせかえ"
 
 [node name="ShopButton" type="Button" parent="CenterMenu/VBox"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 18
 text = "ショップ"
 
 [node name="FriendButton" type="Button" parent="CenterMenu/VBox"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 18
 text = "フレンド"
 
 [node name="RankingButton" type="Button" parent="CenterMenu/VBox"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 18
 text = "ランキング"
+
+[node name="Spacer3" type="Control" parent="CenterMenu/VBox"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
 
 [node name="SettingsButton" type="Button" parent="CenterMenu/VBox"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 16
 text = "設定"
 
 [node name="QuitButton" type="Button" parent="CenterMenu/VBox"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 16
 text = "ゲーム終了"
 
 [node name="StatusLabel" type="Label" parent="CenterMenu/VBox"]
