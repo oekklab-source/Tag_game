@@ -5,6 +5,7 @@ extends Control
 ## およびそれらの③プレゼント送付（同時オンラインのフレンドへ即時配信）を行う。
 
 const TITLE_SCENE := "res://scenes/title.tscn"
+const FRIEND_SCENE := "res://scenes/friend_screen.tscn"
 
 ## hud.gdがロビー待機中にオーバーレイとして埋め込んだ場合に、閉じる操作の代わりに発火する。
 ## タイトルから専用シーンとして開かれた場合(get_tree().current_scene == self)は
@@ -340,6 +341,16 @@ func _open_gift_picker(kind: StringName, id: StringName) -> void:
 		empty_lbl.text = "フレンドがいません。プレゼントを贈るにはまずフレンド登録してください。"
 		empty_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 		gift_friend_list.add_child(empty_lbl)
+
+		# ロビー内オーバーレイ表示中(get_tree().current_scene != self)は、試合を離れる遷移に
+		# なってしまうため導線を出さない(_on_back_pressed()と同じ判定、friend_screen.gd:57-58の
+		# shop_btn.hide()と同じ確立済みイディオム)
+		if get_tree().current_scene == self:
+			var add_friend_btn := Button.new()
+			add_friend_btn.text = "フレンドを追加する"
+			add_friend_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+			add_friend_btn.pressed.connect(_on_add_friend_pressed)
+			gift_friend_list.add_child(add_friend_btn)
 	else:
 		for f in friends:
 			var row := HBoxContainer.new()
@@ -362,6 +373,14 @@ func _open_gift_picker(kind: StringName, id: StringName) -> void:
 
 func _close_gift_picker() -> void:
 	gift_overlay.hide()
+
+
+## L-05: フレンドが0人の状態から「フレンドを追加する」を押したときの導線。
+## 常にget_tree().current_scene == selfの状態でしか出さないため、埋め込み時の
+## closed.emit()経路は考慮不要(専用シーン遷移のみでよい)
+func _on_add_friend_pressed() -> void:
+	_close_gift_picker()
+	get_tree().change_scene_to_file(FRIEND_SCENE)
 
 
 func _on_send_gift_pressed(friend_puid: String, friend_name: String) -> void:

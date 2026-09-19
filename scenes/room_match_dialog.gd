@@ -12,7 +12,8 @@ signal closed
 @onready var quick_match_btn: Button = $Panel/VBox/TabContainer/LobbyList/TopRow/QuickMatchButton
 @onready var quick_match_cancel_btn: Button = $Panel/VBox/TabContainer/LobbyList/TopRow/QuickMatchCancelButton
 @onready var create_open_btn: Button = $Panel/VBox/TabContainer/LobbyList/TopRow/CreateOpenButton
-@onready var status_label: Label = $Panel/VBox/StatusLabel
+@onready var status_label: Label = $Panel/VBox/StatusRow/StatusLabel
+@onready var spinner := $Panel/VBox/StatusRow/Spinner
 
 # ルーム作成タブ
 @onready var room_name_edit: LineEdit = $Panel/VBox/TabContainer/CreateRoom/NameRow/RoomNameEdit
@@ -52,7 +53,7 @@ func _ready() -> void:
 	tabs.set_tab_title(1, "部屋をつくる")
 	tabs.set_tab_title(2, "リンクで参加")
 	refresh_btn.pressed.connect(_on_refresh_pressed)
-	create_open_btn.pressed.connect(func(): tabs.current_tab = 1)
+	create_open_btn.pressed.connect(_on_create_open_pressed)
 	do_create_btn.pressed.connect(_on_do_create_pressed)
 	direct_join_btn.pressed.connect(_on_direct_join_pressed)
 	direct_host_btn.pressed.connect(_on_direct_host_pressed)
@@ -91,9 +92,14 @@ func open() -> void:
 		_on_refresh_pressed()
 
 
+func _on_create_open_pressed() -> void:
+	tabs.current_tab = 1
+
+
 func _on_refresh_pressed() -> void:
 	if EosManager._is_searching_lobbies:
 		return
+	spinner.set_active(true)
 	status_label.text = "ロビーを検索中..."
 	refresh_btn.disabled = true
 	EosManager.request_lobby_list()
@@ -104,6 +110,7 @@ func _on_lobbies_received(lobbies: Array) -> void:
 	# このハンドラの通常時の文言/色/refresh_btn再有効化で進行表示を上書きしないようにする
 	# (_all_lobbies更新とリスト再描画は検索の副産物として毎回行ってよい)
 	if not _quick_match_active:
+		spinner.set_active(false)
 		refresh_btn.disabled = false
 		status_label.text = "ロビー一覧を更新しました (%d件)" % lobbies.size()
 		# EOS未接続時はrequest_lobby_list()がモックデータを返すため、本物と誤認しないよう明示する
@@ -140,6 +147,12 @@ func _render_lobbies() -> void:
 		empty_lbl.text = "条件に合うロビーがありません。フィルタを緩めるか「部屋を作成」してください。"
 		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		room_list_container.add_child(empty_lbl)
+
+		var empty_create_btn := Button.new()
+		empty_create_btn.text = "部屋を作成する"
+		empty_create_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		empty_create_btn.pressed.connect(_on_create_open_pressed)
+		room_list_container.add_child(empty_create_btn)
 		return
 
 	for lobby in visible_lobbies:
@@ -183,6 +196,7 @@ func _build_lobby_row(lobby: Dictionary, my_rating: int) -> Control:
 		join_btn.disabled = true
 		join_btn.tooltip_text = "このロビーは同じレート帯のみ参加できます"
 	join_btn.pressed.connect(func():
+		spinner.set_active(true)
 		status_label.text = "ロビーに参加中..."
 		EosManager.join_lobby(lobby_id)
 	)
@@ -221,6 +235,7 @@ func _on_quick_match_pressed() -> void:
 	_quick_match_token += 1
 	var token := _quick_match_token
 	_set_quick_match_ui_busy(true)
+	spinner.set_active(true)
 	_show_quick_match_status("マッチング中… 空いている部屋を探しています")
 
 	var start_ms := Time.get_ticks_msec()
@@ -310,6 +325,7 @@ func _cancel_quick_match() -> void:
 	_quick_match_token += 1
 	_quick_match_active = false
 	_set_quick_match_ui_busy(false)
+	spinner.set_active(false)
 	if visible:
 		_show_quick_match_status("おまかせマッチを中断しました")
 
@@ -317,12 +333,14 @@ func _cancel_quick_match() -> void:
 func _on_do_create_pressed() -> void:
 	var r_name := room_name_edit.text.strip_edges()
 	var max_m := int(max_members_spin.value)
+	spinner.set_active(true)
 	status_label.text = "ロビーを作成中..."
 	GameManager.tier_lock_enabled = tier_lock_check.button_pressed
 	EosManager.create_lobby(2, max_m, r_name) # lobby_typeはEOS版では無視される(常にPublicAdvertised)
 
 
 func _on_lobby_created(connect_status: int, _lobby_id: String) -> void:
+	spinner.set_active(false)
 	if connect_status == 1:
 		status_label.text = "ロビーを作成しました！ゲームを開始します。"
 		# ②EOSロビー経由=見知らぬ相手とのレーティング戦。鬼のランダム化・レート適用の判定に使う
@@ -337,6 +355,7 @@ func _on_lobby_joined(lobby_id: String, _permissions: int, _locked: bool, respon
 	if EosManager.is_host:
 		return
 	if response != 1:
+		spinner.set_active(false)
 		status_label.text = "ロビーへの参加に失敗しました。"
 		return
 	status_label.text = "ロビーに参加しました！ゲームへ接続中..."
@@ -345,6 +364,7 @@ func _on_lobby_joined(lobby_id: String, _permissions: int, _locked: bool, respon
 	if EosManager.is_eos_available:
 		var addr := await EosManager.await_host_addr(lobby_id)
 		if addr.is_empty():
+			spinner.set_active(false)
 			status_label.text = "ホストの準備が完了していません。少し待ってから再度お試しください。"
 			return
 		NetworkManager.start_client(addr)

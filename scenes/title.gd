@@ -163,6 +163,9 @@ func _on_name_confirm_join_pressed() -> void:
 			return
 	name_confirm_dialog.hide()
 	status_label.text = "参加リンクからホストへ接続中..."
+	# L-06検討時の判断: ここにローディングスピナーは付けない。start_client()は
+	# awaitなしで即座にchange_scene_to_file(world.tscn)するため、このシーンごと
+	# 次フレームで破棄されアニメーションが一切目に映らない(付け忘れではない)
 	# _ready() の最中はまだ親がこのシーンの子を追加中で、そこから change_scene すると
 	# 「Parent node is busy adding/removing children」で失敗する。フレーム境界まで遅らせる
 	NetworkManager.start_client.call_deferred(_pending_join_server)

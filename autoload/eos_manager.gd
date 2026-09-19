@@ -516,6 +516,10 @@ const LEADERBOARD_QUERY_TIMEOUT_SEC := 10.0
 
 var _leaderboard_id_cache: String = ""
 
+## L-05付随修正: EOS接続済みでもタイムアウト/エラーで空配列が返るケースを、
+## 未接続時のモック分岐や「本当に0件」のケースと区別できるようにする(空文字=正常/未発生)
+var last_leaderboard_error: String = ""
+
 
 ## stat_nameからLeaderboard IDを動的に解決する(ポータルのIDをコードに転記しない方針)。
 ## 見つからない場合は空文字(Developer PortalでStat/Leaderboard定義が未作成、または取得失敗)
@@ -539,6 +543,7 @@ func _resolve_leaderboard_id() -> String:
 ## 遅れて本来のデータが届けばleaderboard_loadedが再度発火しUIも更新される)。
 func request_leaderboard(_start_rank: int = 1, _end_rank: int = 20) -> void:
 	if is_eos_available:
+		last_leaderboard_error = ""
 		var state := {"done": false}
 		var watchdog_pid := _arm_watchdog("request_leaderboard", LEADERBOARD_QUERY_TIMEOUT_SEC + 5.0)
 		_request_leaderboard_worker(state, watchdog_pid)
@@ -548,6 +553,7 @@ func request_leaderboard(_start_rank: int = 1, _end_rank: int = 20) -> void:
 			elapsed += 0.5
 		if not state["done"]:
 			print("[EosManager] request_leaderboard() timed out after %.1fs (Leaderboardsクエリが無応答の可能性あり)。" % LEADERBOARD_QUERY_TIMEOUT_SEC)
+			last_leaderboard_error = "timeout"
 			leaderboard_loaded.emit([])
 	else:
 		var mock_entries = [
@@ -569,14 +575,17 @@ func _request_leaderboard_worker(state: Dictionary, watchdog_pid: int) -> void:
 		print("[EosManager] Leaderboard定義が見つかりません(stat_name=%s)。Developer Portal側の設定を確認してください。" % LEADERBOARD_STAT_NAME)
 		state["done"] = true
 		_disarm_watchdog(watchdog_pid)
+		last_leaderboard_error = "no_definition"
 		leaderboard_loaded.emit([])
 		return
 	var records = await HLeaderboards.get_leaderboard_records_async(leaderboard_id)
 	state["done"] = true
 	_disarm_watchdog(watchdog_pid)
 	if records == null:
+		last_leaderboard_error = "query_failed"
 		leaderboard_loaded.emit([])
 		return
+	last_leaderboard_error = ""  # タイムアウト後に遅れて本物のデータが届いた場合の再クリア
 	var entries: Array = []
 	for r in records:
 		var name_val: String = r.get("user_display_name", "")

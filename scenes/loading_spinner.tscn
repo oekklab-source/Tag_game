@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/loading_spinner.gd" id="1_script"]
+
+[node name="LoadingSpinner" type="Control"]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+mouse_filter = 2
+visible = false
+script = ExtResource("1_script")
+
+[node name="Timer" type="Timer" parent="."]
+wait_time = 0.1

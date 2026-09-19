@@ -9,7 +9,8 @@ signal closed
 @onready var my_rank_val: Label = $Panel/VBox/MyStats/Grid/MyRankVal
 @onready var my_name_val: Label = $Panel/VBox/MyStats/Grid/MyNameVal
 @onready var my_rating_val: Label = $Panel/VBox/MyStats/Grid/MyRatingVal
-@onready var status_label: Label = $Panel/VBox/StatusLabel
+@onready var status_label: Label = $Panel/VBox/StatusRow/StatusLabel
+@onready var spinner := $Panel/VBox/StatusRow/Spinner
 @onready var refresh_btn: Button = $Panel/VBox/TopRow/RefreshButton
 @onready var close_btn: Button = $Panel/VBox/BottomRow/CloseButton
 
@@ -26,6 +27,7 @@ func open() -> void:
 
 
 func refresh() -> void:
+	spinner.set_active(true)
 	status_label.text = "ランキングを取得中..."
 	my_name_val.text = ProfileManager.player_name
 	my_rating_val.text = "%s %d" % [RankingManager.tier_name(ProfileManager.rating), ProfileManager.rating]
@@ -34,22 +36,34 @@ func refresh() -> void:
 
 
 func _on_leaderboard_loaded(entries: Array) -> void:
-	status_label.text = "最新ランキングを取得しました"
+	spinner.set_active(false)
 	# EOS未接続時はrequest_leaderboard()がモックデータを返すため、本物と誤認しないよう明示する
-	# (受信のたびに再チェックしないと、リスト到着時にこの注記が上の行で上書きされて消える)
-	if not EosManager.is_eos_available:
+	# (受信のたびに再チェックしないと、リスト到着時にこの注記が上の行で上書きされて消える)。
+	# L-05付随修正: EOS接続済みでもタイムアウト/エラー(last_leaderboard_error)なら、
+	# 「本当に0件」と区別できるよう専用のエラー文言を出す(以前は常に成功文言のまま誤表示していた)
+	if EosManager.is_eos_available and not EosManager.last_leaderboard_error.is_empty():
+		status_label.text = "ランキングの取得に失敗しました。時間をおいて再度更新してください。"
+		status_label.add_theme_color_override("font_color", Color(1, 0.4, 0.3, 1))
+	elif not EosManager.is_eos_available:
 		status_label.text = "EOSに接続されていないため、ランキングはサンプル表示です。"
 		status_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
 	else:
+		status_label.text = "最新ランキングを取得しました"
 		status_label.remove_theme_color_override("font_color")
 	for child in rank_list_container.get_children():
 		child.queue_free()
-		
+
 	if entries.is_empty():
 		var empty_lbl := Label.new()
 		empty_lbl.text = "ランキングデータがまだありません。"
 		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		rank_list_container.add_child(empty_lbl)
+
+		var empty_refresh_btn := Button.new()
+		empty_refresh_btn.text = "更新する"
+		empty_refresh_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		empty_refresh_btn.pressed.connect(refresh)
+		rank_list_container.add_child(empty_refresh_btn)
 		return
 		
 	var my_rank_found := false
