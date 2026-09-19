@@ -14,11 +14,13 @@ Google の **Antigravity**）向けの指示・ルールが格納されていま
 ## Antigravity のワークフロー（.agents/workflows/）
 
 Antigravity（Gemini）に作業を渡すためのスラッシュコマンドです。`/名前` で実行します。
-**コードとシーンファイルは変更せず**、成果物を決められた置き場へ出します。
+**原則としてコードとシーンファイルは変更せず**、成果物を決められた置き場へ出します
+（[/tag-ui-polish](tag-ui-polish.md)のみ、Claude Codeが作成した個別タスク指示書に限定して例外）。
 
 | コマンド | 内容 | 成果物の置き場 |
 |---|---|---|
 | [/tag-music](tag-music.md) | シーン別BGM/SEの作曲仕様書（SPEC.md）の執筆（アイデア出し含む） | `docs/concept/audio/<用途>/SPEC.md` |
+| [/tag-ui-polish](tag-ui-polish.md) | Claude Codeが作成したタスク指示書（`workflows/tasks/*.md`）に従い、UIの見た目のみを`.gd`/`.tscn`へ実装 | 対象リポジトリ本体（`workflows/tasks/`にレポートも残す）。commitはしない |
 
 > **2026-09-14以降: 音声の生成・レビューはWeb版Gemini（gemini.google.com）へ移管しました。**
 > `/tag-music-review` はAntigravityのスラッシュコマンドとしてはもう実行しません
@@ -47,6 +49,7 @@ Antigravity（Gemini）に作業を渡すためのスラッシュコマンドで
 | **参考音声ファイルの生成・レビュー** | **Web版Gemini**（ユーザーが手動実行、2026-09-14以降） | 音声の生成・評価精度がWeb版Geminiの方が高いことが実地で確認できたため |
 | Web版Gemini向け依頼文の作成、結果の`SPEC.md`/`REVIEW.md`への転記 | **Claude Code** | Web版Geminiはこのリポジトリのファイルを読めないため、仲介が必要 |
 | ゲームへの実際の組み込み（バス構成・再生コード・シーンへの配置） | **Claude Code** | `.gd`/`.tscn`/`project.godot`の変更はAntigravity/Web版Geminiが行わない設計にしているため |
+| UIの見た目のみの実装（設計判断済み・RPC非接触に限る） | **Antigravity**（`/tag-ui-polish`、2026-09-15以降の例外） | Claude Codeの利用クレジットが少ない期間に限定して委譲。範囲は個別タスク指示書（`workflows/tasks/*.md`）でClaude Codeが1行単位まで確定させたものだけ。commitはClaude Code側がレビュー後に行う |
 
 ## 関連する正本ドキュメント
 
