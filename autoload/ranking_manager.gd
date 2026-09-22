@@ -346,9 +346,22 @@ func apply_match_end(
 	
 	ProfileManager.apply_match_result(delta, is_winner, is_runner)
 	var new_r := ProfileManager.rating
-	
+
 	# EOS Leaderboard にも更新を送信
 	EosManager.upload_rating(new_r)
-	
+
 	rating_changed.emit(old_r, new_r, delta)
 	return delta
+
+
+## C-03 R-3: rating_report.gdのRPCで届いた確定レートで、apply_match_end()が既に
+## ローカル計算・反映した値を黙って補正する。画面表示の演出はR-4の担当なので、
+## ここではProfileManager反映・EOS Leaderboard再アップロード・シグナルemitのみ行う
+## (rating_changedは現状どのUIからも購読されていないため、今回のemitで見た目は変わらない。
+## R-4がここにフックする前提)
+func apply_server_rating_correction(new_rating: int) -> void:
+	var old_r := ProfileManager.rating
+	ProfileManager.apply_server_rating_correction(new_rating)
+	var new_r := ProfileManager.rating
+	EosManager.upload_rating(new_r)
+	rating_changed.emit(old_r, new_r, new_r - old_r)

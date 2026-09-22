@@ -463,6 +463,16 @@ func apply_match_result(delta_rating: int, is_winner: bool, was_runner: bool) ->
 	save_profile()
 
 
+## C-03 R-3: rating-apiが確定したレートで、apply_match_result()が既にローカル計算・反映
+## 済みのratingを黙って上書き補正する。matches_played/runner_wins/hunter_winsは
+## apply_match_result()で既に加算済みのため、ここでは絶対に触らない(二重加算防止)。
+## highest_ratingのみ既存同様ratchet(後退させない)
+func apply_server_rating_correction(new_rating: int) -> void:
+	rating = maxi(100, new_rating)
+	highest_rating = max(highest_rating, rating)
+	save_profile()
+
+
 ## ①VS CPU戦（練習モード）の対戦終了時に呼ぶ。レート・戦績（matches_played等）には影響しない
 func record_casual_match() -> void:
 	casual_matches_played += 1

@@ -1013,7 +1013,7 @@ butler status <ユーザー名>/<プロジェクト>:windows
 
 | 版数 | 実体 | 上げるタイミング |
 |---|---|---|
-| `PROTOCOL_VERSION` | [autoload/game_manager.gd](autoload/game_manager.gd) の定数（現在9）。ロビー画面の `v9` 表示 | RPC の名前・引数・ノードパスを変えたときだけ（`### 通信の版数` 参照） |
+| `PROTOCOL_VERSION` | [autoload/game_manager.gd](autoload/game_manager.gd) の定数（現在10）。ロビー画面の `v10` 表示 | RPC の名前・引数・ノードパスを変えたときだけ（`### 通信の版数` 参照） |
 | `application/config/version` | `project.godot`（現在 `0.1.0`）。exe のファイルプロパティ、`butler --userversion` | itch.io へ新しいビルドを上げるたびに（見た目だけの修正でも上げる） |
 
 見た目の修正だけをリリースしても `PROTOCOL_VERSION` は変える必要が無く、
@@ -1329,6 +1329,11 @@ export_presets.cfg            Web エクスポート設定（CI が使うので�
   サーバー側は `_back_to_waiting` RPCの発行元を1箇所（`GameManager`）に保つため、
   `_schedule_next_round()` の自動タイムアウトと同じ経路をそのまま使う
   （v8→v9はこのRPC追加が理由）
+- ランクマッチ(`round_is_ranked`)の結果は、ホストが`autoload/game/rating_report.gd`
+  経由で`rating-api`の`/report-match`へ報告し(逃走者離脱(`RUNNER_LEFT`)は対象外、
+  既存の切断ペナルティ経路のまま)、成功時は`_apply_rating_correction` RPCで
+  各ピアの`ProfileManager.rating`をサーバー確定値へ黙って補正する
+  （v9→v10はこのRPC追加が理由）
 - **視界判定はホストが一元的に行う**。CPU 側で個別にレイを飛ばさない
   （`GameManager.hunter_sees_runner()` に問い合わせる）
 - 視線の向きは**カメラではなくボディの -Z**。`player.tscn` が同期するのは

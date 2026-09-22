@@ -52,11 +52,13 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## v8: 「カモン」を挑発3種にして sync_emote が取る値に COME_HIP / COME_COOL が増えた。
 ## あわせて着せ替えのキャラ（Humanoid.SKINS）をプロフィールの "skin" に載せた
 ## v9: 結果画面の「スキップ」操作用に request_skip_result RPCを追加したため(M-14)
+## v10: ホストの試合結果報告(rating-api /report-match)とレート補正RPC
+## (rating_report.gd の _apply_rating_correction)を追加したため(C-03 R-3)
 ##
 ## ストア向けの製品版数は project.godot の application/config/version(現在0.1.0)。
 ## これとは別物であり、連動させない(RPCを変えていないのにストア更新のたびに
 ## PROTOCOL_VERSIONを上げる、といった事故を防ぐため)。
-const PROTOCOL_VERSION := 9
+const PROTOCOL_VERSION := 10
 
 const ROUND_TIME := 180.0
 const RESULT_TIME := 5.0
@@ -93,6 +95,7 @@ const HUNTER_SPAWN_HEIGHT := 3.0
 const _SightSystemScript := preload("res://autoload/game/sight_system.gd")
 const _VersionGateScript := preload("res://autoload/game/version_gate.gd")
 const _HostMigrationScript := preload("res://autoload/game/host_migration.gd")
+const _RatingReportScript := preload("res://autoload/game/rating_report.gd")
 
 const INTEL_TIME := _SightSystemScript.INTEL_TIME
 
@@ -164,6 +167,7 @@ var _seer_ids: Dictionary:
 var _sight := _SightSystemScript.new()
 var _version_gate := _VersionGateScript.new()
 var _host_migration := _HostMigrationScript.new()
+var _rating_report := _RatingReportScript.new()
 
 ## 鬼の連携（分担探索・張り込み・挟み込み）の共有状態。ホスト専用。
 ## CPU 鬼はここへ「自分の担当」を問い合わせるだけで、互いを直接見に行かない
@@ -180,6 +184,8 @@ func _ready() -> void:
 	add_child(_version_gate)
 	_host_migration.name = "HostMigration"
 	add_child(_host_migration)
+	_rating_report.name = "RatingReport"
+	add_child(_rating_report)
 	# ロビー中にプロフィール設定（④コスチューム変更等）が変わったら、繋がっている
 	# 相手にも即座に反映する
 	ProfileManager.profile_updated.connect(_on_profile_updated)
@@ -816,6 +822,7 @@ func _end_round(runner_won: bool, reason: int, tagger_id: int = -1) -> void:
 	_clear_intel()
 	state_changed.emit(state)
 	if multiplayer.is_server():
+		_rating_report.report_match_result(runner_won, reason, tagger_id)  # C-03 R-3: fire-and-forget、_schedule_next_round()をブロックしない
 		_schedule_next_round()
 
 
