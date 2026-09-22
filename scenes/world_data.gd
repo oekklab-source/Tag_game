@@ -13,6 +13,10 @@ const BAND := 27.0         # ゾーン境界。|x| または |z| がこれを超
 const SLAB_BOTTOM := -6.0  # 全ゾーンの床ブロックの底面
 const WALL_HEIGHT := 20.0
 const FALL_LIMIT := -20.0  # これより下に落ちたら中央へ復帰させる
+const RESPAWN_HEIGHT := 3.0
+const RESPAWN_RADIUS := 2.0
+const RESPAWN_MIN_GAP := 0.8
+const RESPAWN_SLOTS := 8
 const BUILD_SEED := 20260728
 
 ## 3x3 グリッド。index = col + row * 3
@@ -216,6 +220,34 @@ static func zone_center(idx: int) -> Vector3:
 static func zone_point(idx: int, dx: float, dz: float) -> Vector3:
 	var c := zone_center(idx)
 	return Vector3(c.x + dx, c.y, c.z + dz)
+
+
+## 落下復帰位置。おしろ広場の中央を優先し、キャラがいる時だけ半径2m内へずらす。
+static func respawn_point(body: Node3D) -> Vector3:
+	var center := zone_center(4) + Vector3.UP * RESPAWN_HEIGHT
+	if _respawn_point_is_clear(body, center):
+		return center
+	for slot in RESPAWN_SLOTS:
+		var angle := TAU * float(slot) / float(RESPAWN_SLOTS)
+		var candidate := center + Vector3(cos(angle), 0.0, sin(angle)) * RESPAWN_RADIUS
+		if _respawn_point_is_clear(body, candidate):
+			return candidate
+	return center
+
+
+static func _respawn_point_is_clear(body: Node3D, candidate: Vector3) -> bool:
+	var tree := body.get_tree()
+	if tree == null:
+		return true
+	for group in ["players", "cpu_hunters", "cpu_runners"]:
+		for other in tree.get_nodes_in_group(group):
+			if other == body or not is_instance_valid(other):
+				continue
+			var pos := (other as Node3D).global_position
+			if Vector2(pos.x - candidate.x, pos.z - candidate.z).length() \
+					< RESPAWN_MIN_GAP:
+				return false
+	return true
 
 
 static func zone_name(idx: int) -> String:

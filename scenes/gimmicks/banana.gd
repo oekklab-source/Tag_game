@@ -10,13 +10,16 @@ const STUN := 1.5
 const LIFETIME := 30.0  # 拾われないまま残り続けないように自然消滅させる
 const FLOOR_MASK := 9   # World(1) + Platform(8)。床・滑り台・置き壁に着地する
 const FLOOR_PROBE := 0.08
-const THROW_GRAVITY := 9.30  # 速度1.5倍で約16m・最高点約4mになる投げ専用重力
+const THROW_GRAVITY := 14.65  # 水平8.55m/s・上向き12.11m/sで約16m・最高点約6m
 
 var _used := false
 var _landed := false
 var launch_velocity := Vector3.ZERO
 var thrower_peer_id := -1
 var _velocity := Vector3.ZERO
+var _support: Node3D = null
+var _support_local_position := Vector3.ZERO
+var _tracking_support := false
 
 
 func _ready() -> void:
@@ -33,7 +36,10 @@ func _process(delta: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if not multiplayer.is_server() or _used or _landed:
+	if not multiplayer.is_server() or _used:
+		return
+	if _landed:
+		_update_support_position()
 		return
 	var gravity := THROW_GRAVITY if thrower_peer_id >= 0 \
 		else float(ProjectSettings.get_setting("physics/3d/default_gravity"))
@@ -57,6 +63,31 @@ func _physics_process(delta: float) -> void:
 		global_position = hit.position
 		_velocity = Vector3.ZERO
 		_landed = true
+		_remember_support(hit.get("collider") as Node3D)
+
+
+func _remember_support(collider: Node3D) -> void:
+	# 通常床では更新不要。動く床と、消滅する置き壁だけを追跡する。
+	if collider == null or not (collider is AnimatableBody3D \
+			or collider.is_in_group("placed_blocks")):
+		_support = null
+		_tracking_support = false
+		return
+	_support = collider
+	_support_local_position = collider.to_local(global_position)
+	_tracking_support = true
+
+
+func _update_support_position() -> void:
+	if not _tracking_support:
+		return
+	if not is_instance_valid(_support):
+		_support = null
+		_tracking_support = false
+		_landed = false
+		_velocity = Vector3.ZERO
+		return
+	global_position = _support.to_global(_support_local_position)
 
 
 func _on_body_entered(body: Node3D) -> void:

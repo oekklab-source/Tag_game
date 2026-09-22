@@ -48,11 +48,13 @@ const SLIP_DRAG := 9.0
 
 ## --- 滑り台 -------------------------------------------------------------
 const SLIDE_STEER := 9.0      # 滑走中の左右の寄せ
+## 滑走中に設置ブロックへ止められた時だけ保証する横速度。
+## 通常滑走の操作感は変えず、入力した側へブロックを回り込めるようにする。
+const SLIDE_BLOCK_SIDE_SPEED := 2.0
 ## 走路上で維持される最低前進速度。毎フレーム強制するので、
 ## 前フレームの入力で上りに転じても必ず下りへ押し戻される（＝登れない保証）
 const SLIDE_MIN_SPEED := 3.5
 const SLIDE_SNAP := 0.6       # 滑走中の床スナップ距離。高速降下で床から浮いて跳ねるのを防ぐ
-const SLIDE_GRACE := 0.12     # Area を出た直後の1〜2フレームの取りこぼしを吸収する猶予
 ## warp_to() で位置を直接動かした直後、is_on_floor() が1フレーム古い値
 ## （ワープ前の接地状態）を返す。それを信じて地上の移動制御に入ると、
 ## 無入力時は目標速度＝ゼロへ即座に上書きされ、出口の水平速度が消える。
@@ -60,6 +62,9 @@ const SLIDE_GRACE := 0.12     # Area を出た直後の1〜2フレームの取�
 const WARP_GRACE := 0.2
 const PITCH_MIN := -60.0
 const PITCH_MAX := 30.0
+## 通常移動中、カメラ軸は動かさず見た目だけを入力方向へ向ける速さ。
+## 20rad/s の補間で、およそ0.15秒で新しい向きが読める。
+const FACING_TURN_SPEED := 20.0
 
 const STAMINA_MAX := 100.0
 const STAMINA_DRAIN := 20.0   # ダッシュ中の消費 /秒（連続5秒ダッシュできる）
@@ -73,8 +78,8 @@ const BANANA_BEHIND := 3.0    # 足元の後ろこの距離に置く
 const BLOCK_BEHIND := 3.0     # バナナと同じ距離。カメラ干渉は壁側を除外して防ぐ
 const BANANA_THROW_SPAWN := 1.2
 const BANANA_THROW_FORWARD := 8.55  # 以前の5.7m/sの1.5倍
-const BANANA_THROW_UP := 7.47       # 投げバナナ用重力と合わせて最高点を約4mにする
-const BANANA_CARRY_RATIO := 0.5     # 投げた瞬間の自キャラ速度を全方向とも半分加える
+const BANANA_THROW_UP := 12.11      # 投げバナナ用重力と合わせて最高点を約6mにする
+const BANANA_CARRY_RATIO := Vector3(1.0, 0.5, 1.0)  # 自キャラ速度を水平100%・上下50%加える
 ## 取得直後のルーレット時間。この間は中身が確定しておらず使えない（HUD が回して見せる）
 const ITEM_ROULETTE := 1.2
 
@@ -134,10 +139,7 @@ var buffs := BuffSet.new()
 var carry_velocity := Vector3.ZERO  # 動く床から毎フレーム渡される搬送速度
 var bumper_bounce_velocity := Vector3.ZERO
 var bumper_bounce_left := 0.0
-var slide_dir := Vector3.ZERO       # 滑り台から毎フレーム渡される最急降下方向
-var slide_accel := 0.0
-var slide_cap := 0.0
-var slide_left := 0.0               # >0 の間だけ滑走状態
+var slide_ride := SlideRide.new()
 ## 滞空から起き上がりまでの全体。見た目の前傾に使うのでレプリケートする
 var diving := false
 var dive_recover := 0.0
@@ -168,6 +170,9 @@ var _stuck_kick_left := 0.0
 ## Euler をそのまま lerp すると ±PI をまたぐ瞬間に一回転する
 @export var sync_position := Vector3.ZERO
 @export var sync_yaw := 0.0
+## カメラ基準の移動入力から求めた、Humanoid のローカルY回転。
+## Player本体の向きとは分けて同期し、相手からも横走り・手前走りを再現する。
+@export var sync_facing_yaw := 0.0
 ## 歩行モーション用の水平速度と滞空。権威ピアが実測して配る。
 ##
 ## 受け取る側で「同期位置が前回からどれだけ動いたか」から割り出してはいけない。
@@ -183,6 +188,8 @@ var _stuck_kick_left := 0.0
 ## 出しているエモート（Emote の値）。0 = 出していない。
 ## 終わるたび必ず 0 を挟むので、同じエモートを繰り返しても ON_CHANGE の同期が発火する
 @export var sync_emote: int = Emote.NONE
+@export var sync_slide := Vector4.ZERO
+@export var sync_respawn_left := 0.0
 
 var _current_color := Color.TRANSPARENT
 var _camera_block_rids := {}
@@ -240,11 +247,16 @@ func _process(delta: float) -> void:
 		_update_placed_block_camera()
 	humanoid.set_diving(diving)
 	humanoid.set_stunned(stunned)
+	humanoid.set_respawn(sync_respawn_left)
 	humanoid.set_emote(sync_emote)
+	var special_pose := diving or stunned or sync_respawn_left > 0.0
+	var facing_yaw := 0.0 if special_pose else sync_facing_yaw
+	humanoid.set_slide(sync_slide, global_rotation.y, delta, facing_yaw, FACING_TURN_SPEED)
 	humanoid.update_motion(sync_speed, not sync_air, delta)
 	# ダイブ中は前へ倒れ込む。diving はレプリケートされるので他ピアからも見える
-	humanoid.rotation.x = lerpf(humanoid.rotation.x,
-		DIVE_PITCH if diving else 0.0, minf(delta * 12.0, 1.0))
+	if diving or stunned or int(sync_slide.x) == SlideRide.Phase.NONE:
+		humanoid.rotation.x = lerpf(humanoid.rotation.x,
+			DIVE_PITCH if diving else 0.0, minf(delta * 12.0, 1.0))
 
 
 ## 非権威ピアのみ。同期された位置・向きへ滑らかに寄せる。
@@ -280,6 +292,7 @@ func _physics_process(delta: float) -> void:
 	if not is_multiplayer_authority():
 		return
 
+	_update_debug_item_shortcuts()
 	# エモートは frozen の判定より前。凍っている鬼も、転んでいる最中も出せる。
 	# dive / use_item と同じく _unhandled_input ではなくここで拾うのは、
 	# 「押しっぱなしの間だけ有効」ではないものを物理フレームの粒度で揃えるため
@@ -287,6 +300,7 @@ func _physics_process(delta: float) -> void:
 	_tick_taunt_style()
 	if Input.is_action_just_pressed("emote"):
 		_start_emote()
+	sync_respawn_left = maxf(0.0, sync_respawn_left - delta)
 	buffs.tick(delta)
 	warp_lock = maxf(warp_lock - delta, 0.0)
 	stun_left = maxf(stun_left - delta, 0.0)
@@ -303,23 +317,29 @@ func _physics_process(delta: float) -> void:
 	# 結果表示中・ヘッドスタート中の鬼・バナナで転倒中・ダイブ中は移動不可
 	# （カメラ操作は可能）。ダイブは踏み切った後に軌道を変えられない＝空振りしうる
 	var frozen := (GameManager.state == GameManager.State.RESULT
-		or stun_left > 0.0 or diving)
+		or stun_left > 0.0 or sync_respawn_left > 0.0 or diving)
 	if (GameManager.state == GameManager.State.PLAYING
 			and my_id != GameManager.runner_id
 			and GameManager.head_start_left > 0.0):
 		frozen = true
-	if not frozen and Input.is_action_just_pressed("use_item"):
+	if (not frozen or GameManager.debug_cpu_runner) \
+			and Input.is_action_just_pressed("use_item"):
 		_use_item()
 
 	if warp_grace > 0.0 or not grounded:
 		velocity += get_gravity() * delta
-	elif not frozen and dive_cooldown <= 0.0 and Input.is_action_just_pressed("dive"):
+	elif not frozen and not slide_ride.active() and dive_cooldown <= 0.0 and Input.is_action_just_pressed("dive"):
 		_start_dive()
 
 	var input_dir := Vector2.ZERO
 	if not frozen:
 		input_dir = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	if input_dir != Vector2.ZERO:
+		# -Z がモデルの正面。Player本体はカメラの基準なので回さず、
+		# Humanoid のローカル角だけを更新する。
+		sync_facing_yaw = atan2(-input_dir.x, -input_dir.y)
 	var direction := (transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
+	slide_ride.tick(delta)
 
 	_update_stuck(delta, direction, grounded, frozen)
 	_update_stamina(delta, direction != Vector3.ZERO, frozen)
@@ -334,14 +354,19 @@ func _physics_process(delta: float) -> void:
 	# ジャンプ台やブーストで得た初速が次フレームで消えないようにするため、
 	# 空中で入力が無い場合は水平速度に一切手を加えない。
 	var target := Vector2(direction.x, direction.z) * speed
-	if holding_bumper_bounce:
+	if sync_respawn_left > 0.0:
+		velocity.x = 0.0
+		velocity.z = 0.0
+	elif holding_bumper_bounce:
 		velocity.x = bumper_bounce_velocity.x
 		velocity.z = bumper_bounce_velocity.z
-	elif slide_left > 0.0:
-		velocity = SlideMotion.step(velocity, delta, slide_dir, slide_accel, slide_cap,
-			SLIDE_STEER, direction, SLIDE_MIN_SPEED)
+	elif slide_ride.active():
+		velocity = slide_ride.move(velocity, delta, direction, SLIDE_STEER, SLIDE_MIN_SPEED)
+		velocity = _assist_slide_block_escape(velocity, direction)
 		floor_snap_length = SLIDE_SNAP
-		slide_left = maxf(slide_left - delta, 0.0)
+	elif slide_ride.phase == SlideRide.Phase.RECOVER and grounded:
+		velocity = slide_ride.recover_motion(velocity, target, delta)
+		floor_snap_length = 0.1
 	elif warp_grace > 0.0:
 		warp_grace = maxf(warp_grace - delta, 0.0)
 		if direction != Vector3.ZERO:
@@ -385,9 +410,10 @@ func _physics_process(delta: float) -> void:
 	# 描画が物理より速いフレームで差分が 0 になり Idle と Run がばたつく
 	sync_speed = Vector2(velocity.x, velocity.z).length()
 	sync_air = not grounded
+	sync_slide = slide_ride.visual()
 
 	if global_position.y < WorldData.FALL_LIMIT:
-		teleport(WorldData.zone_center(WorldData.zone_index(global_position)) + Vector3(0, 3, 0))
+		respawn_after_fall()
 
 	# 移動が確定した後に配る。position を直接同期していないので、ここを消すと
 	# 他ピアからこのプレイヤーが完全に静止して見える
@@ -485,7 +511,7 @@ func _update_stuck(delta: float, direction: Vector3, grounded: bool, frozen: boo
 		add_carry(_stuck_kick)
 		_stuck_kick_left -= delta
 	if frozen or not grounded or direction == Vector3.ZERO \
-			or slide_left > 0.0 or warp_grace > 0.0:
+			or slide_ride.active() or warp_grace > 0.0:
 		_stuck_timer = 0.0
 		_stuck_from = global_position
 		return
@@ -502,6 +528,31 @@ func _update_stuck(delta: float, direction: Vector3, grounded: bool, frozen: boo
 	if kick != Vector3.ZERO:
 		_stuck_kick = kick
 		_stuck_kick_left = STUCK_ESCAPE.KICK_TIME
+
+
+## 滑走中の汎用スタック脱出は、斜面を逆走させたり手すりの外へ押し出すため使わない。
+## 代わりに設置ブロックとの接触が残っている間だけ、滑り台を横切る入力へ
+## 最低速度を与える。左右を選ぶのはプレイヤーで、自動回避は行わない。
+func _assist_slide_block_escape(v: Vector3, input_direction: Vector3) -> Vector3:
+	if input_direction == Vector3.ZERO:
+		return v
+	var side := Vector3.UP.cross(slide_ride.direction).normalized()
+	var side_input := input_direction.dot(side)
+	if absf(side_input) < 0.1:
+		return v
+	var touching_block := false
+	for i in get_slide_collision_count():
+		var collider := get_slide_collision(i).get_collider() as Node
+		if collider != null and collider.is_in_group("placed_blocks"):
+			touching_block = true
+			break
+	if not touching_block:
+		return v
+	var target_side := signf(side_input) * SLIDE_BLOCK_SIDE_SPEED
+	var current_side := v.dot(side)
+	if current_side * signf(target_side) >= SLIDE_BLOCK_SIDE_SPEED:
+		return v
+	return v + side * (target_side - current_side)
 
 
 func _update_stamina(delta: float, moving: bool, frozen: bool) -> void:
@@ -527,6 +578,7 @@ func stamina_max() -> float:
 func teleport(pos: Vector3) -> void:
 	if not is_multiplayer_authority():
 		return
+	sync_respawn_left = 0.0
 	global_position = pos
 	sync_position = position  # 他ピアが次の物理フレームを待たずスナップできるように
 	velocity = Vector3.ZERO
@@ -536,7 +588,8 @@ func teleport(pos: Vector3) -> void:
 	buffs.clear()
 	warp_lock = 0.0
 	warp_grace = 0.0
-	slide_left = 0.0
+	slide_ride.reset()
+	sync_slide = Vector4.ZERO
 	diving = false
 	dive_recover = 0.0
 	dive_cooldown = 0.0
@@ -553,6 +606,29 @@ func teleport(pos: Vector3) -> void:
 
 
 ## --- 持ち物アイテム -----------------------------------------------------
+
+func _update_debug_item_shortcuts() -> void:
+	if not GameManager.debug_cpu_runner:
+		return
+	if Input.is_action_just_pressed("debug_return_main"):
+		NetworkManager.leave.call_deferred()
+	elif Input.is_action_just_pressed("debug_give_banana"):
+		give_debug_item(Item.BANANA)
+	elif Input.is_action_just_pressed("debug_give_block"):
+		give_debug_item(Item.BLOCK)
+	elif Input.is_action_just_pressed("debug_give_rocket"):
+		give_debug_item(Item.ROCKET)
+
+
+## CPU逃走者デバッグ専用。ルーレットを通さず、Eですぐ使える状態にする。
+func give_debug_item(id: int) -> void:
+	if not is_multiplayer_authority() or not GameManager.debug_cpu_runner:
+		return
+	if id not in [Item.ROCKET, Item.BANANA, Item.BLOCK]:
+		return
+	item = id
+	item_lock = 0.0
+	item_changed.emit(item)
 
 ## ？ブロックから受け取る。1個だけ持てるので、新しく取ると上書きされる。
 ## 中身は ITEM_ROULETTE 秒かけて確定する演出にするため、その間は使用も止める
@@ -655,6 +731,8 @@ func register_placed_block_camera(block: CollisionObject3D) -> void:
 func launch(v: Vector3) -> void:
 	if not is_multiplayer_authority():
 		return
+	slide_ride.reset()
+	sync_slide = Vector4.ZERO
 	if v.y != 0.0:
 		velocity.y = v.y
 	velocity.x += v.x
@@ -683,7 +761,8 @@ func warp_to(pos: Vector3, up_vel: float, exit_kick := Vector3.ZERO) -> void:
 	bumper_bounce_left = 0.0
 	warp_lock = 0.9
 	warp_grace = WARP_GRACE
-	slide_left = 0.0  # 滑走状態のまま飛ぶと出口で明後日の方向へ加速する
+	slide_ride.reset()
+	sync_slide = Vector4.ZERO
 	_stuck_from = global_position
 	_stuck_kick_left = 0.0
 	effect_gained.emit(Effect.WARP)
@@ -706,15 +785,25 @@ func add_carry(v: Vector3) -> void:
 ## 滑り台が毎フレーム呼ぶ。呼ばれている間だけ滑走状態になり、
 ## 接地していても通常の移動制御（目標速度への上書き）を止める。
 ## 権威チェックは add_carry() と同じく呼び出し側（Area）が行う
-func apply_slide(dir: Vector3, accel: float, cap: float) -> void:
-	slide_dir = dir
-	slide_accel = accel
-	slide_cap = cap
-	slide_left = SLIDE_GRACE
+func apply_slide(dir: Vector3, accel: float, cap: float, pitch := 0.0,
+		near_bottom := false, source_id := 0) -> void:
+	if sync_respawn_left > 0.0 or stunned or warp_grace > 0.0 or bumper_bounce_left > 0.0:
+		return
+	# 下からダイブして入っても、一方通行を飛びつきで突破させない。
+	diving = false
+	dive_recover = 0.0
+	slide_ride.contact(source_id, dir, pitch, accel, cap, near_bottom, velocity)
+
+
+func release_slide(source_id: int) -> void:
+	slide_ride.release(source_id)
+	sync_slide = slide_ride.visual()
 
 
 ## バナナを踏んだ時の転倒
 func apply_stun(seconds: float) -> void:
+	slide_ride.reset()
+	sync_slide = Vector4.ZERO
 	if not is_multiplayer_authority():
 		return
 	stun_left = maxf(stun_left, seconds)
@@ -775,3 +864,13 @@ func _update_name_label() -> void:
 	name_label.visible = viewer_is_hunter and target_is_hunter and my_id != local_id
 	if not sync_nickname.is_empty() and name_label.text != sync_nickname:
 		name_label.text = sync_nickname
+
+
+## 落下復帰専用。ラウンド開始などの通常teleportにはペナルティを付けない。
+func respawn_after_fall() -> void:
+	if not is_multiplayer_authority():
+		return
+	teleport(WorldData.respawn_point(self))
+	stun_left = 0.0
+	stunned = false
+	sync_respawn_left = 3.0

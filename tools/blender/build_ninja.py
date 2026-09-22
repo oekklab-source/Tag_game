@@ -448,6 +448,13 @@ def build():
         obj.modifiers.move(obj.modifiers.find("Subsurf"), 0)
 
     made = [make_action(rig, name, keys, loop) for name, (keys, loop) in CLIPS.items()]
+    # きょうりゅうと同じ共通リグを使うため、ゲーム側が呼ぶ滑り台・
+    # リスポーン用クリップも同じ生成処理で必ず含める。
+    sys.path.insert(0, os.path.dirname(__file__))
+    from prototype_slide import add_slide_actions
+    made += add_slide_actions(rig, globals())
+    from prototype_respawn import add_respawn_action
+    made.append(add_respawn_action(rig, globals()))
     push_nla(rig, made)
     apply_pose(rig, {})
     bpy.context.scene.frame_set(0)

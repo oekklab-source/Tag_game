@@ -51,14 +51,15 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## notify_rejected RPCを追加したため
 ## v8: 「カモン」を挑発3種にして sync_emote が取る値に COME_HIP / COME_COOL が増えた。
 ## あわせて着せ替えのキャラ（Humanoid.SKINS）をプロフィールの "skin" に載せた
-## v9: 結果画面の「スキップ」操作用に request_skip_result RPCを追加したため(M-14)
-## v10: ホストの試合結果報告(rating-api /report-match)とレート補正RPC
+## v9: Player/CPU の滑走状態同期と、滑走中の設置ブロック破砕RPCを追加した
+## v10: 結果画面の「スキップ」操作用に request_skip_result RPCを追加したため(M-14)
+## v11: ホストの試合結果報告(rating-api /report-match)とレート補正RPC
 ## (rating_report.gd の _apply_rating_correction)を追加したため(C-03 R-3)
 ##
 ## ストア向けの製品版数は project.godot の application/config/version(現在0.1.0)。
 ## これとは別物であり、連動させない(RPCを変えていないのにストア更新のたびに
 ## PROTOCOL_VERSIONを上げる、といった事故を防ぐため)。
-const PROTOCOL_VERSION := 10
+const PROTOCOL_VERSION := 11
 
 const ROUND_TIME := 180.0
 const RESULT_TIME := 5.0
@@ -197,6 +198,8 @@ func _on_profile_updated() -> void:
 
 
 func reset() -> void:
+	var debug_was_enabled := debug_cpu_runner
+	debug_cpu_runner = false
 	state = State.WAITING
 	runner_id = -1
 	wanted_runner = -1
@@ -217,6 +220,8 @@ func reset() -> void:
 	peer_profiles.clear()
 	tier_lock_enabled = false
 	_clear_intel()
+	if debug_was_enabled:
+		debug_mode_changed.emit(false)
 
 
 func _clear_intel() -> void:

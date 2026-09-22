@@ -30,6 +30,13 @@ properties/4/replication_mode = 2
 properties/5/path = NodePath(".:stunned")
 properties/5/spawn = true
 properties/5/replication_mode = 2
+properties/6/path = NodePath(".:sync_slide")
+properties/6/spawn = true
+properties/6/replication_mode = 1
+
+properties/7/path = NodePath(".:sync_respawn_left")
+properties/7/spawn = true
+properties/7/replication_mode = 1
 
 [node name="CPURunner" type="CharacterBody3D"]
 collision_layer = 2
