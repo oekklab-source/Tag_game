@@ -285,7 +285,11 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 		rating_label.add_theme_font_size_override("font_size", 15)
 		rating_label.modulate = Color(1, 1, 1, 0.7)
 	var badge := Label.new()
-	badge.text = "にげる" if is_runner else "おに"
+	# H-08: 色分けだけに頼らないよう、役割ごとに異なる漢字1字を記号的に添える(応急処置)。
+	# 絵文字は ui/pop_theme.tres の和文フォント(MPLUSRounded1c-Bold.ttf)にフォールバックが
+	# 無く文字化け(豆腐化)のリスクがあるため避け、フォントが対応を謳う日本語グリフの
+	# 範囲内に収まる漢字にした(tier_badge の "[%s]" と同じ角括弧表記に揃えている)
+	badge.text = "[走] にげる" if is_runner else "[鬼] おに"
 	badge.add_theme_font_size_override("font_size", 19)
 	badge.modulate = COLOR_RUNNER if is_runner else COLOR_HUNTER
 	h.add_child(name_label)

@@ -217,11 +217,12 @@ func _update_labels() -> void:
 			result_panel.visible = false
 		GameManager.State.PLAYING, GameManager.State.RESULT:
 			role_badge.visible = true
+			# H-08: lobby_panel.gd の役割バッジと同じ漢字1字の記号差分(応急処置、詳細は同ファイル参照)
 			if is_runner:
-				role_label.text = "にげろ！"
+				role_label.text = "[走] にげろ！"
 				role_label.modulate = COLOR_RUNNER
 			else:
-				role_label.text = "おに ― にげる人をつかまえろ！"
+				role_label.text = "[鬼] おに ― にげる人をつかまえろ！"
 				role_label.modulate = COLOR_HUNTER
 			if GameManager.head_start_left > 0.0:
 				timer_label.text = "%d" % ceili(GameManager.head_start_left)
