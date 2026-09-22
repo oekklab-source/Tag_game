@@ -481,7 +481,10 @@ godot --headless --path . res://tests/emote.tscn -- client 127.0.0.1
 `GameManager.PROTOCOL_VERSION` を **v3** に上げてあり、古いビルドが混ざったら
 接続直後に弾かれる（`### 通信の版数` を参照）。挑発3種を足した時点で
 `sync_emote` が取る値が増え、着せ替えのキャラをプロフィール同期に載せたので
-（main 側の v4〜v7 と合流して）**v8** に上げてある。
+（main 側の v4〜v7 と合流して）**v8** に上げてある
+（その後もRPCを追加するたびに上がっており、現在の値は
+[autoload/game_manager.gd](autoload/game_manager.gd) の `PROTOCOL_VERSION` を参照。
+このv3〜v8は当時の履歴であり現在値ではない）。
 
 ## 高い場所について
 
@@ -559,15 +562,18 @@ UI が全部豆腐（□）になるので **`ui/fonts/` に丸ゴシックを�
 
 ### 通信の版数
 
-挑発3種と、着せ替えのキャラをプロフィール同期に載せたので **v8** に上げてある。
-`GameManager.PROTOCOL_VERSION` を接続直後に突き合わせ、食い違ったら
+[autoload/game_manager.gd](autoload/game_manager.gd) の `PROTOCOL_VERSION`
+（現在の値と改版履歴は同ファイルのコメントを参照）を接続直後に突き合わせ、食い違ったら
 はっきりエラーを出して切断する。**RPC の引数を足す/減らす/並べ替えたら必ず上げること。**
+（これはネットワークプロトコルの版数であり、ストア配布用の製品版数
+`application/config/version` とは別物。「Windows 版のビルドと itch.io への配布」の
+「版数の運用」を参照）
 
 Godot の RPC はメソッド名と引数の個数が両ピアで一致している前提で、食い違うと
 `Method expected N argument(s), but called with M` で黙って落ちる。
 症状は「つながってはいるのに状態が同期しない・ラウンドが始まらない」で原因が非常に
 分かりにくい。**Web 版はブラウザが古いビルドをキャッシュするため特に起きやすい**ので、
-片方だけ更新した心当たりがあるときはまず版数（タイトル画面の右下・ロビーの見出し）を見る。
+片方だけ更新した心当たりがあるときはまず版数（ロビー画面の操作説明行の右端）を見る。
 
 接続直後に突き合わせて、食い違えば**参加側は理由を出してタイトルへ戻り、
 ホスト側はロビーに警告を出してその参加者を切断する**。
@@ -951,6 +957,73 @@ python -m http.server 8123 --directory export/web
   瞬間移動できる。`GameManager.request_drop` も `any_peer` で回数制限が無い。
   身内で遊ぶ前提の設計
 - ホストPCを落とすとゲームも終わる（専用サーバではない）
+
+## Windows 版のビルドと itch.io への配布
+
+### 事前に必要なもの
+
+- Godot 4.7.2 と Windows Desktop 用の export テンプレート
+- [butler](https://itch.io/docs/butler/installing.html)（itch.io公式のアップロードツール。
+  配布元は公式サイトのみで、winget 等のパッケージマネージャ経路は無い）
+- `eos_credentials.cfg`（リポジトリには無い。`.gitignore` 対象で、
+  [eos_credentials.cfg.example](eos_credentials.cfg.example) をコピーして作る）。
+  **これが無いままビルドすると、クラッシュせずに黙って EOS がオフライン/フォールバック
+  モードのまま出荷される**（[autoload/eos_manager.gd](autoload/eos_manager.gd) の
+  `"eos_credentials.cfg not configured yet. Running in Offline / Fallback mode."`
+  の分岐に落ちるだけなので気付きにくい）。ビルド前に必ず存在を確認すること
+
+### ビルドコマンド
+
+```sh
+godot --headless --export-release "Windows Desktop" export/windows/TagGame.exe
+```
+
+`export/` は `.gitignore` 対象なので追加設定は不要。出力される配布物一式（実測済み）:
+
+- `TagGame.exe`（`binary_format/embed_pck=true` のため `.pck` は分離されない）
+- `EOSSDK-Win64-Shipping.dll`
+- `libeosg.windows.template_release.x86_64.dll`
+- `xaudio2_9redist.dll`
+
+いずれも `TagGame.exe` と同じフォルダに並ぶ（サブフォルダは作られない）。
+`eos_credentials.cfg` と `tools/serve.ps1` はこのフォルダには出てこない
+（`export_presets.cfg` の `include_filter` で `.pck` 内の `res://` パスへ同梱され、
+実行時に読まれる設計。特に `tools/serve.ps1` は起動のたびに
+[network_manager.gd](autoload/network_manager.gd) の `_prepare_tunnel_script()` が
+`user://serve.ps1` へ実ファイルとして書き出してから起動するため、配布物として
+別途置く必要は無い）。
+
+### butler でのアップロード
+
+```sh
+butler login
+butler push export/windows <ユーザー名>/<プロジェクト>:windows --userversion 0.1.0
+butler status <ユーザー名>/<プロジェクト>:windows
+```
+
+- チャンネル名に `win`/`windows` を含めると、itch.io 側で自動的に Windows 実行ファイルと
+  して認識される
+- フォルダをそのまま渡す（zip化不要。butler が差分アップロードするので2回目以降が速い）
+- `--userversion` には `project.godot` の `config/version` と同じ値を渡す
+  （省略すると itch.io が連番を振るだけになり、手元の版数と突き合わせられなくなる）
+
+### 版数の運用
+
+このプロジェクトには独立した2つの「版数」がある。**混同しないこと**:
+
+| 版数 | 実体 | 上げるタイミング |
+|---|---|---|
+| `PROTOCOL_VERSION` | [autoload/game_manager.gd](autoload/game_manager.gd) の定数（現在9）。ロビー画面の `v9` 表示 | RPC の名前・引数・ノードパスを変えたときだけ（`### 通信の版数` 参照） |
+| `application/config/version` | `project.godot`（現在 `0.1.0`）。exe のファイルプロパティ、`butler --userversion` | itch.io へ新しいビルドを上げるたびに（見た目だけの修正でも上げる） |
+
+見た目の修正だけをリリースしても `PROTOCOL_VERSION` は変える必要が無く、
+逆に RPC を変えていないのにストア更新のたびに `PROTOCOL_VERSION` を上げる必要も無い。
+
+### CI で自動化しない理由
+
+[.github/workflows/web-build.yml](.github/workflows/web-build.yml) は Web 版のみを対象にしている。
+Windows 版を CI に載せるには `eos_credentials.cfg`（Client Secret を含み `.gitignore` 対象）を
+GitHub Secrets に置く判断が別途必要なため、当面は手元での手動ビルドとする。
 
 ## EOS ロビーによる自動マッチメイキング（見知らぬ相手と）
 
