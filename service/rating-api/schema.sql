@@ -27,3 +27,22 @@ CREATE TABLE match_log (
   payload TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+
+-- EpicのJWKS(EOS Connect ID Token検証用の公開鍵セット)のキャッシュ。KV bindingを増やさず
+-- D1のみで完結させるための1行シングルトン(id=1固定)。service/friend-apiはKVでキャッシュ
+-- しているが、このサービスはKV無料枠を共有しないD1オンリー構成にする方針のため。
+CREATE TABLE jwks_cache (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  keys_json TEXT NOT NULL,
+  fetched_at INTEGER NOT NULL
+);
+
+-- service/friend-apiのcheckAndBumpRateLimit()(KVカウンタ)相当をD1で代替する。
+-- キーに日付を含めることで日次リセットを表現する(KVのexpirationTtlに相当するネイティブTTLが
+-- D1には無いため、expires_atは書き込みのついでに間引く掃除用の目安値に過ぎない)。
+CREATE TABLE rate_limit_counters (
+  rl_key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX idx_rate_limit_expires ON rate_limit_counters(expires_at);

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "tsx --test src/rating_model.test.ts"
+    "test": "tsx --test src/rating_model.test.ts src/index.test.ts"
   },
   "devDependencies": {
     "wrangler": "^3.90.0",
