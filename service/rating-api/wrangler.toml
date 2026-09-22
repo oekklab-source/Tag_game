@@ -1,0 +1,23 @@
+name = "tag-game-rating-api"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# R-1時点ではsrc/index.tsはまだ存在しない(エンドポイント実装はR-2で行う)。
+# そのため現時点で `wrangler dev` / `wrangler deploy` を実行するとエラーになるのは想定通り。
+# このセッションで検証するのはsrc/rating_model.tsの純粋関数のみ(`npm test`)。
+
+# D1データベース: レート台帳(ratings)と試合ログ(match_log、二重計上防止)を保持する。
+# schema.sql参照。KVではなくD1にした理由: /leaderboard-top (ORDER BY rating DESC LIMIT ?)
+# のようなソート済みレンジクエリが必要なため(KVは完全一致lookupのみ)。
+# `npx wrangler d1 create tag-game-rating-db` で作成し、出力された database_id を
+# ここに設定する(R-2で実施予定、今はプレースホルダ)。
+[[d1_databases]]
+binding = "DB"
+database_name = "tag-game-rating-db"
+database_id = "PLACEHOLDER_SET_AFTER_WRANGLER_D1_CREATE"
+
+# EOS_CLIENT_IDはfriend-api/wrangler.tomlと同じ非秘匿値(エクスポート済みexeの
+# eos_credentials.cfgに平文同梱される値と同じ)。R-2でverifyIdToken()を
+# service/friend-api/src/index.tsから複製移植する際、トークンのaudクレーム検証に使う。
+[vars]
+EOS_CLIENT_ID = "xyza7891Y8hf8lR6EoUUo3FqGlAPT6gp"
