@@ -76,6 +76,7 @@ func _ready() -> void:
 	# 既にpublic_addressが確定した後にこのパネルが読み込まれるケースは
 	# シグナルを取りこぼすため、下の即時チェックで補う
 	NetworkManager.public_address_ready.connect(_on_public_address_ready)
+	# この"v"は通信プロトコル版数(PROTOCOL_VERSION)。ストア版数(application/config/version)ではない
 	version_label.text = "v%d" % GameManager.PROTOCOL_VERSION
 	if not NetworkManager.public_address.is_empty():
 		_on_public_address_ready(NetworkManager.public_address)

@@ -52,6 +52,10 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## v8: 「カモン」を挑発3種にして sync_emote が取る値に COME_HIP / COME_COOL が増えた。
 ## あわせて着せ替えのキャラ（Humanoid.SKINS）をプロフィールの "skin" に載せた
 ## v9: 結果画面の「スキップ」操作用に request_skip_result RPCを追加したため(M-14)
+##
+## ストア向けの製品版数は project.godot の application/config/version(現在0.1.0)。
+## これとは別物であり、連動させない(RPCを変えていないのにストア更新のたびに
+## PROTOCOL_VERSIONを上げる、といった事故を防ぐため)。
 const PROTOCOL_VERSION := 9
 
 const ROUND_TIME := 180.0
