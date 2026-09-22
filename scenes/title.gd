@@ -31,6 +31,11 @@ extends Control
 @onready var penalty_notice_message: Label = $PenaltyNoticeDialog/Panel/VBox/MessageLabel
 @onready var penalty_notice_close_btn: Button = $PenaltyNoticeDialog/Panel/VBox/Buttons/CloseButton
 
+## C-03 R-4: 起動時のサーバーレート同期通知
+@onready var rating_sync_dialog: Control = $RatingSyncDialog
+@onready var rating_sync_message: Label = $RatingSyncDialog/Panel/VBox/MessageLabel
+@onready var rating_sync_close_btn: Button = $RatingSyncDialog/Panel/VBox/Buttons/CloseButton
+
 ## M-07/M-08: エラー履歴・再探索導線
 @onready var find_another_room_btn: Button = $CenterMenu/VBox/ErrorActionsRow/FindAnotherRoomButton
 @onready var error_history_btn: Button = $CenterMenu/VBox/ErrorActionsRow/ErrorHistoryButton
@@ -62,6 +67,7 @@ func _ready() -> void:
 	name_confirm_change_btn.pressed.connect(_on_name_confirm_change_pressed)
 	name_confirm_join_btn.pressed.connect(_on_name_confirm_join_pressed)
 	penalty_notice_close_btn.pressed.connect(penalty_notice_dialog.hide)
+	rating_sync_close_btn.pressed.connect(rating_sync_dialog.hide)
 	find_another_room_btn.pressed.connect(_on_find_another_room_pressed)
 	error_history_btn.pressed.connect(_on_error_history_pressed)
 	error_log_close_btn.pressed.connect(error_log_dialog.hide)
@@ -72,6 +78,7 @@ func _ready() -> void:
 	# H-01: 前回対戦中の切断ペナルティは起動後、EOS初期化完了(非同期)を待って反映されるため
 	# ここで一度だけ購読しておけば、発火タイミングによらず必ず通知できる
 	RankingManager.pending_penalty_applied.connect(_on_pending_penalty_applied)
+	RankingManager.server_rating_corrected.connect(_on_server_rating_corrected)
 
 	# Web版では Quit ボタンを非表示
 	if OS.has_feature("web"):
@@ -86,6 +93,7 @@ func _ready() -> void:
 	ranking_dialog.hide()
 	name_confirm_dialog.hide()
 	penalty_notice_dialog.hide()
+	rating_sync_dialog.hide()
 	error_log_dialog.hide()
 
 	# 直前の切断理由（ホストが落ちた等）があれば表示する。
@@ -181,6 +189,19 @@ func _update_badge() -> void:
 func _on_pending_penalty_applied(delta: int) -> void:
 	penalty_notice_message.text = "対戦中に切断したため、レートが%d Pt減少しました（現在%d Pt）。" % [abs(delta), ProfileManager.rating]
 	penalty_notice_dialog.show()
+
+
+## C-03 R-4: 起動時、サーバー権威のレートとローカル値に差があった場合の同期通知
+func _on_server_rating_corrected(_old_rating: int, new_rating: int, delta: int) -> void:
+	rating_sync_message.text = rating_sync_dialog_text(delta, new_rating)
+	rating_sync_dialog.show()
+
+
+## C-03 R-4: 起動時レート同期ダイアログの本文(純粋関数、tests/で直接検証)
+static func rating_sync_dialog_text(delta: int, new_rating: int) -> String:
+	var sign_str := "+" if delta >= 0 else ""
+	return "前回の対戦時には確定していなかったレートがサーバーと同期され、%s%d Pt 補正されました（現在 %d Pt）。" \
+		% [sign_str, delta, new_rating]
 
 
 func _on_play_pressed() -> void:

@@ -7,6 +7,16 @@ signal rating_changed(old_rating: int, new_rating: int, delta: int)
 ## H-01: 前回対戦中の切断ペナルティが起動時に反映されたことをUI側へ通知するための専用シグナル。
 ## rating_changed は通常の試合終了時にも発火するため、こちらだけを購読すれば二重通知にならない
 signal pending_penalty_applied(delta: int)
+## C-03 R-4: サーバーが黙って補正したレートを、実際にユーザーへ知らせるべき瞬間にだけ発火する。
+## rating_changed とは別に用意する(pending_penalty_appliedと同じ理由: 二重通知を防ぐ)。
+## クライアントとサーバーは同じElo計算式を使うため通常は一致する――delta==0(見た目上
+## 変化なし)の場合は発火しない。試合中の即時補正(apply_server_rating_correction)と
+## 起動時reconciliation(_reconcile_server_rating)の両方から発火しうる
+signal server_rating_corrected(old_rating: int, new_rating: int, delta: int)
+
+## rating_report.gdと同じ理由(headless単体実行でclass_nameのグローバル登録が
+## 更新されていないケースへの対処)でpreloadを使う
+const _RatingBackendClientScript := preload("res://autoload/rating_backend_client.gd")
 
 ## H-03: 結果画面がレート内訳を表示するための退避場所（calculate_rating_delta() の
 ## 直近の呼び出し結果）。既存の戻り値(int)とそれに依存するテスト(tests/rating_model.gd)を
@@ -22,13 +32,20 @@ func _ready() -> void:
 	EosManager.eos_initialized.connect(_on_eos_initialized)
 
 
+## ⑦EOS初期化成功時に2つの起動時reconciliationを並行実行する(互いにawaitせず、
+## 片方の失敗が他方に影響しない)
+func _on_eos_initialized(success: bool) -> void:
+	if not success:
+		return
+	_consume_pending_penalty()
+	_reconcile_server_rating()
+
+
 ## ⑦レーティング戦で逃げる役として切断し、CPUに代行された場合の敗北精算(暫定実装)。
 ## 本人はその場にいないため反映できず、サーバー側(friend-api)に記録されたものを
 ## 起動時に一度だけ取りに行く。StripePurchaseProvider.reconcile_pending()と同じ
 ## 「起動時一回だけの確認・適用・クリア」パターン
-func _on_eos_initialized(success: bool) -> void:
-	if not success:
-		return
+func _consume_pending_penalty() -> void:
 	var res := await FriendManager.consume_pending_penalty()
 	if not res.get("pending", false):
 		return
@@ -39,6 +56,37 @@ func _on_eos_initialized(success: bool) -> void:
 	EosManager.upload_rating(new_r)
 	rating_changed.emit(old_r, new_r, delta)
 	pending_penalty_applied.emit(delta)
+
+
+## C-03 R-4: 起動時、サーバー権威のレートとローカル値を同期する。USE_LIVE_RATING_BACKENDが
+## falseの間、またはEOS未接続の間は既存の他ガード(rating_report.gd等)と同じ規約で
+## 即return(現状ゼロ挙動変化)
+func _reconcile_server_rating() -> void:
+	if not (BackendConfig.USE_LIVE_RATING_BACKEND and EosManager.is_eos_available):
+		return
+	var res := await _RatingBackendClientScript.get_rating(self)
+	if not res.get("api_ok", false) or not res.get("ok", false):
+		return  # 通信エラー・rate_limited等。次回起動時に再試行するだけで諦める
+
+	if not res.get("claimed", false):
+		if ProfileManager.initial_rating_claimed:
+			# サーバー側の行消失等の極めて稀な矛盾ケース。再claimするとサーバー側の
+			# matches_played/winsをローカルratingだけの新規行で0から作り直してしまうため、
+			# 安全側に倒して何もしない
+			return
+		var claim_res := await _RatingBackendClientScript.claim_initial_rating(self, ProfileManager.rating)
+		if claim_res.get("api_ok", false) and claim_res.get("ok", false):
+			ProfileManager.mark_initial_rating_claimed()
+		return  # 初回claimは「補正」ではないのでUI通知はしない(差分が無いため)
+
+	var old_r := ProfileManager.rating
+	ProfileManager.apply_server_rating_snapshot(
+		int(res.get("rating", old_r)), int(res.get("highest_rating", ProfileManager.highest_rating)))
+	var new_r := ProfileManager.rating
+	if new_r != old_r:
+		EosManager.upload_rating(new_r)
+		rating_changed.emit(old_r, new_r, new_r - old_r)
+		server_rating_corrected.emit(old_r, new_r, new_r - old_r)
 
 # --- 基本設定定数 ---
 const K_BASE: float = 16.0
@@ -355,13 +403,15 @@ func apply_match_end(
 
 
 ## C-03 R-3: rating_report.gdのRPCで届いた確定レートで、apply_match_end()が既に
-## ローカル計算・反映した値を黙って補正する。画面表示の演出はR-4の担当なので、
-## ここではProfileManager反映・EOS Leaderboard再アップロード・シグナルemitのみ行う
-## (rating_changedは現状どのUIからも購読されていないため、今回のemitで見た目は変わらない。
-## R-4がここにフックする前提)
+## ローカル計算・反映した値を黙って補正する。ProfileManager反映・EOS Leaderboard
+## 再アップロード・シグナルemitを行う。R-4: 見た目上の変化(delta != 0)がある場合のみ
+## server_rating_corrected を追加発火し、hud.gd(試合中トースト)/title.gd(起動時ダイアログ)
+## がそれを購読して実際にユーザーへ知らせる
 func apply_server_rating_correction(new_rating: int) -> void:
 	var old_r := ProfileManager.rating
 	ProfileManager.apply_server_rating_correction(new_rating)
 	var new_r := ProfileManager.rating
 	EosManager.upload_rating(new_r)
 	rating_changed.emit(old_r, new_r, new_r - old_r)
+	if new_r != old_r:
+		server_rating_corrected.emit(old_r, new_r, new_r - old_r)

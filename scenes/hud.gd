@@ -18,6 +18,7 @@ const COLOR_RUNNER := Color(0.35, 1.0, 0.55)
 const COLOR_HUNTER := Color(1.0, 0.45, 0.4)
 const COLOR_HEAD_START := Color(0.35, 0.85, 1.0)
 const COLOR_GOLD := Color(1.0, 0.82, 0.25)
+const COLOR_RATING_SYNC := Color(0.6, 0.85, 1.0)
 
 const HUNTER_DISTANCE_DELAY := 10.0
 const BUFF_BAR_WIDTH := 64.0
@@ -129,6 +130,7 @@ func _ready() -> void:
 	GameManager.state_changed.connect(_on_state_changed)
 	GameManager.spotted_changed.connect(_on_spotted_changed)
 	GameManager.runner_cpu_takeover.connect(_on_runner_cpu_takeover)
+	RankingManager.server_rating_corrected.connect(_on_server_rating_corrected)
 	map_panel.setup(compass, distance_chip, distance_label)
 	lobby.open_overlay_requested.connect(_open_overlay)
 	lobby.toast_requested.connect(_toast)
@@ -778,6 +780,17 @@ func _on_effect_gained(effect: int) -> void:
 ## H-02: 逃げる役の切断でCPUが代行を始めたことをその場で気づけるようにする
 func _on_runner_cpu_takeover(peer_name: String) -> void:
 	_toast("%s が切断 ― CPUが代わりに逃げます" % peer_name, Color(1.0, 0.75, 0.4))
+
+
+## C-03 R-4: 試合中にサーバー補正RPCが届いた場合のトースト通知
+func _on_server_rating_corrected(_old_rating: int, new_rating: int, delta: int) -> void:
+	_toast(rating_sync_toast_text(delta, new_rating), COLOR_RATING_SYNC)
+
+
+## C-03 R-4: サーバー同期レート補正トーストの文言(純粋関数、tests/で直接検証)
+static func rating_sync_toast_text(delta: int, new_rating: int) -> String:
+	var sign_str := "+" if delta >= 0 else ""
+	return "レートがサーバーと同期され、%s%d Pt 補正されました（現在 %d Pt）" % [sign_str, delta, new_rating]
 
 
 func _toast(text: String, color: Color) -> void:

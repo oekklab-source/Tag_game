@@ -27,5 +27,9 @@ const USE_LIVE_FRIEND_BACKEND := true
 ## R-2でエンドポイント実装済みだが、wrangler d1 create/wrangler deployが未実施
 ## (service/rating-api/README.md参照)。デプロイ・動作確認が済むまでfalseにする。
 ## trueにする前に必ず: ①wrangler d1 create ②schema.sql適用 ③wrangler deploy
-## ④実EOSトークンでの手動疎通確認、の順で行うこと
+## ④実EOSトークンでの手動疎通確認、の順で行うこと。
+## R-4: このフラグはconstのため、true側の分岐(merge_server_inventory()のPDSマージ除外・
+## RankingManager._reconcile_server_rating())はheadless自動テストでは検証できない。
+## ⑤ここを一時的にtrueへ書き換えてtests/test_phase5_persistence.tscnを再実行し、
+## 確認後に必ずfalseへ戻すこと(コミット前にこの一時変更が残っていないか確認する)
 const USE_LIVE_RATING_BACKEND := false

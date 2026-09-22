@@ -26,6 +26,8 @@ func _ready() -> void:
 	await _test_purchase_provider_selection()
 	await _test_settings_save_load()
 	await _test_update_profile_validation()
+	await _test_schema6_initial_rating_claimed()
+	await _test_apply_server_rating_snapshot()
 
 	print("==================================================")
 	print("Phase 5 結果: PASS=%d, FAIL=%d" % [passed_count, failed_count])
@@ -257,4 +259,72 @@ func _test_update_profile_validation() -> void:
 	_assert(ProfileManager.player_name == before_ng, "NGワード時はplayer_nameが変化しない")
 
 	ProfileManager.player_name = orig_name
+	ProfileManager.save_profile()
+
+
+## 7. C-03 R-4: schema6 の initial_rating_claimed が旧セーブ(schema5)で false に初期化され、
+## 保存・読込で往復することを _test_profile_save_load() と同じ手順で確認する
+func _test_schema6_initial_rating_claimed() -> void:
+	print("\n--- [7] initial_rating_claimed (schema6) マイグレーション・保存復元 ---")
+	var orig_claimed: bool = ProfileManager.initial_rating_claimed
+
+	# schema5(フィールドが存在しない旧セーブ)を読み込むと false に初期化される
+	ProfileManager.initial_rating_claimed = true
+	ProfileManager._apply_data({"schema_version": 5})
+	_assert(ProfileManager.initial_rating_claimed == false,
+		"schema5の旧セーブを読み込むと initial_rating_claimed は false に初期化される")
+
+	# 保存・読込で往復する
+	ProfileManager.initial_rating_claimed = true
+	ProfileManager.save_profile()
+	ProfileManager.initial_rating_claimed = false
+	ProfileManager.load_profile()
+	_assert(ProfileManager.initial_rating_claimed == true,
+		"initial_rating_claimed=true が保存・読込で往復する")
+
+	ProfileManager.initial_rating_claimed = orig_claimed
+	ProfileManager.save_profile()
+
+
+## 8. C-03 R-4: apply_server_rating_snapshot() が rating/highest_rating(ratchet)/
+## initial_rating_claimed のみ変更し、matches_played/runner_wins/hunter_wins には
+## 一切触れないことを確認する(将来「うっかり戦績も同期してしまう」退行を防ぐ本命の検証)
+func _test_apply_server_rating_snapshot() -> void:
+	print("\n--- [8] apply_server_rating_snapshot() 検証 ---")
+	var orig := {
+		"rating": ProfileManager.rating,
+		"highest_rating": ProfileManager.highest_rating,
+		"matches_played": ProfileManager.matches_played,
+		"runner_wins": ProfileManager.runner_wins,
+		"hunter_wins": ProfileManager.hunter_wins,
+		"initial_rating_claimed": ProfileManager.initial_rating_claimed,
+	}
+
+	ProfileManager.rating = 1500
+	ProfileManager.highest_rating = 1600
+	ProfileManager.matches_played = 42
+	ProfileManager.runner_wins = 10
+	ProfileManager.hunter_wins = 20
+	ProfileManager.initial_rating_claimed = false
+
+	ProfileManager.apply_server_rating_snapshot(1550, 1500)
+	_assert(ProfileManager.rating == 1550, "ratingはサーバー値で上書きされる")
+	_assert(ProfileManager.highest_rating == 1600, "highest_ratingはratchetなので退行しない(1600のまま)")
+	_assert(ProfileManager.matches_played == 42, "matches_playedには一切触れない")
+	_assert(ProfileManager.runner_wins == 10, "runner_winsには一切触れない")
+	_assert(ProfileManager.hunter_wins == 20, "hunter_winsには一切触れない")
+	_assert(ProfileManager.initial_rating_claimed == true, "initial_rating_claimedはtrueになる")
+
+	ProfileManager.apply_server_rating_snapshot(1700, 1700)
+	_assert(ProfileManager.highest_rating == 1700, "highest_ratingはサーバー値がローカルより大きければ更新される")
+
+	ProfileManager.apply_server_rating_snapshot(50, 1700)
+	_assert(ProfileManager.rating == 100, "ratingは100を下限にクランプされる")
+
+	ProfileManager.rating = orig.rating
+	ProfileManager.highest_rating = orig.highest_rating
+	ProfileManager.matches_played = orig.matches_played
+	ProfileManager.runner_wins = orig.runner_wins
+	ProfileManager.hunter_wins = orig.hunter_wins
+	ProfileManager.initial_rating_claimed = orig.initial_rating_claimed
 	ProfileManager.save_profile()
