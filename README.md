@@ -1024,7 +1024,7 @@ butler status <ユーザー名>/<プロジェクト>:windows
 
 | 版数 | 実体 | 上げるタイミング |
 |---|---|---|
-| `PROTOCOL_VERSION` | [autoload/game_manager.gd](autoload/game_manager.gd) の定数（現在10）。ロビー画面の `v10` 表示 | RPC の名前・引数・ノードパスを変えたときだけ（`### 通信の版数` 参照） |
+| `PROTOCOL_VERSION` | [autoload/game_manager.gd](autoload/game_manager.gd) の定数（現在11）。ロビー画面の `v11` 表示 | RPC の名前・引数・ノードパスを変えたときだけ（`### 通信の版数` 参照） |
 | `application/config/version` | `project.godot`（現在 `0.1.0`）。exe のファイルプロパティ、`butler --userversion` | itch.io へ新しいビルドを上げるたびに（見た目だけの修正でも上げる） |
 
 見た目の修正だけをリリースしても `PROTOCOL_VERSION` は変える必要が無く、
@@ -1195,6 +1195,7 @@ CPU 逃走者も取る。置き物が出る**自分の背後＝追ってくる�
 - **非対称 Kファクター**: 鬼の人数 $N$ に応じて $K_R = 16 \times \sqrt{N}$、$K_H = 16 / \sqrt{N}$ とスケーリングし、レートのインフレ・デフレを防止。
 - **トドメ貢献度ボーナス**: 鬼陣営が勝利してレートを獲得した際、協力者から 30% の獲得分をトドメ役（実際にタッチした人）に再分配。
 - **人数補正**: 4人を基準とし、鬼が多いほど鬼陣営の期待勝率を自動引き上げ。
+- **サーバー権威化 (C-03)**: ランクマッチの結果はホストが `rating-api`（Cloudflare Workers+D1）へ報告し、確定値をRPCで各クライアントへ補正配布する。詳細は下記「マルチプレイの権威モデル」節を参照。
 
 ## 構成
 
@@ -1205,13 +1206,19 @@ autoload/game_manager.gd      役割抽選・速度補正・タイマー・タ�
 autoload/game/sight_system.gd    GameManagerの子ノード。視界判定（距離/視野角/情報の寿命）と共有状態
 autoload/game/version_gate.gd    GameManagerの子ノード。接続直後のプロトコル版数照合
 autoload/game/host_migration.gd  GameManagerの子ノード。切断時のCPU代行判定とレーティング・ペナルティ報告
-autoload/ranking_manager.gd   非対称 Elo レーティング計算・ランキング管理
+autoload/game/rating_report.gd   GameManagerの子ノード。ホスト単独でrating-apiの/report-matchへ
+                              試合結果を報告し、_apply_rating_correction RPCで確定値を全ピアへ配布
+autoload/ranking_manager.gd   非対称 Elo レーティング計算・ランキング管理（サーバー確定前の楽観表示）
+autoload/rating_backend_client.gd rating-api（/report-match /report-disconnect-penalty
+                              /claim-initial-rating /rating /leaderboard-top）のHTTPクライアント
 autoload/profile_manager.gd   プレイヤー名・カスタムカラー・戦績・レートのローカル/EOS管理
-autoload/backend_config.gd    friend-api/commerce-api の URL と USE_LIVE_* フラグを一元管理
+autoload/backend_config.gd    friend-api/commerce-api/rating-api の URL と USE_LIVE_* フラグを一元管理
 autoload/music_manager.gd     タイトル/ロビー系画面のBGMを保持するAutoload。change_scene_to_file()を
                               またいで鳴り続けさせる（NetworkManagerの対戦開始/終了と連動して停止/再生）
 scenes/title.tscn(.gd)        タイトル画面（エントリーシーン）。メインメニュー・プロフィールバッジ・
                               ルームマッチ/ランキングダイアログの起動・?s=経由の自動参加を統括
+scenes/ranking_dialog.gd      ランキング画面。USE_LIVE_RATING_BACKEND=true かつEOS接続時は
+                              rating-apiの/leaderboard-topを、それ以外はEOS Leaderboardsを表示
 scenes/world.tscn(.gd)        シーンの骨組み（空・光・ナビ領域・スポーン管理）
 scenes/world_data.gd          マップとギミック配置の唯一の定義（定数テーブル）
 scenes/world_builder.gd       テーブルからの地形・ギミック・装飾の生成

@@ -137,8 +137,8 @@ curl -s -X POST $BASE/report-disconnect-penalty -H "X-Debug-Puid: p-survivor-a" 
 
 - **ホスト単独報告は複数アカウントの結託ねつ造を防げない**。サーバーは「その試合が
   実在したか」自体を検証する手段を持たない構造的限界。`docs/SECURITY_NOTES.md`の
-  項目3(切断ペナルティの自己申告)と同種の信頼モデルであり、同ドキュメントに
-  受容事項として追記する予定(R-8)。
+  項目3(切断ペナルティの自己申告)と同種の信頼モデルであり、同ドキュメントの
+  項目7に受容事項として記載済み(R-8)。
 - **`/leaderboard-top`はPUIDを認証不要で列挙可能な形で返す**。
   `service/friend-api/src/index.ts`は「PUIDそのものは公開しない」ことを設計原則としているが、
   このエンドポイントは公開ランキングという性質上、上位N件のPUIDを一括列挙できてしまい
@@ -146,7 +146,7 @@ curl -s -X POST $BASE/report-disconnect-penalty -H "X-Debug-Puid: p-survivor-a" 
   本人特定にPUIDが要る。将来のランキング画面切替セッションでの名前解決join keyとしても
   必要)。ただしPUID単体を知っているだけではフレンド追加も接触もできない
   (friend-apiのフレンド追加は8桁コード経由のみ)ため実害は小さいと判断した。
-  正式な`docs/SECURITY_NOTES.md`への追記はR-8にまとめる。
+  `docs/SECURITY_NOTES.md`の項目8に記載済み(R-8)。
 - KV書き込み無料枠(1日1,000件、`service/friend-api`/`service/commerce-api`と
   同一Cloudflareアカウントで共有)への影響を避けるためD1を選んだが、D1にも
   無料枠の上限はあるため、本番投入後は[docs/DEPLOYMENT_CHECKLIST.md](../../docs/DEPLOYMENT_CHECKLIST.md)
