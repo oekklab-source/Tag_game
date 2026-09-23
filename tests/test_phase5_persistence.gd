@@ -217,28 +217,43 @@ func _test_settings_save_load() -> void:
 	print("\n--- [5] SettingsManager 保存・読み込み ---")
 	var orig_sensitivity: float = SettingsManager.mouse_sensitivity
 	var orig_volume: float = SettingsManager.master_volume
+	var orig_touch_mode: String = SettingsManager.touch_controls_mode
 
 	SettingsManager.mouse_sensitivity = 0.005
 	SettingsManager.master_volume = 0.3
+	SettingsManager.touch_controls_mode = "on"
 	SettingsManager.save_settings()
 
 	SettingsManager.mouse_sensitivity = SettingsManager.DEFAULT_MOUSE_SENSITIVITY
 	SettingsManager.master_volume = SettingsManager.DEFAULT_MASTER_VOLUME
+	SettingsManager.touch_controls_mode = SettingsManager.DEFAULT_TOUCH_CONTROLS_MODE
 
 	SettingsManager.load_settings()
 
 	_assert(is_equal_approx(SettingsManager.mouse_sensitivity, 0.005), "マウス感度が正しく復元 (0.005)")
 	_assert(is_equal_approx(SettingsManager.master_volume, 0.3), "マスター音量が正しく復元 (0.3)")
+	_assert(SettingsManager.touch_controls_mode == "on", "タッチ操作モードが正しく復元 (on)")
 
-	# 範囲外の値は安全にクランプされる(破損/改ざんデータ対策)
-	SettingsManager._apply_data({"mouse_sensitivity": 999.0, "master_volume": -5.0})
+	# 範囲外の値は安全にクランプ/フォールバックされる(破損/改ざんデータ対策)
+	SettingsManager._apply_data({
+		"mouse_sensitivity": 999.0, "master_volume": -5.0, "touch_controls_mode": "bogus"})
 	_assert(is_equal_approx(SettingsManager.mouse_sensitivity, SettingsManager.MOUSE_SENSITIVITY_MAX),
 		"範囲外のマウス感度は上限にクランプされる")
 	_assert(is_equal_approx(SettingsManager.master_volume, 0.0),
 		"範囲外のマスター音量は0にクランプされる")
+	_assert(SettingsManager.touch_controls_mode == SettingsManager.DEFAULT_TOUCH_CONTROLS_MODE,
+		"不正なタッチ操作モード文字列はデフォルト(auto)にフォールバックされる")
+
+	# on/offの明示指定は常にDisplayServerの実機判定を無視する(headless実行機の
+	# タッチ有無に依存しない、決定的に検証できる部分)
+	SettingsManager.touch_controls_mode = "on"
+	_assert(SettingsManager.should_show_touch_controls(), "modeが'on'のとき常にtrueを返す")
+	SettingsManager.touch_controls_mode = "off"
+	_assert(not SettingsManager.should_show_touch_controls(), "modeが'off'のとき常にfalseを返す")
 
 	SettingsManager.mouse_sensitivity = orig_sensitivity
 	SettingsManager.master_volume = orig_volume
+	SettingsManager.touch_controls_mode = orig_touch_mode
 	SettingsManager.save_settings()
 
 

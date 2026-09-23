@@ -1,0 +1,53 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scenes/hud/touch_controls.gd" id="1_touch_controls"]
+
+[sub_resource type="StyleBoxFlat" id="pause_btn_normal"]
+bg_color = Color(0.08, 0.07, 0.16, 0.75)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 0.35)
+corner_radius_top_left = 32
+corner_radius_top_right = 32
+corner_radius_bottom_right = 32
+corner_radius_bottom_left = 32
+
+[sub_resource type="StyleBoxFlat" id="pause_btn_hover"]
+bg_color = Color(0.16, 0.14, 0.28, 0.85)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 0.5)
+corner_radius_top_left = 32
+corner_radius_top_right = 32
+corner_radius_bottom_right = 32
+corner_radius_bottom_left = 32
+
+[sub_resource type="StyleBoxFlat" id="pause_btn_pressed"]
+bg_color = Color(0.03, 0.03, 0.08, 0.85)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.82, 0.25, 0.7)
+corner_radius_top_left = 32
+corner_radius_top_right = 32
+corner_radius_bottom_right = 32
+corner_radius_bottom_left = 32
+
+[node name="TouchControls" type="CanvasLayer"]
+script = ExtResource("1_touch_controls")
+
+[node name="PauseButton" type="Button" parent="."]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 80.0
+offset_bottom = 80.0
+theme_override_font_sizes/font_size = 28
+theme_override_styles/normal = SubResource("pause_btn_normal")
+theme_override_styles/hover = SubResource("pause_btn_hover")
+theme_override_styles/pressed = SubResource("pause_btn_pressed")
+text = "≡"

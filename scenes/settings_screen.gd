@@ -17,12 +17,18 @@ signal closed
 @onready var sensitivity_value_label: Label = $ContentMargin/Scroll/MainVBox/SensitivitySection/Row/ValueLabel
 @onready var volume_slider: HSlider = $ContentMargin/Scroll/MainVBox/VolumeSection/Row/Slider
 @onready var volume_value_label: Label = $ContentMargin/Scroll/MainVBox/VolumeSection/Row/ValueLabel
+@onready var touch_mode_option: OptionButton = $ContentMargin/Scroll/MainVBox/TouchSection/Row/ModeOption
 @onready var reset_btn: Button = $ContentMargin/Scroll/MainVBox/ButtonsRow/ResetButton
 @onready var save_btn: Button = $ContentMargin/Scroll/MainVBox/ButtonsRow/SaveButton
 
 ## _refresh_sliders() でスライダーの値をSettingsManagerに合わせて書き戻す間、
 ## value_changed経由でSettingsManager.set_*()を再度呼んでしまうのを防ぐガード
 var _syncing := false
+
+## OptionButtonのitem index ⇔ SettingsManager.touch_controls_mode の対応。
+## room_match_dialog.gdのTierFilterと同じ「_ready()でadd_item、選択後はindexで引く」方式
+const TOUCH_MODE_VALUES := ["auto", "on", "off"]
+const TOUCH_MODE_LABELS := ["自動", "常に表示", "常に非表示"]
 
 
 func _ready() -> void:
@@ -32,9 +38,13 @@ func _ready() -> void:
 	sensitivity_slider.drag_ended.connect(_on_sensitivity_drag_ended)
 	volume_slider.value_changed.connect(_on_volume_changed)
 	volume_slider.drag_ended.connect(_on_volume_drag_ended)
+	for label in TOUCH_MODE_LABELS:
+		touch_mode_option.add_item(label)
+	touch_mode_option.item_selected.connect(_on_touch_mode_selected)
 	reset_btn.pressed.connect(_on_reset_pressed)
 	save_btn.pressed.connect(_on_save_pressed)
 	_refresh_sliders()
+	_refresh_touch_mode()
 
 
 func _refresh_sliders() -> void:
@@ -44,6 +54,12 @@ func _refresh_sliders() -> void:
 	volume_slider.value = SettingsManager.master_volume
 	_update_volume_label(SettingsManager.master_volume)
 	_syncing = false
+
+
+## OptionButton.select()はitem_selectedを再発火しないため、スライダーと違い
+## _syncingガードは不要
+func _refresh_touch_mode() -> void:
+	touch_mode_option.select(maxi(TOUCH_MODE_VALUES.find(SettingsManager.touch_controls_mode), 0))
 
 
 func _update_sensitivity_label(value: float) -> void:
@@ -78,11 +94,19 @@ func _on_volume_drag_ended(_value_changed: bool) -> void:
 	SettingsManager.save_settings()
 
 
+## OptionButtonにはスライダーのdrag_endedに相当する中間状態が無いので、選択直後に即保存する
+func _on_touch_mode_selected(index: int) -> void:
+	SettingsManager.set_touch_controls_mode(TOUCH_MODE_VALUES[index])
+	SettingsManager.save_settings()
+
+
 func _on_reset_pressed() -> void:
 	SettingsManager.set_mouse_sensitivity(SettingsManager.DEFAULT_MOUSE_SENSITIVITY)
 	SettingsManager.set_master_volume(SettingsManager.DEFAULT_MASTER_VOLUME)
+	SettingsManager.set_touch_controls_mode(SettingsManager.DEFAULT_TOUCH_CONTROLS_MODE)
 	SettingsManager.save_settings()
 	_refresh_sliders()
+	_refresh_touch_mode()
 
 
 func _on_save_pressed() -> void:

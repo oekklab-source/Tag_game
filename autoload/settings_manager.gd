@@ -9,9 +9,13 @@ const DEFAULT_MOUSE_SENSITIVITY := 0.003
 const DEFAULT_MASTER_VOLUME := 0.8
 const MOUSE_SENSITIVITY_MIN := 0.0005
 const MOUSE_SENSITIVITY_MAX := 0.01
+const DEFAULT_TOUCH_CONTROLS_MODE := "auto"
+## _apply_data() でのホワイトリスト検証に使う。順序に意味は無い
+const VALID_TOUCH_CONTROLS_MODES := ["auto", "on", "off"]
 
 var mouse_sensitivity: float = DEFAULT_MOUSE_SENSITIVITY
 var master_volume: float = DEFAULT_MASTER_VOLUME
+var touch_controls_mode: String = DEFAULT_TOUCH_CONTROLS_MODE
 
 
 func _ready() -> void:
@@ -42,11 +46,33 @@ func apply_master_volume() -> void:
 		AudioServer.set_bus_volume_db(bus, linear_to_db(master_volume))
 
 
+## メモリへの反映のみ。ディスクへの保存は呼び出し側の責務
+## (settings_screen.gd の OptionButton.item_selected で即座に save_settings() する。
+## ドラッグ中の連打が無いのでスライダーのような drag_ended 待ちは不要)
+func set_touch_controls_mode(v: String) -> void:
+	touch_controls_mode = v
+
+
+## タッチ操作UIを表示すべきか。"on"/"off"は明示的な上書き、"auto"(既定)は
+## DisplayServer.is_touchscreen_available()に従う(プラットフォーム非依存。Web版の
+## 「スマホでブラウザから遊ぶ」を主眼に最適化しており、Windows Desktopでの
+## タッチノートPC体験の作り込みはC-07のスコープ外)
+func should_show_touch_controls() -> bool:
+	match touch_controls_mode:
+		"on":
+			return true
+		"off":
+			return false
+		_:
+			return DisplayServer.is_touchscreen_available()
+
+
 ## 現在の設定状態を保存用Dictionaryに変換する(ファイルI/Oを含まない)
 func to_save_dict() -> Dictionary:
 	return {
 		"mouse_sensitivity": mouse_sensitivity,
 		"master_volume": master_volume,
+		"touch_controls_mode": touch_controls_mode,
 	}
 
 
@@ -80,3 +106,7 @@ func _apply_data(data: Dictionary) -> void:
 		float(data.get("mouse_sensitivity", DEFAULT_MOUSE_SENSITIVITY)),
 		MOUSE_SENSITIVITY_MIN, MOUSE_SENSITIVITY_MAX)
 	master_volume = clampf(float(data.get("master_volume", DEFAULT_MASTER_VOLUME)), 0.0, 1.0)
+	# 文字列フィールド初のホワイトリスト検証。不正値/未知の文字列/欠損キーはすべて既定"auto"へ
+	var touch_mode := String(data.get("touch_controls_mode", DEFAULT_TOUCH_CONTROLS_MODE))
+	touch_controls_mode = (
+		touch_mode if VALID_TOUCH_CONTROLS_MODES.has(touch_mode) else DEFAULT_TOUCH_CONTROLS_MODE)
