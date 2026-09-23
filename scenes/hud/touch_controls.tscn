@@ -1,8 +1,9 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scenes/hud/touch_controls.gd" id="1_touch_controls"]
 [ext_resource type="Script" path="res://scenes/hud/virtual_joystick.gd" id="2_virtual_joystick"]
 [ext_resource type="Script" path="res://scenes/hud/touch_look_zone.gd" id="3_touch_look_zone"]
+[ext_resource type="Script" path="res://scenes/hud/touch_action_button.gd" id="4_touch_action_button"]
 
 [sub_resource type="StyleBoxFlat" id="pause_btn_normal"]
 bg_color = Color(0.08, 0.07, 0.16, 0.75)
@@ -64,6 +65,42 @@ corner_radius_top_right = 42
 corner_radius_bottom_right = 42
 corner_radius_bottom_left = 42
 
+[sub_resource type="StyleBoxFlat" id="action_btn_style"]
+bg_color = Color(0.08, 0.07, 0.16, 0.75)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 0.35)
+corner_radius_top_left = 48
+corner_radius_top_right = 48
+corner_radius_bottom_right = 48
+corner_radius_bottom_left = 48
+
+[sub_resource type="StyleBoxFlat" id="action_btn_dash_style"]
+bg_color = Color(1.0, 0.7, 0.25, 0.85)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 0.5)
+corner_radius_top_left = 48
+corner_radius_top_right = 48
+corner_radius_bottom_right = 48
+corner_radius_bottom_left = 48
+
+[sub_resource type="StyleBoxFlat" id="taunt_circle_style"]
+bg_color = Color(0.16, 0.14, 0.28, 0.9)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.82, 0.25, 0.7)
+corner_radius_top_left = 28
+corner_radius_top_right = 28
+corner_radius_bottom_right = 28
+corner_radius_bottom_left = 28
+
 [node name="TouchControls" type="CanvasLayer"]
 script = ExtResource("1_touch_controls")
 
@@ -110,3 +147,159 @@ offset_right = 42.0
 offset_bottom = 42.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("joystick_knob_style")
+
+[node name="ActionDash" type="Panel" parent="."]
+offset_left = 1684.0
+offset_top = 844.0
+offset_right = 1780.0
+offset_bottom = 940.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("action_btn_dash_style")
+script = ExtResource("4_touch_action_button")
+action_name = "dash"
+
+[node name="Label" type="Label" parent="ActionDash"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "ダッシュ"
+
+[node name="ActionDive" type="Panel" parent="."]
+offset_left = 1800.0
+offset_top = 844.0
+offset_right = 1896.0
+offset_bottom = 940.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("action_btn_style")
+script = ExtResource("4_touch_action_button")
+action_name = "dive"
+
+[node name="Label" type="Label" parent="ActionDive"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "ダイブ"
+
+[node name="ActionUseItem" type="Panel" parent="."]
+offset_left = 1800.0
+offset_top = 960.0
+offset_right = 1896.0
+offset_bottom = 1056.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("action_btn_style")
+script = ExtResource("4_touch_action_button")
+action_name = "use_item"
+
+[node name="Label" type="Label" parent="ActionUseItem"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "アイテム"
+
+[node name="ActionEmote" type="Panel" parent="."]
+offset_left = 1684.0
+offset_top = 960.0
+offset_right = 1780.0
+offset_bottom = 1056.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("action_btn_style")
+script = ExtResource("4_touch_action_button")
+action_name = "emote"
+is_taunt_button = true
+
+[node name="Label" type="Label" parent="ActionEmote"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "カモン"
+
+[node name="TauntSubmenu" type="Control" parent="ActionEmote"]
+visible = false
+offset_left = -44.0
+offset_top = -184.0
+offset_right = 140.0
+offset_bottom = -128.0
+mouse_filter = 2
+
+[node name="Taunt1" type="Panel" parent="ActionEmote/TauntSubmenu"]
+offset_right = 56.0
+offset_bottom = 56.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("taunt_circle_style")
+
+[node name="Label" type="Label" parent="ActionEmote/TauntSubmenu/Taunt1"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+text = "前のめり"
+
+[node name="Taunt2" type="Panel" parent="ActionEmote/TauntSubmenu"]
+offset_left = 64.0
+offset_right = 120.0
+offset_bottom = 56.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("taunt_circle_style")
+
+[node name="Label" type="Label" parent="ActionEmote/TauntSubmenu/Taunt2"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+text = "腰ふり"
+
+[node name="Taunt3" type="Panel" parent="ActionEmote/TauntSubmenu"]
+offset_left = 128.0
+offset_right = 184.0
+offset_bottom = 56.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("taunt_circle_style")
+
+[node name="Label" type="Label" parent="ActionEmote/TauntSubmenu/Taunt3"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+text = "余裕"
