@@ -279,10 +279,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	# Esc でのマウス解放は QuitMenu が開くときに行う
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		rotate_y(-event.relative.x * SettingsManager.mouse_sensitivity)
-		spring_arm.rotation.x = clampf(
-			spring_arm.rotation.x - event.relative.y * SettingsManager.mouse_sensitivity,
-			deg_to_rad(PITCH_MIN), deg_to_rad(PITCH_MAX))
+		apply_look_delta(event.relative)
 
 
 func _physics_process(delta: float) -> void:
@@ -726,6 +723,17 @@ func register_placed_block_camera(block: CollisionObject3D) -> void:
 ## --- ギミックから呼ばれる API ------------------------------------------
 ## いずれも「そのボディの権威ピア」でのみ適用する。
 ## 移動結果は既存の位置レプリケーションで他ピアへ伝わるため RPC は不要。
+
+## マウス/タッチドラッグ共通の視点操作。sensitivity 省略時は現在の設定値を使う
+## (タッチ側(touch_look_zone.gd)は既定引数のまま呼び、マウス側(_unhandled_input)も同様)。
+func apply_look_delta(delta: Vector2, sensitivity := SettingsManager.mouse_sensitivity) -> void:
+	if not is_multiplayer_authority():
+		return
+	rotate_y(-delta.x * sensitivity)
+	spring_arm.rotation.x = clampf(
+		spring_arm.rotation.x - delta.y * sensitivity,
+		deg_to_rad(PITCH_MIN), deg_to_rad(PITCH_MAX))
+
 
 ## ジャンプ台などの打ち上げ。y は上書き、水平は加算
 func launch(v: Vector3) -> void:

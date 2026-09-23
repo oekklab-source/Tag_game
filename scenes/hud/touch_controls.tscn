@@ -1,7 +1,8 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scenes/hud/touch_controls.gd" id="1_touch_controls"]
 [ext_resource type="Script" path="res://scenes/hud/virtual_joystick.gd" id="2_virtual_joystick"]
+[ext_resource type="Script" path="res://scenes/hud/touch_look_zone.gd" id="3_touch_look_zone"]
 
 [sub_resource type="StyleBoxFlat" id="pause_btn_normal"]
 bg_color = Color(0.08, 0.07, 0.16, 0.75)
@@ -76,6 +77,15 @@ theme_override_styles/normal = SubResource("pause_btn_normal")
 theme_override_styles/hover = SubResource("pause_btn_hover")
 theme_override_styles/pressed = SubResource("pause_btn_pressed")
 text = "≡"
+
+[node name="TouchLookZone" type="Control" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("3_touch_look_zone")
 
 [node name="VirtualJoystick" type="Panel" parent="."]
 anchor_left = 0.0
