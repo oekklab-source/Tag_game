@@ -63,3 +63,9 @@ static func report_disconnect_penalty(host: Node, target_puid: String, was_runne
 		body["opponent_avg_rating"] = opponent_avg_rating
 	return await HttpJsonClient.post_json(
 		host, RATING_API_BASE_URL + "report-disconnect-penalty", body, _auth_headers())
+
+
+## C-03 R-6: ランキング画面表示用。/leaderboard-top は verifyIdToken() を経由しない
+## 公開エンドポイントのため、他メソッドと違い認証ヘッダを付けない
+static func get_leaderboard_top(host: Node, limit: int = 20) -> Dictionary:
+	return await HttpJsonClient.get_json(host, RATING_API_BASE_URL + ("leaderboard-top?limit=%d" % limit))
