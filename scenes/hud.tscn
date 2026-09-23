@@ -332,7 +332,7 @@ theme_override_font_sizes/font_size = 15
 autowrap_mode = 1
 
 [node name="CopyLinkButton" type="Button" parent="Lobby/Box/Col/InviteRow"]
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 text = "リンクをコピー"
 
@@ -356,19 +356,19 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="OpenCostumeButton" type="Button" parent="Lobby/Box/Col/OverlayButtonsRow"]
-custom_minimum_size = Vector2(0, 42)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "着せ替え"
 
 [node name="OpenShopButton" type="Button" parent="Lobby/Box/Col/OverlayButtonsRow"]
-custom_minimum_size = Vector2(0, 42)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "ショップ"
 
 [node name="OpenFriendButton" type="Button" parent="Lobby/Box/Col/OverlayButtonsRow"]
-custom_minimum_size = Vector2(0, 42)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "フレンド"

@@ -148,6 +148,9 @@ func _ready() -> void:
 	_sb_border.anti_aliasing = true
 	vignette.texture = _radial_texture()
 	vignette.modulate = Color(1.0, 0.12, 0.12, 0.0)
+	## C-07 T-6: キーボード操作ヒントはタッチ操作時には意味がなく、仮想スティック
+	## 直上の視覚密集も緩和するため非表示にする
+	info_label.visible = not SettingsManager.should_show_touch_controls()
 
 
 ## HUD には操作可能なウィジェットが一つも無いので、全 Control をマウス無視にする。
