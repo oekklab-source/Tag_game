@@ -122,7 +122,8 @@ curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-outsider" -d "$BODY"
 # 9-2 hunter_count/self_rating/役割を変えながら-64Ptを20回送りつけても、
 #     被害者のratingは1日あたり合計-64Ptまでしか減らない(以降は target_daily_cap)
 for i in $(seq 1 20); do
-  curl -s -X POST $BASE/report-disconnect-penalty -H "X-Debug-Puid: p-attacker"     -d "{\"target_puid\":\"p-victim\",\"was_runner\":false,\"hunter_count\":$(( (i % 7) + 1 )),\"self_rating\":$(( 1400 + i )),\"rating_delta\":-64}"
+  curl -s -X POST $BASE/report-disconnect-penalty -H "X-Debug-Puid: p-attacker" \
+    -d "{\"target_puid\":\"p-victim\",\"was_runner\":false,\"hunter_count\":$(( (i % 7) + 1 )),\"self_rating\":$(( 1400 + i )),\"rating_delta\":-64}"
 done
 curl -s -X POST $BASE/rating -H "X-Debug-Puid: p-victim"
 # 9-3 自己申告レートは1500まで。claim直後(seeded_from_client=1)は5試合こなすまでランキングに載らない
@@ -130,7 +131,8 @@ curl -s -X POST $BASE/claim-initial-rating -H "X-Debug-Puid: p-new" -d '{"rating
 curl -s "$BASE/leaderboard-top?limit=10"
 # 9-4 レート制限の原子性: 上限10/日のclaimへ15本を並列投入しても通過は10本で止まる
 seq 1 15 | xargs -P 15 -I{} curl -s -X POST $BASE/claim-initial-rating -H "X-Debug-Puid: p-rl-test" -d '{"rating":1200}'
-npx wrangler d1 execute tag-game-rating-db --local --command   "SELECT rl_key, count FROM rate_limit_counters WHERE rl_key LIKE 'claim:p-rl-test%'"
+npx wrangler d1 execute tag-game-rating-db --local --command \
+  "SELECT rl_key, count FROM rate_limit_counters WHERE rl_key LIKE 'claim:p-rl-test%'"
 ```
 
 ## デプロイ手順(実施はユーザー自身が行う)
