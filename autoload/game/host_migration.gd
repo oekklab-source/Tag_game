@@ -4,6 +4,10 @@ extends Node
 ## ペナルティ報告を持つ(EOSロビー自体のホスト引き継ぎはEosManager/NetworkManager側)。
 ## (v6でのGameManager分割時に切り出した。詳細はgame_manager.gdのバージョン履歴参照)。
 
+## rating_report.gdと同じ理由(headless単体実行でclass_nameのグローバル登録が
+## 更新されていないケースへの対処)でpreloadを使う
+const _RatingBackendClientScript := preload("res://autoload/rating_backend_client.gd")
+
 ## ⑦対戦中に切断した逃げる役をレーティング戦でだけCPU代行に切り替えるかどうか。
 ## world.gd._on_peer_disconnected()がノードを実際に破棄する前に判定するために
 ## GameManager経由で公開している
@@ -12,15 +16,20 @@ func should_cpu_takeover_runner(peer_id: int) -> bool:
 		and peer_id == GameManager.runner_id and GameManager.round_is_ranked
 
 
-## ⑦⑧切断した本人はその場で反映できないため、サーバー(friend-api)に敗北分の
-## レート変動を記録し、本人が次回ログインした際に自分で適用する
-## (RankingManager._on_eos_initialized()参照)。CPU AIは別途開発中のため、
-## 「最強CPU」は既存のcpu_runner.gdをそのまま流用する暫定実装。
+## ⑦⑧切断した本人はその場で反映できないため、サーバー(rating-api)に敗北分の
+## レート変動を直接・権威的に反映させる(C-03 R-5。旧friend-apiの「本人が次回ログイン時に
+## 自分で適用する預かり金」方式は廃止した。対象者本人への通知は、次回ログイン時の
+## RankingManager._reconcile_server_rating()が/ratingを叩けば自動的に反映される)。
+## CPU AIは別途開発中のため、「最強CPU」は既存のcpu_runner.gdをそのまま流用する暫定実装。
 ## was_runner=falseの場合(鬼切断)はcalculate_rating_delta内のis_runner==is_winner
 ## 正規化により survival が MAX_TIME 扱いになり、「逃げ切られた」前提の最大ペナルティになる
 func _report_participant_disconnect_penalty(peer_id: int, was_runner: bool) -> void:
 	var puid := String(GameManager.peer_profiles.get(peer_id, {}).get("puid", ""))
 	if puid.is_empty():
+		return
+	# C-03 R-5: rating_report.gd.report_match_result()と同じ位置(ネットワーク呼び出し
+	# 直前)にゲートを置く
+	if not (BackendConfig.USE_LIVE_RATING_BACKEND and EosManager.is_eos_available):
 		return
 	var self_rating := int(GameManager.peer_profiles.get(peer_id, {}).get("rating", 1500))
 	var survival := GameManager.ROUND_TIME - GameManager.time_left
@@ -29,7 +38,9 @@ func _report_participant_disconnect_penalty(peer_id: int, was_runner: bool) -> v
 	var opponent_rating := RankingManager.opponent_avg_rating(was_runner)
 	var delta := RankingManager.calculate_rating_delta(
 		was_runner, false, survival, GameManager.round_hunter_count, false, self_rating, opponent_rating)
-	FriendManager.report_disconnect_penalty(puid, delta)
+	_RatingBackendClientScript.report_disconnect_penalty(
+		self, puid, was_runner, GameManager.round_hunter_count, self_rating, delta,
+		survival, opponent_rating)
 
 
 ## ⑨ホスト(peer_id==1)自身がPLAYING中に切断した場合の敗北精算に使うスナップショットを取る。

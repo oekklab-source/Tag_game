@@ -15,10 +15,13 @@
   明示的にテストするケース。
 - `schema.sql`: レート台帳(`ratings`)・試合ログ(`match_log`、二重計上防止)・
   JWKSキャッシュ(`jwks_cache`)・レート制限カウンタ(`rate_limit_counters`)のD1スキーマ。
-- `src/index.ts`: HTTPエンドポイント本体(`/report-match` `/claim-initial-rating`
-  `/rating` `/leaderboard-top`)。認証(`verifyIdToken`)は
+- `src/index.ts`: HTTPエンドポイント本体(`/report-match` `/report-disconnect-penalty`
+  `/claim-initial-rating` `/rating` `/leaderboard-top`)。認証(`verifyIdToken`)は
   [service/friend-api/src/index.ts](../friend-api/src/index.ts)から移植し、
-  JWKSキャッシュ・レート制限のみKVではなくD1へ書き換えている。
+  JWKSキャッシュ・レート制限のみKVではなくD1へ書き換えている。`/report-disconnect-penalty`は
+  C-03 R-5で追加した、旧`service/friend-api`の`/report-penalty`・`/consume-penalty`
+  (「本人が次回ログイン時に自分で適用する預かり金」方式)の後継。対戦中の切断(鬼/逃走者/
+  ホスト自身)1件につき、対象1名の敗北分をこのサービスのD1へ直接・権威的に反映する。
 - `src/index.test.ts`: バリデーション・レート制限キー生成など、D1やWorkers runtimeを
   起動せずに検証できる純粋関数の単体テスト。
 
@@ -96,6 +99,20 @@ curl -s "$BASE/leaderboard-top?limit=10"
 
 # 6. 認証失敗(X-Debug-Puidヘッダ無し)→ 401
 curl -s -i -X POST $BASE/rating
+
+# 7. report-disconnect-penalty(同一ボディを異なる報告者から2回送り、複数生存者が
+#    独立に同じ切断イベントを報告するレースを模擬。match_idはサーバーが
+#    target_puid/was_runner/hunter_count/self_ratingから決定的に導出するため、
+#    2回目はreplayed:trueになりratingは1回分しか変動しない)
+BODY3='{"target_puid":"p-h2","was_runner":false,"hunter_count":2,"self_rating":1500,"rating_delta":-10}'
+curl -s -X POST $BASE/report-disconnect-penalty -H "X-Debug-Puid: p-survivor-a" -d "$BODY3"
+curl -s -X POST $BASE/report-disconnect-penalty -H "X-Debug-Puid: p-survivor-b" -d "$BODY3"
+curl -s -X POST $BASE/rating -H "X-Debug-Puid: p-h2"   # rating変動が1回分のみ反映されていることを確認
+
+# 8. 4値(target_puid/was_runner/hunter_count/self_rating)のいずれかが違えば
+#    別のmatch_id(=別イベント)として処理される
+BODY4='{"target_puid":"p-h2","was_runner":false,"hunter_count":3,"self_rating":1500,"rating_delta":-8}'
+curl -s -X POST $BASE/report-disconnect-penalty -H "X-Debug-Puid: p-survivor-a" -d "$BODY4"
 ```
 
 ## デプロイ手順(実施はユーザー自身が行う)
@@ -105,10 +122,16 @@ curl -s -i -X POST $BASE/rating
 2. `npx wrangler d1 execute tag-game-rating-db --remote --file=schema.sql`
    (上記のローカル検証とは別に、本番D1にもスキーマを適用する必要がある)
 3. `npx wrangler deploy`
-4. デプロイ後、実機のEOS Connect ID Tokenを使って4エンドポイントを一通り手動で叩き、
+4. デプロイ後、実機のEOS Connect ID Tokenを使って5エンドポイントを一通り手動で叩き、
    401/200双方の応答を確認する(手順は上記のローカル検証と同じ、`X-Debug-Puid`の代わりに
    `Authorization: Bearer <実トークン>`を使う)
 5. `wrangler.toml`の`[vars]`に`ALLOW_DEBUG_AUTH`を絶対に書かないこと(`.dev.vars`限定)
+6. **(C-03 R-5固有の注意)** `autoload/backend_config.gd`の`USE_LIVE_RATING_BACKEND`を
+   `true`に切り替えるタイミングと、旧`service/friend-api`の`/report-penalty`・
+   `/consume-penalty`経路を削除したクライアントビルドを配布するタイミングを必ず同時に行う
+   こと。現状(`USE_LIVE_FRIEND_BACKEND=true`・`USE_LIVE_RATING_BACKEND=false`)では
+   旧friend-api経由の切断ペナルティが実際に機能している唯一の経路であり、新旧の切り替えが
+   ずれると切断ペナルティが一時的に完全に無効化される空白期間が生まれる。
 
 ## 既知の制約・残存リスク
 
@@ -131,3 +154,16 @@ curl -s -i -X POST $BASE/rating
 - D1の`batch()`が「いずれかの文が失敗したら全体ロールバック」という原子性を持つ前提で
   `/report-match`・`/claim-initial-rating`の冪等性を設計している(UNIQUE制約違反での
   ロールバックをローカル検証手順3で実際に確認すること)。
+- **`/report-disconnect-penalty`のdedupは決定的ID(SHA-256)方式**(C-03 R-5)。対象PUID・
+  役割(runner/hunter)・hunter数・自己申告ratingの4値から`match_id`をサーバー側で導出するため、
+  ホスト引き継ぎ失敗時に生存者全員が独立に(調整なしで)送信しても`match_log`のUNIQUE制約で
+  1回だけ反映される。代償として、同一マッチ内で同一人物が同じ役割・同じhunter数・同じ
+  ratingのまま複数回切断した場合は2回目以降が黙って重複排除される(実質1マッチ1回に収束、
+  意図的な仕様)。また極めて低確率だが、別の試合で偶然この4値が完全一致した場合に新しい
+  正当なペナルティがdedupで失われうる(fail-safe、実害は「稀にペナルティが漏れる」方向のみ
+  で公平性を損なわない。`docs/SECURITY_NOTES.md`項目3に追記予定)。
+- **`rating_delta`は引き続きクライアント(報告者)の自己申告・自己計算**
+  (`autoload/ranking_manager.gd`の`calculate_rating_delta()`、`-64〜-1`にクランプするのみ)。
+  `rating_before`はD1の権威値を使うため結果自体は改ざんできないが、「何点減点するか」の
+  計算自体は`/report-match`ほど厳密なサーバー側再計算になっていない(旧friend-api
+  `/report-penalty`と同じ信頼モデルを引き継いだだけで、今回はそこまで強化していない)。

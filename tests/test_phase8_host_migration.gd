@@ -3,9 +3,10 @@ extends Node
 ## Phase 8: ホストマイグレーション + 切断側ペナルティ拡張の検証スクリプト
 ##
 ## 実ネットワーク・実EOSロビーは張らず、GameManager/EosManagerのAPIを直接叩いて
-## 検証する(tests/test_phase6_network_edge.gdと同じ流儀)。FriendManager.report_disconnect_penalty()
-## はUSE_LIVE_FRIEND_BACKEND有効時に実バックエンドへ通信してしまうため、このテストでは
-## puidを空文字にして早期returnさせ、実際にその関数を呼ばせない構成に統一する
+## 検証する(tests/test_phase6_network_edge.gdと同じ流儀)。
+## RatingBackendClient.report_disconnect_penalty()(C-03 R-5)はUSE_LIVE_RATING_BACKEND
+## 有効時に実バックエンドへ通信してしまうため、このテストではpuidを空文字にして早期
+## returnさせ、実際にその関数を呼ばせない構成に統一する
 ## (tests/test_eos_lobby_mock.gdが実EOSバックエンドへの副作用を避ける方針と同じ)。
 
 var passed_count := 0
@@ -28,6 +29,7 @@ func _ready() -> void:
 
 	_test_hunter_disconnect_no_longer_free()
 	_test_hunter_disconnect_does_not_end_round()
+	_test_disconnect_penalty_gated_by_live_backend_flag()
 	_test_snapshot_for_host_disconnect_penalty()
 	_test_handoff_candidate_selection()
 
@@ -42,7 +44,7 @@ func _ready() -> void:
 
 
 ## 1. 鬼役がランク戦PLAYING中に切断した場合、on_player_leftのcpu_took_over=false分岐で
-## _report_participant_disconnect_penalty()に到達すること(puidが空なのでFriendManagerへの
+## _report_participant_disconnect_penalty()に到達すること(puidが空なのでRatingBackendClientへの
 ## 実通信は起きない。到達したかどうかは「例外なく完走する」ことと2で見る副作用で確認する)
 func _test_hunter_disconnect_no_longer_free() -> void:
 	print("\n--- [1] 鬼役がランク戦中に切断してもクラッシュせず処理が完走する ---")
@@ -50,7 +52,7 @@ func _test_hunter_disconnect_no_longer_free() -> void:
 	GameManager._start_round(99, 1.0, 1, spawns, true)
 	GameManager.round_is_ranked = true
 	# puidを設定しない(空文字) -> _report_participant_disconnect_penaltyが早期returnし、
-	# FriendManager.report_disconnect_penalty()(実バックエンド通信)を呼ばせない
+	# RatingBackendClient.report_disconnect_penalty()(実バックエンド通信)を呼ばせない
 	GameManager.peer_profiles[7] = {"name": "Hunter7", "rating": 1500}
 
 	GameManager.on_player_left(7, false)
@@ -69,6 +71,25 @@ func _test_hunter_disconnect_does_not_end_round() -> void:
 	GameManager.on_player_left(7, false)
 
 	_assert(GameManager.state == GameManager.State.PLAYING, "鬼切断後も試合は継続してPLAYINGのまま")
+
+
+## C-03 R-5: puidが非空でも、USE_LIVE_RATING_BACKENDがfalseの間はRatingBackendClientへの
+## 実通信に到達する前にゲートで止まり、例外なく完走すること(#1がpuid空文字での早期returnを
+## 検証しているのに対し、こちらは「puidがあってもフラグで止まる」経路を検証する)
+func _test_disconnect_penalty_gated_by_live_backend_flag() -> void:
+	print("\n--- [2.5] 切断ペナルティ報告はUSE_LIVE_RATING_BACKENDがfalseの間は実通信に到達しない ---")
+	_assert(not BackendConfig.USE_LIVE_RATING_BACKEND,
+		"前提: このテストはUSE_LIVE_RATING_BACKEND=falseを前提にしている")
+
+	var spawns: Dictionary = {99: Vector3.ZERO}
+	GameManager._start_round(99, 1.0, 1, spawns, true)
+	GameManager.round_is_ranked = true
+	GameManager.peer_profiles[7] = {"name": "Hunter7", "rating": 1500, "puid": "hunter7-puid"}
+
+	GameManager.on_player_left(7, false)
+
+	_assert(not GameManager.peer_profiles.has(7),
+		"puidがあってもUSE_LIVE_RATING_BACKENDのゲートで止まり、例外なく完走する")
 
 
 ## 3. snapshot_for_host_disconnect_penalty(): ホスト(peer_id==1)自身の役割・生存時間を

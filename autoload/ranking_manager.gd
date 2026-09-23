@@ -4,11 +4,8 @@ extends Node
 ## 1人 (Runner) vs 多人数 (Hunter) の非対称対戦に合わせたレート変動を算出する。
 
 signal rating_changed(old_rating: int, new_rating: int, delta: int)
-## H-01: 前回対戦中の切断ペナルティが起動時に反映されたことをUI側へ通知するための専用シグナル。
-## rating_changed は通常の試合終了時にも発火するため、こちらだけを購読すれば二重通知にならない
-signal pending_penalty_applied(delta: int)
 ## C-03 R-4: サーバーが黙って補正したレートを、実際にユーザーへ知らせるべき瞬間にだけ発火する。
-## rating_changed とは別に用意する(pending_penalty_appliedと同じ理由: 二重通知を防ぐ)。
+## 通常の試合終了時にも発火するrating_changedとは別に用意する(二重通知を防ぐため)。
 ## クライアントとサーバーは同じElo計算式を使うため通常は一致する――delta==0(見た目上
 ## 変化なし)の場合は発火しない。試合中の即時補正(apply_server_rating_correction)と
 ## 起動時reconciliation(_reconcile_server_rating)の両方から発火しうる
@@ -32,30 +29,15 @@ func _ready() -> void:
 	EosManager.eos_initialized.connect(_on_eos_initialized)
 
 
-## ⑦EOS初期化成功時に2つの起動時reconciliationを並行実行する(互いにawaitせず、
-## 片方の失敗が他方に影響しない)
+## ⑦EOS初期化成功時に起動時reconciliationを実行する。C-03 R-5で旧・切断ペナルティ
+## 経路(friend-apiの/report-penalty・/consume-penalty)を廃止したため、以前ここにあった
+## _consume_pending_penalty()は不要になった――対戦中の切断ペナルティはrating-apiの
+## ratingsテーブルへ直接反映されるため、_reconcile_server_rating()の通常のサーバー照合が
+## そのまま拾う
 func _on_eos_initialized(success: bool) -> void:
 	if not success:
 		return
-	_consume_pending_penalty()
 	_reconcile_server_rating()
-
-
-## ⑦レーティング戦で逃げる役として切断し、CPUに代行された場合の敗北精算(暫定実装)。
-## 本人はその場にいないため反映できず、サーバー側(friend-api)に記録されたものを
-## 起動時に一度だけ取りに行く。StripePurchaseProvider.reconcile_pending()と同じ
-## 「起動時一回だけの確認・適用・クリア」パターン
-func _consume_pending_penalty() -> void:
-	var res := await FriendManager.consume_pending_penalty()
-	if not res.get("pending", false):
-		return
-	var delta := int(res.get("rating_delta", 0))
-	var old_r := ProfileManager.rating
-	ProfileManager.apply_match_result(delta, false, true)
-	var new_r := ProfileManager.rating
-	EosManager.upload_rating(new_r)
-	rating_changed.emit(old_r, new_r, delta)
-	pending_penalty_applied.emit(delta)
 
 
 ## C-03 R-4: 起動時、サーバー権威のレートとローカル値を同期する。USE_LIVE_RATING_BACKENDが

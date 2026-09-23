@@ -23,10 +23,13 @@
  * 正式な追記はR-8でまとめて行う)。
  *
  * エンドポイント:
- *   POST /report-match          -> ホストが試合結果を報告。サーバー側でレートを再計算しD1へ反映
- *   POST /claim-initial-rating  -> 初回のみ、クライアント自己申告レートをD1の初期値として登録
- *   POST /rating                -> 自分の現在のサーバー権威レートを取得
- *   GET  /leaderboard-top       -> 認証不要、レート上位N件を取得
+ *   POST /report-match              -> ホストが試合結果を報告。サーバー側でレートを再計算しD1へ反映
+ *   POST /report-disconnect-penalty -> ホストが対戦中の切断(鬼/逃走者/ホスト自身)を報告し、
+ *                                       対象1名の敗北分をD1へ直接反映する(C-03 R-5、旧
+ *                                       service/friend-api の /report-penalty・/consume-penalty の後継)
+ *   POST /claim-initial-rating      -> 初回のみ、クライアント自己申告レートをD1の初期値として登録
+ *   POST /rating                    -> 自分の現在のサーバー権威レートを取得
+ *   GET  /leaderboard-top           -> 認証不要、レート上位N件を取得
  */
 
 import { calculateAllRatingChanges, roundHalfAwayFromZero, tierId, tierName } from "./rating_model.js";
@@ -67,6 +70,13 @@ const CLAIM_LIMIT_PER_DAY = 10;
 const RATING_QUERY_LIMIT_PER_DAY = 1000;
 const LEADERBOARD_LIMIT_PER_DAY = 200; // IP単位
 
+// service/friend-api/src/index.ts の PENALTY_MIN_DELTA/PENALTY_MAX_DELTA/
+// PENALTY_REPORT_LIMIT_PER_DAY から移設(C-03 R-5)
+const PENALTY_MIN_DELTA = -64;
+const PENALTY_MAX_DELTA = -1;
+const DISCONNECT_PENALTY_LIMIT_PER_DAY = 20;
+const TARGET_PUID_MAX_LEN = 200;
+
 const MATCH_ID_RE = /^[A-Za-z0-9_-]{8,128}$/;
 
 export default {
@@ -92,6 +102,8 @@ export default {
 		switch (url.pathname) {
 			case "/report-match":
 				return handleReportMatch(request, env, puid);
+			case "/report-disconnect-penalty":
+				return handleReportDisconnectPenalty(request, env, puid);
 			case "/claim-initial-rating":
 				return handleClaimInitialRating(request, env, puid);
 			case "/rating":
@@ -119,6 +131,30 @@ export function isValidHunterPuids(runnerPuid: string, hunterPuids: unknown): hu
 	return new Set(hunterPuids).size === hunterPuids.length;
 }
 
+/**
+ * /report-disconnect-penalty のリクエスト本体を検証する(C-03 R-5)。rating_delta の範囲
+ * (PENALTY_MIN_DELTA..PENALTY_MAX_DELTA)は個別のreason("invalid_delta")を返したいため、
+ * ここでは検証せず呼び出し元(handleReportDisconnectPenalty)で別途チェックする
+ */
+export function isValidDisconnectPenaltyRequest(
+	targetPuid: unknown,
+	reporterPuid: string,
+	wasRunner: unknown,
+	hunterCount: unknown,
+	selfRating: unknown,
+	ratingDelta: unknown,
+): targetPuid is string {
+	if (typeof targetPuid !== "string" || !targetPuid || targetPuid.length > TARGET_PUID_MAX_LEN) return false;
+	if (targetPuid === reporterPuid) return false;
+	if (typeof wasRunner !== "boolean") return false;
+	if (typeof hunterCount !== "number" || !Number.isInteger(hunterCount)) return false;
+	if (hunterCount < MIN_HUNTERS || hunterCount > MAX_HUNTERS) return false;
+	if (typeof selfRating !== "number" || !Number.isFinite(selfRating)) return false;
+	if (selfRating < CLAIM_MIN_RATING || selfRating > CLAIM_MAX_RATING) return false;
+	if (typeof ratingDelta !== "number" || !Number.isFinite(ratingDelta)) return false;
+	return true;
+}
+
 /** ?limit= クエリパラメータを [1,100] にクランプする。省略/非数値は既定値20にフォールバック */
 export function clampLeaderboardLimit(raw: string | null): number {
 	const n = raw === null ? NaN : parseInt(raw, 10);
@@ -131,6 +167,9 @@ function dayKey(): string {
 }
 export function reportMatchRateLimitKey(puid: string, day: string = dayKey()): string {
 	return `report_match:${puid}:${day}`;
+}
+export function reportDisconnectPenaltyRateLimitKey(puid: string, day: string = dayKey()): string {
+	return `disconnect_penalty:${puid}:${day}`;
 }
 export function claimRateLimitKey(puid: string, day: string = dayKey()): string {
 	return `claim:${puid}:${day}`;
@@ -319,6 +358,113 @@ async function handleReportMatch(request: Request, env: Env, reporterPuid: strin
 			return json({ ok: false, reason: "invalid_request" });
 		}
 		const prevResult = JSON.parse(prev.payload) as ReportMatchOk;
+		prevResult.replayed = true;
+		return json(prevResult);
+	}
+
+	return json(responseBody);
+}
+
+// ---------------------------------------------------------------------------
+// /report-disconnect-penalty (C-03 R-5)
+// ---------------------------------------------------------------------------
+
+interface DisconnectPenaltyOk {
+	ok: true;
+	match_id: string;
+	replayed: boolean;
+	target: ParticipantResult;
+}
+
+/**
+ * 対戦中の切断イベントに対して決定的なmatch_idを導出する(クライアントには一切導出させず、
+ * このID自体を送らせもしない)。material の4値は「ラウンド開始後、生存者間で完全にビット一致する
+ * 不変な値」だけを選んでいる(survival_timeのようにクライアント間でドリフトしうる値は使わない)。
+ * これにより、ホスト自身が切断した場合に生存者全員が独立に(調整なしで)同じイベントを
+ * 報告しても、2件目以降は match_log の UNIQUE 制約で自然に無視される
+ * (旧friend-apiの「puidキー単純上書きで冪等」に代わる、C-03の権威モデルに沿った冪等性ガード)。
+ * "v1" をフォーマットに埋め込み、将来material を変える際に旧フォーマットと衝突しないようにする
+ */
+export async function computeDisconnectPenaltyId(
+	targetPuid: string,
+	wasRunner: boolean,
+	hunterCount: number,
+	selfRating: number,
+): Promise<string> {
+	const canonical = `hdp:v1:${targetPuid}:${wasRunner ? "runner" : "hunter"}:${hunterCount}:${selfRating}`;
+	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+	const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+	return `hdp-${hex}`;
+}
+
+async function handleReportDisconnectPenalty(request: Request, env: Env, reporterPuid: string): Promise<Response> {
+	const body = await safeJson(request);
+	const targetPuid = body?.target_puid;
+	const wasRunner = body?.was_runner;
+	const hunterCount = Number(body?.hunter_count);
+	const selfRating = Number(body?.self_rating);
+	const ratingDelta = Number(body?.rating_delta);
+
+	if (!isValidDisconnectPenaltyRequest(targetPuid, reporterPuid, wasRunner, hunterCount, selfRating, ratingDelta)) {
+		return json({ ok: false, reason: "invalid_request" });
+	}
+	if (ratingDelta < PENALTY_MIN_DELTA || ratingDelta > PENALTY_MAX_DELTA) {
+		return json({ ok: false, reason: "invalid_delta" });
+	}
+	if (
+		!(await checkAndBumpRateLimit(
+			env,
+			reportDisconnectPenaltyRateLimitKey(reporterPuid),
+			DISCONNECT_PENALTY_LIMIT_PER_DAY,
+		))
+	) {
+		return json({ ok: false, reason: "rate_limited" });
+	}
+
+	const matchId = await computeDisconnectPenaltyId(targetPuid, wasRunner, hunterCount, selfRating);
+
+	const row = await env.DB.prepare(
+		"SELECT rating, matches_played, runner_wins, hunter_wins, highest_rating FROM ratings WHERE puid = ?",
+	)
+		.bind(targetPuid)
+		.first<RatingRow>();
+	if (!row) {
+		return json({ ok: false, reason: "not_claimed" });
+	}
+
+	const ratingAfter = clampFloor(row.rating + ratingDelta);
+	const targetResult: ParticipantResult = {
+		puid: targetPuid,
+		rating_before: row.rating,
+		rating_after: ratingAfter,
+		delta: ratingAfter - row.rating,
+		tier_id: tierId(ratingAfter),
+		tier_name: tierName(ratingAfter),
+	};
+	const responseBody: DisconnectPenaltyOk = { ok: true, match_id: matchId, replayed: false, target: targetResult };
+	const payload = JSON.stringify(responseBody);
+	const now = Date.now();
+
+	try {
+		await env.DB.batch([
+			// match_id は決定的に導出されているため、生存者全員が同じイベントを独立に報告しても
+			// ここでUNIQUE制約違反となりbatch全体が失敗する(=以下のUPDATEも一切適用されない)
+			env.DB.prepare(
+				"INSERT INTO match_log (match_id, reporter_puid, payload, created_at) VALUES (?, ?, ?, ?)",
+			).bind(matchId, reporterPuid, payload, now),
+			env.DB.prepare(
+				"UPDATE ratings SET rating = ?, matches_played = matches_played + 1, " +
+					"highest_rating = MAX(highest_rating, ?), updated_at = ? WHERE puid = ?",
+			).bind(ratingAfter, ratingAfter, now, targetPuid),
+		]);
+	} catch {
+		const prev = await env.DB.prepare("SELECT payload FROM match_log WHERE match_id = ?")
+			.bind(matchId)
+			.first<{ payload: string }>();
+		if (!prev) {
+			return json({ ok: false, reason: "invalid_request" });
+		}
+		const prevResult = JSON.parse(prev.payload) as DisconnectPenaltyOk;
 		prevResult.replayed = true;
 		return json(prevResult);
 	}

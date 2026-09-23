@@ -23,9 +23,9 @@ const _RatingBackendClientScript := preload("res://autoload/rating_backend_clien
 
 # --- 純粋関数(ネットワーク・GameManager状態を読み書きしない。tests/test_rating_report.gdで直接検証) ---
 
-## 報告すべきか。RUNNER_LEFTはhost_migration.gdの切断ペナルティ経路(friend-apiの
-## /report-penalty)が既に処理しているため対象外(R-5で正式統合するまでは二重処理を
-## 避けるためここでは触らない)
+## 報告すべきか。RUNNER_LEFTはhost_migration.gd/network_manager.gdの切断ペナルティ経路
+## (rating-apiの/report-disconnect-penalty、C-03 R-5)が既に処理しているため対象外
+## (二重処理を避けるためここでは触らない)
 static func should_report(round_is_ranked: bool, reason: int, tagger_id: int) -> bool:
 	if not round_is_ranked:
 		return false

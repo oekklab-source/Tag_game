@@ -173,7 +173,7 @@ Title Storage, Voice）のうち、コード側（`autoload/`・`scenes/` 全体
 `addons/epic-online-services-godot/` 自体は除く）で実際に呼んでいるのは **Leaderboards / Lobbies /
 Player Data Storage / Stats の4項目のみ**。残り10項目は未使用（特に Sessions はこのゲームが使う
 EOS Lobbies とは別インターフェースで無関係、Player Reports/Sanctions は EOS ネイティブ機能ではなく
-`report_profile` RPC・friend-api の `/report-penalty` で自前実装済み）。なお「P2P」という項目自体が
+`report_profile` RPC・rating-api の `/report-disconnect-penalty` で自前実装済み）。なお「P2P」という項目自体が
 Client Policy の権限一覧に存在しないことも確認した（このゲームは EOS の P2P Interface を使わず、
 ENet/WebSocket + Cloudflare トンネルで通信しているため、そもそも懸念不要）。
 **判断**: 単一プロダクトのポリシーであり他プロダクトへの権限漏洩リスクがないため、

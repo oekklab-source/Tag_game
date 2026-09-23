@@ -27,10 +27,6 @@ extends Control
 @onready var name_confirm_change_btn: Button = $NameConfirmDialog/Panel/VBox/Buttons/ChangeButton
 @onready var name_confirm_join_btn: Button = $NameConfirmDialog/Panel/VBox/Buttons/JoinButton
 
-@onready var penalty_notice_dialog: Control = $PenaltyNoticeDialog
-@onready var penalty_notice_message: Label = $PenaltyNoticeDialog/Panel/VBox/MessageLabel
-@onready var penalty_notice_close_btn: Button = $PenaltyNoticeDialog/Panel/VBox/Buttons/CloseButton
-
 ## C-03 R-4: 起動時のサーバーレート同期通知
 @onready var rating_sync_dialog: Control = $RatingSyncDialog
 @onready var rating_sync_message: Label = $RatingSyncDialog/Panel/VBox/MessageLabel
@@ -66,7 +62,6 @@ func _ready() -> void:
 	profile_badge_btn.pressed.connect(_on_profile_pressed)
 	name_confirm_change_btn.pressed.connect(_on_name_confirm_change_pressed)
 	name_confirm_join_btn.pressed.connect(_on_name_confirm_join_pressed)
-	penalty_notice_close_btn.pressed.connect(penalty_notice_dialog.hide)
 	rating_sync_close_btn.pressed.connect(rating_sync_dialog.hide)
 	find_another_room_btn.pressed.connect(_on_find_another_room_pressed)
 	error_history_btn.pressed.connect(_on_error_history_pressed)
@@ -75,9 +70,9 @@ func _ready() -> void:
 	ProfileManager.profile_updated.connect(_update_badge)
 	_update_badge()
 
-	# H-01: 前回対戦中の切断ペナルティは起動後、EOS初期化完了(非同期)を待って反映されるため
-	# ここで一度だけ購読しておけば、発火タイミングによらず必ず通知できる
-	RankingManager.pending_penalty_applied.connect(_on_pending_penalty_applied)
+	# H-01/C-03 R-4: 前回対戦中のサーバー補正(切断ペナルティ含む、R-5でrating-apiへ統合)は
+	# 起動後、EOS初期化完了(非同期)を待って反映されるため、ここで一度だけ購読しておけば
+	# 発火タイミングによらず必ず通知できる
 	RankingManager.server_rating_corrected.connect(_on_server_rating_corrected)
 
 	# Web版では Quit ボタンを非表示
@@ -92,7 +87,6 @@ func _ready() -> void:
 	room_match_dialog.hide()
 	ranking_dialog.hide()
 	name_confirm_dialog.hide()
-	penalty_notice_dialog.hide()
 	rating_sync_dialog.hide()
 	error_log_dialog.hide()
 
@@ -185,13 +179,9 @@ func _update_badge() -> void:
 	profile_badge_color.color = RankingManager.tier_color(ProfileManager.rating)
 
 
-## H-01: 前回対戦中に切断して課されたレートペナルティを起動時に一度だけ知らせる
-func _on_pending_penalty_applied(delta: int) -> void:
-	penalty_notice_message.text = "対戦中に切断したため、レートが%d Pt減少しました（現在%d Pt）。" % [abs(delta), ProfileManager.rating]
-	penalty_notice_dialog.show()
-
-
 ## C-03 R-4: 起動時、サーバー権威のレートとローカル値に差があった場合の同期通知
+## (C-03 R-5で切断ペナルティもrating-apiへ統合したため、対戦中の切断で課された
+## レートペナルティもこのダイアログが拾う。H-01の専用PenaltyNoticeDialogは廃止した)
 func _on_server_rating_corrected(_old_rating: int, new_rating: int, delta: int) -> void:
 	rating_sync_message.text = rating_sync_dialog_text(delta, new_rating)
 	rating_sync_dialog.show()

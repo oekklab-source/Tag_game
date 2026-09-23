@@ -13,10 +13,13 @@ import { test } from "node:test";
 import {
 	claimRateLimitKey,
 	clampLeaderboardLimit,
+	computeDisconnectPenaltyId,
+	isValidDisconnectPenaltyRequest,
 	isValidHunterPuids,
 	isValidMatchId,
 	leaderboardRateLimitKey,
 	ratingQueryRateLimitKey,
+	reportDisconnectPenaltyRateLimitKey,
 	reportMatchRateLimitKey,
 } from "./index.js";
 
@@ -62,4 +65,35 @@ test("レート制限キー生成: 種別:主体:日付 の形式で、日付を
 	assert.equal(claimRateLimitKey("p1", "2026-09-22"), "claim:p1:2026-09-22");
 	assert.equal(ratingQueryRateLimitKey("p1", "2026-09-22"), "rating_query:p1:2026-09-22");
 	assert.equal(leaderboardRateLimitKey("1.2.3.4", "2026-09-22"), "leaderboard:1.2.3.4:2026-09-22");
+	assert.equal(reportDisconnectPenaltyRateLimitKey("p1", "2026-09-22"), "disconnect_penalty:p1:2026-09-22");
+});
+
+// C-03 R-5: 切断ペナルティのrating-api統合(旧friend-api /report-penalty・/consume-penalty の後継)
+
+test("isValidDisconnectPenaltyRequest: 基本バリデーション", () => {
+	assert.equal(isValidDisconnectPenaltyRequest("target", "reporter", true, 3, 1500, -12), true);
+	assert.equal(isValidDisconnectPenaltyRequest("target", "target", true, 3, 1500, -12), false); // 自己申告(報告者=対象)
+	assert.equal(isValidDisconnectPenaltyRequest("", "reporter", true, 3, 1500, -12), false); // 空puid
+	assert.equal(isValidDisconnectPenaltyRequest(123, "reporter", true, 3, 1500, -12), false); // puid非文字列
+	assert.equal(isValidDisconnectPenaltyRequest("target", "reporter", "yes", 3, 1500, -12), false); // was_runner非bool
+	assert.equal(isValidDisconnectPenaltyRequest("target", "reporter", true, 0, 1500, -12), false); // hunter_count下限外
+	assert.equal(isValidDisconnectPenaltyRequest("target", "reporter", true, 8, 1500, -12), false); // hunter_count上限外
+	assert.equal(isValidDisconnectPenaltyRequest("target", "reporter", true, 3.5, 1500, -12), false); // 非整数
+	assert.equal(isValidDisconnectPenaltyRequest("target", "reporter", true, 3, 50, -12), false); // rating下限外
+	assert.equal(isValidDisconnectPenaltyRequest("target", "reporter", true, 3, 1500, "not-a-number"), false);
+});
+
+test("computeDisconnectPenaltyId: 同一入力は同一ID、入力が違えば別ID", async () => {
+	const id1 = await computeDisconnectPenaltyId("p1", true, 3, 1500);
+	const id2 = await computeDisconnectPenaltyId("p1", true, 3, 1500);
+	assert.equal(id1, id2);
+	assert.match(id1, /^hdp-[0-9a-f]{64}$/);
+
+	const idDiffPuid = await computeDisconnectPenaltyId("p2", true, 3, 1500);
+	const idDiffRole = await computeDisconnectPenaltyId("p1", false, 3, 1500);
+	const idDiffHunterCount = await computeDisconnectPenaltyId("p1", true, 2, 1500);
+	const idDiffRating = await computeDisconnectPenaltyId("p1", true, 3, 1501);
+	for (const other of [idDiffPuid, idDiffRole, idDiffHunterCount, idDiffRating]) {
+		assert.notEqual(id1, other);
+	}
 });

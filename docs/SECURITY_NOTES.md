@@ -25,14 +25,28 @@
 
 ## 3. ペナルティ報告対象の PUID はホストの自己申告
 
-`autoload/game/host_migration.gd` がホスト経由で `friend-api` の `/report-penalty` に送る対象 PUID は、
-`peer_profiles` に入ったクライアント自己申告の値をそのまま使う。EOS Connect ID Token 認証
-（`autoload/friend_backend_client.gd` → `service/friend-api/src/index.ts` の `verifyIdToken()`）により
+`autoload/game/host_migration.gd`・`autoload/network_manager.gd` がホスト(または生存者)経由で
+`rating-api` の `/report-disconnect-penalty` に送る対象 PUID は、`peer_profiles` に入った
+クライアント自己申告の値をそのまま使う（C-03 R-5で旧 `service/friend-api` の `/report-penalty`・
+`/consume-penalty` から統合、対象PUIDが自己申告のままという制約自体は変わらない）。
+EOS Connect ID Token 認証（`autoload/rating_backend_client.gd` →
+`service/rating-api/src/index.ts` の `verifyIdToken()`）により
 **「誰がこのリクエストを送ったか」は保証される**が、**「送信者が名乗った対象PUIDが実在の対戦相手か」**
 はサーバ側では検証できない。改造クライアントが他人のPUIDを騙ってペナルティを送りつける経路は残る。
 
 **軽減策（実装済み）**: `rating_delta` を `-64〜-1` に制限し、報告者PUID単位で20件/日のレート制限を掛けている
-（[service/friend-api/src/index.ts](../service/friend-api/src/index.ts)）ため、被害は限定的かつ検知可能な規模に収まる。
+（[service/rating-api/src/index.ts](../service/rating-api/src/index.ts)）ため、被害は限定的かつ検知可能な規模に収まる。
+また `rating_before` はサーバー側D1の権威値を使うため、結果自体の改ざん（架空のPUIDに対する
+「減点」を装って自分の順位を相対的に上げる等）はできない。
+
+**軽減策（実装済み・付随する既知の制約）**: 対象PUID・役割(runner/hunter)・hunter数・自己申告rating
+の4値から `match_id` をサーバー側で決定的に導出する（ホスト自身が切断した場合、生存者全員が
+独立に同じイベントを報告しうるため、この4値が同一マッチ内で完全にビット一致することを
+利用したdedup、詳細は `service/rating-api/README.md`「既知の制約・残存リスク」参照）。
+代償として、同一マッチ内で同一人物が同じ役割・同じhunter数・同じratingのまま複数回切断した
+場合は2回目以降が黙って重複排除される（実質1マッチ1回に収束、意図的な仕様）。また極めて
+低確率だが、別の試合で偶然この4値が完全一致した場合に新しい正当なペナルティがdedupで
+失われうる（fail-safe、実害は「稀にペナルティが漏れる」方向のみで公平性を損なわない）。
 
 **受容理由**: サーバが対戦の存在自体を把握していない（EOSロビーはP2P、対戦結果をサーバに逐一報告する
 設計ではない）ため、対象の正当性を完全に検証するには対戦セッションをサーバ側に持たせる大改修が必要になる。

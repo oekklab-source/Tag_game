@@ -29,6 +29,10 @@ const TUNNEL_POLL_TIMEOUT := 30.0
 ## 招待リンク配布用のページ(tools/serve.ps1が案内するURLと同じ)
 const PAGES_URL := "https://oekklab-source.github.io/Tag_game"
 
+## C-03 R-5: rating_report.gd/host_migration.gdと同じ理由(headless単体実行で
+## class_nameのグローバル登録が更新されていないケースへの対処)でpreloadを使う
+const _RatingBackendClientScript := preload("res://autoload/rating_backend_client.gd")
+
 var mode := Mode.NONE
 var session_kind := SessionKind.SOLO
 var join_address := "127.0.0.1"
@@ -378,8 +382,9 @@ func _on_host_migrated(_new_owner_puid: String, i_am_new_host: bool) -> void:
 	if i_am_new_host:
 		if EosManager.can_host_of(EosManager.product_user_id):
 			# ⑨自分がホストとして確定した時点でペナルティを報告する
-			# (新ホストに昇格した端末だけが報告する。friend-apiはpuidキーの単純上書きで
-			# 冪等なため、_migration_failed()側の全員報告フォールバックと重複しても安全)
+			# (新ホストに昇格した端末だけが報告する。rating-apiは決定的ID(SHA-256)で導出した
+			# match_idのUNIQUE制約により1回だけ反映されるため、_migration_failed()側の
+			# 全員報告フォールバックと重複しても安全、C-03 R-5)
 			_report_pending_host_penalty()
 			_promote_self_to_host()
 		elif await EosManager.handoff_if_incapable():
@@ -435,8 +440,9 @@ func _migration_failed(reason: String) -> void:
 	if not is_migrating:
 		return
 	last_error = reason
-	# ⑨新ホストが決まらなかった場合、生存者全員が独立に報告する(friend-apiは
-	# puidキーの単純上書きで冪等なため、複数人が同じ値を送っても壊れない)
+	# ⑨新ホストが決まらなかった場合、生存者全員が独立に報告する(rating-apiは決定的ID
+	# (SHA-256)で導出したmatch_idのUNIQUE制約により、複数人が同じ値を送っても
+	# 1回だけ反映される、C-03 R-5)
 	_report_pending_host_penalty()
 	is_migrating = false
 	_hide_migration_overlay()
@@ -448,12 +454,21 @@ func _report_pending_host_penalty() -> void:
 		return
 	var s: Dictionary = _pending_host_penalty
 	_pending_host_penalty = {}
+	# C-03 R-5: rating_report.gd.report_match_result()と同じ位置(ネットワーク呼び出し
+	# 直前)にゲートを置く
+	if not (BackendConfig.USE_LIVE_RATING_BACKEND and EosManager.is_eos_available):
+		return
 	# 固定値1500ではなく、reset()前にsnapshot_for_host_disconnect_penalty()が
 	# 確保しておいた実際の相手陣営レートを使う(apply_match_end()と同じ修正)
+	var opponent_rating := int(s.get("opponent_avg_rating", 1500))
 	var delta := RankingManager.calculate_rating_delta(
-		s.was_runner, false, s.survival, s.hunter_count, false, s.self_rating,
-		int(s.get("opponent_avg_rating", 1500)))
-	FriendManager.report_disconnect_penalty(s.puid, delta)
+		s.was_runner, false, s.survival, s.hunter_count, false, s.self_rating, opponent_rating)
+	# 生存者全員が独立に(調整なしで)呼びうる。match_idはrating-api側がtarget_puid/
+	# was_runner/hunter_count/self_ratingから決定的に導出するため、誰が先に届いても
+	# match_logのUNIQUE制約で2件目以降は自然に無視される
+	_RatingBackendClientScript.report_disconnect_penalty(
+		self, s.puid, s.was_runner, s.hunter_count, s.self_rating, delta,
+		s.survival, opponent_rating)
 
 
 ## SceneTreeTimerは後から止められないため、世代カウンタ(_migration_token)で

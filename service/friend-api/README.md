@@ -12,9 +12,7 @@ EOS Product User ID(PUID)をキーにした自前フレンドリスト用の軽�
 全エンドポイントは`Authorization: Bearer <EOS Connect ID Token>`ヘッダを必須とする。クライアントはbodyで
 PUIDを名乗らず、`EosManager.get_id_token()`が返すJWTを送る。Workerは`verifyIdToken()`でEpicの公開鍵
 (JWKS)を使い署名・`exp`・`iss`・`aud`を検証し、トークンの`sub`クレームを本人のPUIDとして採用する
-(bodyの`puid`は信用しない)。`/report-penalty`の対象PUID(`body.puid`、切断した相手)だけは例外的に
-ホストの自己申告のままーーサーバーは対戦の存在自体を知らないため検証しようがなく、既知の制約として
-受容している。
+(bodyの`puid`は信用しない)。
 
 ## セットアップ
 
