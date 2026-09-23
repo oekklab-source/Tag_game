@@ -74,8 +74,9 @@ npm run dev   # wrangler dev
 ```bash
 BASE=http://localhost:8787
 
-# 1. claim(初回成功→2回目はalready_claimed)
+# 1. claim(1500超は invalid_rating、初回成功→2回目はalready_claimed)
 curl -s -X POST $BASE/claim-initial-rating -H "X-Debug-Puid: p-runner" -d '{"rating":1650}'
+curl -s -X POST $BASE/claim-initial-rating -H "X-Debug-Puid: p-runner" -d '{"rating":1500}'
 curl -s -X POST $BASE/claim-initial-rating -H "X-Debug-Puid: p-h1" -d '{"rating":1500}'
 curl -s -X POST $BASE/claim-initial-rating -H "X-Debug-Puid: p-h2" -d '{"rating":1500}'
 curl -s -X POST $BASE/claim-initial-rating -H "X-Debug-Puid: p-h1" -d '{"rating":1500}'
@@ -84,15 +85,16 @@ curl -s -X POST $BASE/claim-initial-rating -H "X-Debug-Puid: p-h1" -d '{"rating"
 curl -s -X POST $BASE/rating -H "X-Debug-Puid: p-unclaimed"
 curl -s -X POST $BASE/rating -H "X-Debug-Puid: p-runner"
 
-# 3. report-match(同じmatch_idを2回送ってreplayed:trueとレート非2重変動を確認)
+# 3. report-match(報告者は参加者でなければならない。同じmatch_idを2回送って
+#    replayed:trueとレート非2重変動を確認)
 BODY='{"match_id":"test-match-0001","runner_puid":"p-runner","hunter_puids":["p-h1","p-h2"],"runner_escaped":false,"toucher_puid":"p-h1","survival_time":120}'
-curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-host" -d "$BODY"
-curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-host" -d "$BODY"
+curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-h1" -d "$BODY"
+curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-h1" -d "$BODY"
 curl -s -X POST $BASE/rating -H "X-Debug-Puid: p-runner"
 
 # 4. 未claim参加者を含む試合 → not_claimed
 BODY2='{"match_id":"test-match-0002","runner_puid":"p-runner","hunter_puids":["p-unclaimed"],"runner_escaped":true,"toucher_puid":null,"survival_time":180}'
-curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-host" -d "$BODY2"
+curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-runner" -d "$BODY2"
 
 # 5. leaderboard(認証不要・GET)
 curl -s "$BASE/leaderboard-top?limit=10"
@@ -102,17 +104,33 @@ curl -s -i -X POST $BASE/rating
 
 # 7. report-disconnect-penalty(同一ボディを異なる報告者から2回送り、複数生存者が
 #    独立に同じ切断イベントを報告するレースを模擬。match_idはサーバーが
-#    target_puid/was_runner/hunter_count/self_ratingから決定的に導出するため、
+#    target_puid/was_runner/時間バケツ(5分)から決定的に導出するため(v2)、
 #    2回目はreplayed:trueになりratingは1回分しか変動しない)
 BODY3='{"target_puid":"p-h2","was_runner":false,"hunter_count":2,"self_rating":1500,"rating_delta":-10}'
 curl -s -X POST $BASE/report-disconnect-penalty -H "X-Debug-Puid: p-survivor-a" -d "$BODY3"
 curl -s -X POST $BASE/report-disconnect-penalty -H "X-Debug-Puid: p-survivor-b" -d "$BODY3"
 curl -s -X POST $BASE/rating -H "X-Debug-Puid: p-h2"   # rating変動が1回分のみ反映されていることを確認
 
-# 8. 4値(target_puid/was_runner/hunter_count/self_rating)のいずれかが違えば
-#    別のmatch_id(=別イベント)として処理される
-BODY4='{"target_puid":"p-h2","was_runner":false,"hunter_count":3,"self_rating":1500,"rating_delta":-8}'
+# 8. (v2) hunter_count/self_rating を変えても同一バケツ内なら同一イベント扱い(replayed:true)。
+#    役割(was_runner)か被害者(target_puid)が違えば別イベントになる
+BODY4='{"target_puid":"p-h2","was_runner":false,"hunter_count":3,"self_rating":1501,"rating_delta":-8}'
 curl -s -X POST $BASE/report-disconnect-penalty -H "X-Debug-Puid: p-survivor-a" -d "$BODY4"
+
+# 9. C-03 R-10: 攻撃が実際に塞がっていることの確認(この4本は必ず通すこと)
+# 9-1 非参加者による試合報告 -> reporter_not_participant
+curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-outsider" -d "$BODY"
+# 9-2 hunter_count/self_rating/役割を変えながら-64Ptを20回送りつけても、
+#     被害者のratingは1日あたり合計-64Ptまでしか減らない(以降は target_daily_cap)
+for i in $(seq 1 20); do
+  curl -s -X POST $BASE/report-disconnect-penalty -H "X-Debug-Puid: p-attacker"     -d "{\"target_puid\":\"p-victim\",\"was_runner\":false,\"hunter_count\":$(( (i % 7) + 1 )),\"self_rating\":$(( 1400 + i )),\"rating_delta\":-64}"
+done
+curl -s -X POST $BASE/rating -H "X-Debug-Puid: p-victim"
+# 9-3 自己申告レートは1500まで。claim直後(seeded_from_client=1)は5試合こなすまでランキングに載らない
+curl -s -X POST $BASE/claim-initial-rating -H "X-Debug-Puid: p-new" -d '{"rating":2500}'  # invalid_rating
+curl -s "$BASE/leaderboard-top?limit=10"
+# 9-4 レート制限の原子性: 上限10/日のclaimへ15本を並列投入しても通過は10本で止まる
+seq 1 15 | xargs -P 15 -I{} curl -s -X POST $BASE/claim-initial-rating -H "X-Debug-Puid: p-rl-test" -d '{"rating":1200}'
+npx wrangler d1 execute tag-game-rating-db --local --command   "SELECT rl_key, count FROM rate_limit_counters WHERE rl_key LIKE 'claim:p-rl-test%'"
 ```
 
 ## デプロイ手順(実施はユーザー自身が行う)
@@ -135,10 +153,13 @@ curl -s -X POST $BASE/report-disconnect-penalty -H "X-Debug-Puid: p-survivor-a" 
 
 ## 既知の制約・残存リスク
 
-- **ホスト単独報告は複数アカウントの結託ねつ造を防げない**。サーバーは「その試合が
-  実在したか」自体を検証する手段を持たない構造的限界。`docs/SECURITY_NOTES.md`の
-  項目3(切断ペナルティの自己申告)と同種の信頼モデルであり、同ドキュメントの
-  項目7に受容事項として記載済み(R-8)。
+- **ホスト単独報告は「自分が参加した架空の試合」のねつ造を防げない**。C-03 R-10で
+  「報告者が申告した参加者一覧に自分が含まれること」(`isReporterParticipant()`)を必須にしたため、
+  **第三者が全く無関係の2人の試合をでっち上げる経路は塞がった**が、報告者自身を参加者に
+  含めた架空の試合は依然として作れる(サーバーは「その試合が実在したか」自体を検証する
+  手段を持たない構造的限界)。被害上限は`MATCH_REPORT_LIMIT_PER_DAY`(150件/日・報告者PUID単位)
+  だけで、完全に塞ぐにはEOSロビーのメンバー実在検証(ロードマップC-03 R-0)が要る。
+  `docs/SECURITY_NOTES.md`の項目7に受容事項として記載済み。
 - **`/leaderboard-top`はPUIDを認証不要で列挙可能な形で返す**。
   `service/friend-api/src/index.ts`は「PUIDそのものは公開しない」ことを設計原則としているが、
   このエンドポイントは公開ランキングという性質上、上位N件のPUIDを一括列挙できてしまい
@@ -154,14 +175,24 @@ curl -s -X POST $BASE/report-disconnect-penalty -H "X-Debug-Puid: p-survivor-a" 
 - D1の`batch()`が「いずれかの文が失敗したら全体ロールバック」という原子性を持つ前提で
   `/report-match`・`/claim-initial-rating`の冪等性を設計している(UNIQUE制約違反での
   ロールバックをローカル検証手順3で実際に確認すること)。
-- **`/report-disconnect-penalty`のdedupは決定的ID(SHA-256)方式**(C-03 R-5)。対象PUID・
-  役割(runner/hunter)・hunter数・自己申告ratingの4値から`match_id`をサーバー側で導出するため、
+- **`/report-disconnect-penalty`のdedupは決定的ID(SHA-256)方式**(C-03 R-5、R-10でv2へ更新)。
+  `match_id`は対象PUID・役割(runner/hunter)・**時間バケツ(5分)**の3値からサーバー側で導出するため、
   ホスト引き継ぎ失敗時に生存者全員が独立に(調整なしで)送信しても`match_log`のUNIQUE制約で
-  1回だけ反映される。代償として、同一マッチ内で同一人物が同じ役割・同じhunter数・同じ
-  ratingのまま複数回切断した場合は2回目以降が黙って重複排除される(実質1マッチ1回に収束、
-  意図的な仕様)。また極めて低確率だが、別の試合で偶然この4値が完全一致した場合に新しい
-  正当なペナルティがdedupで失われうる(fail-safe、実害は「稀にペナルティが漏れる」方向のみ
-  で公平性を損なわない。`docs/SECURITY_NOTES.md`項目3に追記予定)。
+  1回だけ反映される(バケツ境界をまたいだ報告を取りこぼさないよう、現バケツと1つ前の
+  バケツの2点で照合している)。v1は`hunter_count`/`self_rating`もmaterialに含めていたが、
+  これらは改造クライアントが自由に変えられる値でペナルティの累積に使えたため、R-10で外した。
+  代償として、同一人物が同じ役割のまま5分以内に複数回切断した場合は2回目以降が黙って
+  重複排除される(1ラウンド180秒なので実害は小さい、意図的な仕様)。
+- **切断ペナルティには被害者PUID単位の1日上限(-64Pt)がある**(C-03 R-10)。報告者単位の
+  20件/日とは別枠のカウンタ(`disconnect_penalty_target:<puid>:<日付>`)で、上限に達した
+  報告は`{ok:false, reason:"target_daily_cap"}`になる。攻撃被害の実質的な上限を決めているのは
+  この予算で、決定的IDは「同じ実イベントを二重計上しない」冪等性ガードという役割分担。
+  正当な切断も1日-64Ptまでしか累積しない(旧friend-apiの「penalty:<puid>キー上書き」と同等)。
+- **`/claim-initial-rating`は1500(既定値)までしか受け付けない**(C-03 R-10)。自己申告で
+  既定値より上は名乗れず、加えて`seeded_from_client=1`の行は`matches_played`が5件に達するまで
+  `/leaderboard-top`から除外される。ratings行はすべてclaim経由で作られるため、実質
+  「ランクイン前に5試合が必要」という配置マッチ相当の仕様になる(`/rating`は除外しないので
+  本人のプロフィール表示には影響しない)。
 - **`rating_delta`は引き続きクライアント(報告者)の自己申告・自己計算**
   (`autoload/ranking_manager.gd`の`calculate_rating_delta()`、`-64〜-1`にクランプするのみ)。
   `rating_before`はD1の権威値を使うため結果自体は改ざんできないが、「何点減点するか」の

@@ -19,8 +19,10 @@
  * 試合結果報告(/report-match)はホスト単独報告(Option A)。README「マルチプレイの権威モデル」
  * 節が既に「タッチ判定はホストが一元的に行う」と定めている延長。ホストは自身の身元のみ
  * トークンで保証され、誰が参加していたか・誰が捕まえたか・生存時間は自己申告のまま
- * (docs/SECURITY_NOTES.md 項目3の切断ペナルティ報告と同型の構造的限界として受容する。
- * 正式な追記はR-8でまとめて行う)。
+ * (docs/SECURITY_NOTES.md 項目3の切断ペナルティ報告と同型の構造的限界として受容する)。
+ * ただしC-03 R-10で「報告者が自分で申告した参加者一覧に含まれること」は必須にした
+ * (isReporterParticipant)。残るのは「報告者自身を参加者に含めた架空の試合」だけで、
+ * その被害上限は MATCH_REPORT_LIMIT_PER_DAY が担う(docs/SECURITY_NOTES.md 項目7)。
  *
  * エンドポイント:
  *   POST /report-match              -> ホストが試合結果を報告。サーバー側でレートを再計算しD1へ反映
@@ -62,10 +64,25 @@ const DEFAULT_RATING = 1500;
 const MIN_HUNTERS = 1;
 const MAX_HUNTERS = 7;
 
-const CLAIM_MIN_RATING = 100;
-const CLAIM_MAX_RATING = 2500;
+// 「レート値として実在しうる範囲」。self_rating等の妥当性チェックに使う。
+// /claim-initial-rating の受付上限(CLAIM_MAX_RATING)とは別概念なので定数も分けてある
+// (R-10でclaim上限だけを1500へ下げた際、この範囲まで巻き添えで狭めないため)
+const RATING_MIN = RATING_FLOOR;
+const RATING_MAX = 2500;
 
-const MATCH_REPORT_LIMIT_PER_DAY = 300;
+// C-03 R-10(RV-03): 自己申告レートを受け入れる唯一の窓口なので、既定値(1500)より上は
+// 名乗れないようにする = 移行では「下げる方向のみ」許す。seeded_from_client=1 の行を
+// /leaderboard-top から一定試合数まで除外する対策(下記)と二重で公開ランキングを守る
+const CLAIM_MIN_RATING = RATING_MIN;
+const CLAIM_MAX_RATING = DEFAULT_RATING;
+/** seeded_from_client=1 の行が /leaderboard-top に載るために必要な試合数 (C-03 R-10, RV-03) */
+const SEEDED_MIN_MATCHES_FOR_LEADERBOARD = 5;
+
+// C-03 R-10(RV-01): 報告者=参加者の検証を入れても、「自分を参加者に含めた架空の試合」を
+// 単独アカウントで報告する経路は構造的に残る(完全に塞ぐにはEOSロビーの実在検証が必要、
+// docs/SECURITY_NOTES.md 項目7参照)。実プレイで到達しうる上限(1試合3分 => 150試合で
+// 約7.5時間)まで引き下げ、その経路の被害上限を半分にしてある
+const MATCH_REPORT_LIMIT_PER_DAY = 150;
 const CLAIM_LIMIT_PER_DAY = 10;
 const RATING_QUERY_LIMIT_PER_DAY = 1000;
 const LEADERBOARD_LIMIT_PER_DAY = 200; // IP単位
@@ -75,7 +92,11 @@ const LEADERBOARD_LIMIT_PER_DAY = 200; // IP単位
 const PENALTY_MIN_DELTA = -64;
 const PENALTY_MAX_DELTA = -1;
 const DISCONNECT_PENALTY_LIMIT_PER_DAY = 20;
-const TARGET_PUID_MAX_LEN = 200;
+/** 被害者PUID単位の1日あたり減点予算(Pt)。C-03 R-10(RV-02)、handleReportDisconnectPenalty 参照 */
+const DISCONNECT_PENALTY_TARGET_BUDGET_PER_DAY = -PENALTY_MIN_DELTA;
+/** 切断ペナルティの決定的ID(v2)が使う時間バケツの幅。C-03 R-10(RV-02) */
+const DISCONNECT_PENALTY_BUCKET_MS = 5 * 60 * 1000;
+const PUID_MAX_LEN = 200;
 
 const MATCH_ID_RE = /^[A-Za-z0-9_-]{8,128}$/;
 
@@ -122,13 +143,32 @@ export function isValidMatchId(matchId: unknown): matchId is string {
 	return typeof matchId === "string" && MATCH_ID_RE.test(matchId);
 }
 
+/** PUIDとして受け付けてよい文字列か。長さ上限は C-03 R-10(RV-19) で全PUIDへ適用した */
+export function isValidPuid(puid: unknown): puid is string {
+	return typeof puid === "string" && puid.length > 0 && puid.length <= PUID_MAX_LEN;
+}
+
 /** hunter_puids の人数範囲・重複・runner_puidとの重複が無いかを検証する */
 export function isValidHunterPuids(runnerPuid: string, hunterPuids: unknown): hunterPuids is string[] {
 	if (!Array.isArray(hunterPuids)) return false;
 	if (hunterPuids.length < MIN_HUNTERS || hunterPuids.length > MAX_HUNTERS) return false;
-	if (hunterPuids.some((p) => typeof p !== "string" || p.length === 0)) return false;
+	if (hunterPuids.some((p) => !isValidPuid(p))) return false;
 	if (hunterPuids.includes(runnerPuid)) return false;
 	return new Set(hunterPuids).size === hunterPuids.length;
+}
+
+/**
+ * 報告者が、自分で申告した参加者一覧に含まれているか(C-03 R-10、RV-01)。
+ * これを必須にして初めて「第三者が架空の試合をでっち上げ、任意PUIDのレートを一方的に動かす」
+ * 経路が塞がる(/leaderboard-top が攻撃対象のPUID一覧をそのまま配っていることもあり、
+ * 検証が無いままでは実行コストが極めて低かった)。
+ * ホストは必ず runner か hunter のどちらかなので、正常系(autoload/game/rating_report.gd の
+ * hunter_puids は player_ids() から runner_id を除いた全員)には影響しない。
+ * なお「自分を参加者に含めた架空の試合」の報告自体はこれでも防げず、
+ * MATCH_REPORT_LIMIT_PER_DAY による被害上限と docs/SECURITY_NOTES.md 項目7の受容事項でカバーする
+ */
+export function isReporterParticipant(reporterPuid: string, runnerPuid: string, hunterPuids: string[]): boolean {
+	return reporterPuid === runnerPuid || hunterPuids.includes(reporterPuid);
 }
 
 /**
@@ -144,14 +184,16 @@ export function isValidDisconnectPenaltyRequest(
 	selfRating: unknown,
 	ratingDelta: unknown,
 ): targetPuid is string {
-	if (typeof targetPuid !== "string" || !targetPuid || targetPuid.length > TARGET_PUID_MAX_LEN) return false;
+	if (!isValidPuid(targetPuid)) return false;
 	if (targetPuid === reporterPuid) return false;
 	if (typeof wasRunner !== "boolean") return false;
 	if (typeof hunterCount !== "number" || !Number.isInteger(hunterCount)) return false;
 	if (hunterCount < MIN_HUNTERS || hunterCount > MAX_HUNTERS) return false;
-	if (typeof selfRating !== "number" || !Number.isFinite(selfRating)) return false;
-	if (selfRating < CLAIM_MIN_RATING || selfRating > CLAIM_MAX_RATING) return false;
-	if (typeof ratingDelta !== "number" || !Number.isFinite(ratingDelta)) return false;
+	// C-03 R-10(RV-02c): 小数を弾く。self_rating は v2 の決定的IDからは外れたが、
+	// rating_delta の小数は ratings.rating(INTEGER列)へそのまま書かれてしまうため整数を必須にする
+	if (typeof selfRating !== "number" || !Number.isInteger(selfRating)) return false;
+	if (selfRating < RATING_MIN || selfRating > RATING_MAX) return false;
+	if (typeof ratingDelta !== "number" || !Number.isInteger(ratingDelta)) return false;
 	return true;
 }
 
@@ -162,6 +204,19 @@ export function clampLeaderboardLimit(raw: string | null): number {
 	return Math.min(n, 100);
 }
 
+/**
+ * /claim-initial-rating のレート値を正規化する(C-03 R-10、RV-03)。
+ * 上限は CLAIM_MAX_RATING(=1500) で、自己申告では既定値より上を名乗れない。
+ * invalid_request(数値ですらない)と invalid_rating(範囲外)の区別は既存の応答仕様なので保つ
+ */
+export function normalizeClaimRating(raw: unknown): { ok: true; rating: number } | { ok: false; reason: string } {
+	const n = Number(raw);
+	if (!Number.isFinite(n)) return { ok: false, reason: "invalid_request" };
+	const rating = Math.round(n);
+	if (rating < CLAIM_MIN_RATING || rating > CLAIM_MAX_RATING) return { ok: false, reason: "invalid_rating" };
+	return { ok: true, rating };
+}
+
 function dayKey(): string {
 	return new Date().toISOString().slice(0, 10);
 }
@@ -170,6 +225,10 @@ export function reportMatchRateLimitKey(puid: string, day: string = dayKey()): s
 }
 export function reportDisconnectPenaltyRateLimitKey(puid: string, day: string = dayKey()): string {
 	return `disconnect_penalty:${puid}:${day}`;
+}
+/** 被害者PUID単位の減点予算キー(報告者単位の disconnect_penalty:* とは別枠、C-03 R-10) */
+export function disconnectPenaltyTargetKey(targetPuid: string, day: string = dayKey()): string {
+	return `disconnect_penalty_target:${targetPuid}:${day}`;
 }
 export function claimRateLimitKey(puid: string, day: string = dayKey()): string {
 	return `claim:${puid}:${day}`;
@@ -225,8 +284,7 @@ async function handleReportMatch(request: Request, env: Env, reporterPuid: strin
 
 	if (
 		!isValidMatchId(matchId) ||
-		typeof runnerPuid !== "string" ||
-		!runnerPuid ||
+		!isValidPuid(runnerPuid) ||
 		typeof runnerEscaped !== "boolean" ||
 		(toucherPuid !== null && typeof toucherPuid !== "string") ||
 		!Number.isFinite(survivalTime)
@@ -235,6 +293,10 @@ async function handleReportMatch(request: Request, env: Env, reporterPuid: strin
 	}
 	if (!isValidHunterPuids(runnerPuid, hunterPuids)) {
 		return json({ ok: false, reason: "invalid_hunter_count" });
+	}
+	// C-03 R-10(RV-01): 報告者自身が参加者でない報告は受け付けない
+	if (!isReporterParticipant(reporterPuid, runnerPuid, hunterPuids)) {
+		return json({ ok: false, reason: "reporter_not_participant" });
 	}
 	if (survivalTime < 0 || survivalTime > MAX_TIME) {
 		return json({ ok: false, reason: "invalid_survival_time" });
@@ -354,8 +416,9 @@ async function handleReportMatch(request: Request, env: Env, reporterPuid: strin
 			.bind(matchId)
 			.first<{ payload: string }>();
 		if (!prev) {
-			// 想定外(UNIQUE違反以外の理由でbatchが失敗した場合のフォールバック)
-			return json({ ok: false, reason: "invalid_request" });
+			// UNIQUE違反(同一match_idの再送)ではない = D1の一時障害等。
+			// リクエスト不正と区別できる reason を返す(C-03 R-10、RV-18)
+			return json({ ok: false, reason: "write_failed" });
 		}
 		const prevResult = JSON.parse(prev.payload) as ReportMatchOk;
 		prevResult.replayed = true;
@@ -376,22 +439,32 @@ interface DisconnectPenaltyOk {
 	target: ParticipantResult;
 }
 
+/** 切断イベントの時刻を DISCONNECT_PENALTY_BUCKET_MS 幅のバケツ番号へ落とす(C-03 R-10、RV-02) */
+export function disconnectPenaltyBucket(nowMs: number): number {
+	return Math.floor(nowMs / DISCONNECT_PENALTY_BUCKET_MS);
+}
+
 /**
  * 対戦中の切断イベントに対して決定的なmatch_idを導出する(クライアントには一切導出させず、
- * このID自体を送らせもしない)。material の4値は「ラウンド開始後、生存者間で完全にビット一致する
- * 不変な値」だけを選んでいる(survival_timeのようにクライアント間でドリフトしうる値は使わない)。
- * これにより、ホスト自身が切断した場合に生存者全員が独立に(調整なしで)同じイベントを
- * 報告しても、2件目以降は match_log の UNIQUE 制約で自然に無視される
+ * このID自体を送らせもしない)。ホスト自身が切断した場合に生存者全員が独立に(調整なしで)
+ * 同じイベントを報告しても、2件目以降は match_log の UNIQUE 制約で自然に無視される
  * (旧friend-apiの「puidキー単純上書きで冪等」に代わる、C-03の権威モデルに沿った冪等性ガード)。
- * "v1" をフォーマットに埋め込み、将来material を変える際に旧フォーマットと衝突しないようにする
+ *
+ * **v2 (C-03 R-10、RV-02)**: v1 は material に hunter_count / self_rating を含めていたが、
+ * これらは改造クライアントが自由に変えられる値なので、1リクエストごとに別IDを作って
+ * 同一被害者へペナルティを積み増せてしまっていた(旧friend-apiのpuidキー上書きdedupからの退行、
+ * 詳細は docs/SECURITY_NOTES.md 項目3)。v2 の material は「被害者PUID + 役割 + 時間バケツ」だけで、
+ * 攻撃者が変えられる値は被害者PUID(=狙う相手そのもの)しか残らない。
+ * 生存者は切断検知から数秒以内に報告するのでバケツ幅5分(ラウンド長180秒より十分長い)なら
+ * 必ず同居するが、境界をまたぐ可能性があるため呼び出し側が前バケツとの2点照合を行う。
+ * "v2" をフォーマットに埋め込み、将来material を変える際に旧フォーマットと衝突しないようにする
  */
 export async function computeDisconnectPenaltyId(
 	targetPuid: string,
 	wasRunner: boolean,
-	hunterCount: number,
-	selfRating: number,
+	bucket: number,
 ): Promise<string> {
-	const canonical = `hdp:v1:${targetPuid}:${wasRunner ? "runner" : "hunter"}:${hunterCount}:${selfRating}`;
+	const canonical = `hdp:v2:${targetPuid}:${wasRunner ? "runner" : "hunter"}:${bucket}`;
 	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
 	const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 	return `hdp-${hex}`;
@@ -421,7 +494,20 @@ async function handleReportDisconnectPenalty(request: Request, env: Env, reporte
 		return json({ ok: false, reason: "rate_limited" });
 	}
 
-	const matchId = await computeDisconnectPenaltyId(targetPuid, wasRunner, hunterCount, selfRating);
+	// C-03 R-10(RV-02): dedupを先に確認する。ここで弾かれるケース(= ホスト切断を独立に
+	// 報告してきた生存者の2人目以降)は被害者側の減点予算を消費しない。
+	// 境界をまたいだ報告を取りこぼさないよう、現バケツと1つ前のバケツの2点で照合する
+	const bucket = disconnectPenaltyBucket(Date.now());
+	const matchId = await computeDisconnectPenaltyId(targetPuid, wasRunner, bucket);
+	const prevBucketMatchId = await computeDisconnectPenaltyId(targetPuid, wasRunner, bucket - 1);
+	const already = await env.DB.prepare("SELECT payload FROM match_log WHERE match_id IN (?, ?)")
+		.bind(matchId, prevBucketMatchId)
+		.first<{ payload: string }>();
+	if (already) {
+		const prevResult = JSON.parse(already.payload) as DisconnectPenaltyOk;
+		prevResult.replayed = true;
+		return json(prevResult);
+	}
 
 	const row = await env.DB.prepare(
 		"SELECT rating, matches_played, runner_wins, hunter_wins, highest_rating FROM ratings WHERE puid = ?",
@@ -430,6 +516,23 @@ async function handleReportDisconnectPenalty(request: Request, env: Env, reporte
 		.first<RatingRow>();
 	if (!row) {
 		return json({ ok: false, reason: "not_claimed" });
+	}
+
+	// C-03 R-10(RV-02b): 報告者単位のレート制限とは別に、被害者PUID単位でも1日の減点量を
+	// -64Pt(=最大ペナルティ1回分。旧friend-apiの「penalty:<puid>キー上書き」と同等の被害上限)に抑える。
+	// 攻撃被害の実質的な上限を決めているのはこちらで、決定的ID(v2)は
+	// 「同じ実イベントを二重計上しない」冪等性ガードという役割分担
+	const targetBudgetKey = disconnectPenaltyTargetKey(targetPuid);
+	const penaltyAmount = Math.abs(ratingDelta);
+	if (
+		!(await checkAndBumpRateLimit(
+			env,
+			targetBudgetKey,
+			DISCONNECT_PENALTY_TARGET_BUDGET_PER_DAY,
+			penaltyAmount,
+		))
+	) {
+		return json({ ok: false, reason: "target_daily_cap" });
 	}
 
 	const ratingAfter = clampFloor(row.rating + ratingDelta);
@@ -458,11 +561,14 @@ async function handleReportDisconnectPenalty(request: Request, env: Env, reporte
 			).bind(ratingAfter, ratingAfter, now, targetPuid),
 		]);
 	} catch {
+		// 上のdedup確認とINSERTの間に別の生存者が割り込んだ(UNIQUE違反)か、D1の一時障害。
+		// どちらにせよ減点は適用されていないので、確保した被害者側の予算は戻す
+		await refundRateLimit(env, targetBudgetKey, penaltyAmount);
 		const prev = await env.DB.prepare("SELECT payload FROM match_log WHERE match_id = ?")
 			.bind(matchId)
 			.first<{ payload: string }>();
 		if (!prev) {
-			return json({ ok: false, reason: "invalid_request" });
+			return json({ ok: false, reason: "write_failed" }); // C-03 R-10(RV-18)
 		}
 		const prevResult = JSON.parse(prev.payload) as DisconnectPenaltyOk;
 		prevResult.replayed = true;
@@ -478,14 +584,11 @@ async function handleReportDisconnectPenalty(request: Request, env: Env, reporte
 
 async function handleClaimInitialRating(request: Request, env: Env, puid: string): Promise<Response> {
 	const body = await safeJson(request);
-	const rawRating = Number(body?.rating);
-	if (!Number.isFinite(rawRating)) {
-		return json({ ok: false, reason: "invalid_request" });
+	const normalized = normalizeClaimRating(body?.rating);
+	if (!normalized.ok) {
+		return json({ ok: false, reason: normalized.reason });
 	}
-	const rating = Math.round(rawRating);
-	if (rating < CLAIM_MIN_RATING || rating > CLAIM_MAX_RATING) {
-		return json({ ok: false, reason: "invalid_rating" });
-	}
+	const rating = normalized.rating;
 	if (!(await checkAndBumpRateLimit(env, claimRateLimitKey(puid), CLAIM_LIMIT_PER_DAY))) {
 		return json({ ok: false, reason: "rate_limited" });
 	}
@@ -572,10 +675,14 @@ async function handleLeaderboardTop(request: Request, env: Env): Promise<Respons
 		return json({ ok: false, reason: "rate_limited" }, 429);
 	}
 
+	// C-03 R-10(RV-03): クライアント自己申告で作られた行(seeded_from_client=1)は、
+	// 実際に試合をこなすまで公開ランキングに載せない(claim上限1500と二重の対策。
+	// seeded_from_client列はR-2で監査用に用意したまま誰も読んでいなかったが、ここで実用途がついた)
 	const { results } = await env.DB.prepare(
-		"SELECT puid, rating, matches_played FROM ratings ORDER BY rating DESC LIMIT ?",
+		"SELECT puid, rating, matches_played FROM ratings " +
+			"WHERE seeded_from_client = 0 OR matches_played >= ? ORDER BY rating DESC LIMIT ?",
 	)
-		.bind(limit)
+		.bind(SEEDED_MIN_MATCHES_FOR_LEADERBOARD, limit)
 		.all<LeaderboardRow>();
 
 	const entries = results.map((r, i) => ({
@@ -746,28 +853,46 @@ function base64UrlDecode(input: string): Uint8Array {
 // テーブルを使う。キー形式・日次リセットの考え方はfriend-apiと同じ)
 // ---------------------------------------------------------------------------
 
-async function checkAndBumpRateLimit(env: Env, key: string, limit: number): Promise<boolean> {
-	const row = await env.DB.prepare("SELECT count FROM rate_limit_counters WHERE rl_key = ?")
-		.bind(key)
-		.first<{ count: number }>();
-
-	if (row) {
-		if (row.count >= limit) {
-			return false;
-		}
-		await env.DB.prepare("UPDATE rate_limit_counters SET count = count + 1 WHERE rl_key = ?").bind(key).run();
-	} else {
-		// KVのexpirationTtlに相当するネイティブTTLがD1には無いため、expires_atは掃除用の目安値
-		await env.DB.prepare("INSERT INTO rate_limit_counters (rl_key, count, expires_at) VALUES (?, 1, ?)")
-			.bind(key, Date.now() + 48 * 3600 * 1000)
-			.run();
+/**
+ * カウンタを amount だけ進め、上限(limit)を超えなければ true を返す。
+ *
+ * C-03 R-10(RV-11): 以前は SELECT -> UPDATE の2文だったため、同時リクエストが両方とも
+ * 「まだ上限未満」を読んで上限を超えて通過できた。RV-01/RV-02 の被害上限はこのレート制限が
+ * 唯一の柱なので、1文のUPSERT(ON CONFLICT ... DO UPDATE ... WHERE)で原子的に判定する。
+ * service/friend-api のKV版(get -> put)は同じ書き方ができず非対称になるが、
+ * あちらはKVの結果整合性自体が厳密な上限を保証しないため、D1側だけを厳密にしている。
+ *
+ * amount は切断ペナルティの「被害者PUID単位の減点予算」(Pt単位で消費)でも使う。
+ * KVのexpirationTtlに相当するネイティブTTLがD1には無いため、expires_atは掃除用の目安値
+ */
+async function checkAndBumpRateLimit(env: Env, key: string, limit: number, amount = 1): Promise<boolean> {
+	if (amount <= 0 || amount > limit) {
+		// 初回INSERTはON CONFLICT節を通らないため、ここで弾かないと1件目だけ上限を超えて通ってしまう
+		return false;
 	}
+	const res = await env.DB.prepare(
+		"INSERT INTO rate_limit_counters (rl_key, count, expires_at) VALUES (?, ?, ?) " +
+			"ON CONFLICT(rl_key) DO UPDATE SET count = count + ? WHERE count + ? <= ?",
+	)
+		.bind(key, amount, Date.now() + 48 * 3600 * 1000, amount, amount, limit)
+		.run();
+	const allowed = (res.meta?.changes ?? 0) > 0;
 
 	// 期限切れカウンタの掃除。専用のCron Triggerを新設せず、書き込みのついでに低確率で間引く
 	if (Math.random() < 0.01) {
 		await env.DB.prepare("DELETE FROM rate_limit_counters WHERE expires_at < ?").bind(Date.now()).run();
 	}
-	return true;
+	return allowed;
+}
+
+/**
+ * checkAndBumpRateLimit() で確保した分を戻す(適用できなかったペナルティの予算を返すため)。
+ * カウンタが負にならないよう MAX(0, ...) でクランプする
+ */
+async function refundRateLimit(env: Env, key: string, amount: number): Promise<void> {
+	await env.DB.prepare("UPDATE rate_limit_counters SET count = MAX(0, count - ?) WHERE rl_key = ?")
+		.bind(amount, key)
+		.run();
 }
 
 // ---------------------------------------------------------------------------
