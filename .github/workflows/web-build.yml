@@ -75,6 +75,16 @@ jobs:
           test -s export/web/index.wasm
           ls -lh export/web
 
+      # OGP (LINE / Discord 等でのリンクシェア) 用のプレビュー画像を export/web/ に追加する。
+      # ソースは docs/concept/store/screenshots/playing.png (git 管理下、1920x1080)。
+      # export_presets.cfg の og:image / og:url は autoload/network_manager.gd の
+      # PAGES_URL 定数と一致させること (T-1)。
+      - name: Add OGP share image
+        run: |
+          set -euo pipefail
+          cp docs/concept/store/screenshots/playing.png export/web/og_image.png
+          test -s export/web/og_image.png
+
       # GitHub Pages に Jekyll 処理をさせない（_ で始まるファイルの除外などを防ぐ）
       - name: Add .nojekyll
         run: touch export/web/.nojekyll
