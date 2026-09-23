@@ -1,6 +1,7 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scenes/hud/touch_controls.gd" id="1_touch_controls"]
+[ext_resource type="Script" path="res://scenes/hud/virtual_joystick.gd" id="2_virtual_joystick"]
 
 [sub_resource type="StyleBoxFlat" id="pause_btn_normal"]
 bg_color = Color(0.08, 0.07, 0.16, 0.75)
@@ -38,6 +39,30 @@ corner_radius_top_right = 32
 corner_radius_bottom_right = 32
 corner_radius_bottom_left = 32
 
+[sub_resource type="StyleBoxFlat" id="joystick_base_style"]
+bg_color = Color(0.08, 0.07, 0.16, 0.35)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(1, 1, 1, 0.35)
+corner_radius_top_left = 100
+corner_radius_top_right = 100
+corner_radius_bottom_right = 100
+corner_radius_bottom_left = 100
+
+[sub_resource type="StyleBoxFlat" id="joystick_knob_style"]
+bg_color = Color(0.16, 0.14, 0.28, 0.85)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(1, 0.82, 0.25, 0.7)
+corner_radius_top_left = 42
+corner_radius_top_right = 42
+corner_radius_bottom_right = 42
+corner_radius_bottom_left = 42
+
 [node name="TouchControls" type="CanvasLayer"]
 script = ExtResource("1_touch_controls")
 
@@ -51,3 +76,27 @@ theme_override_styles/normal = SubResource("pause_btn_normal")
 theme_override_styles/hover = SubResource("pause_btn_hover")
 theme_override_styles/pressed = SubResource("pause_btn_pressed")
 text = "≡"
+
+[node name="VirtualJoystick" type="Panel" parent="."]
+anchor_left = 0.0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = -240.0
+offset_right = 240.0
+offset_bottom = -40.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("joystick_base_style")
+script = ExtResource("2_virtual_joystick")
+
+[node name="Knob" type="Panel" parent="VirtualJoystick"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -42.0
+offset_top = -42.0
+offset_right = 42.0
+offset_bottom = 42.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("joystick_knob_style")
