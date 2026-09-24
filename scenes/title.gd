@@ -24,7 +24,7 @@ extends Control
 @onready var name_confirm_dialog: Control = $NameConfirmDialog
 @onready var name_confirm_edit: LineEdit = $NameConfirmDialog/Panel/VBox/NameEdit
 @onready var name_confirm_warning: Label = $NameConfirmDialog/Panel/VBox/WarningLabel
-@onready var name_confirm_change_btn: Button = $NameConfirmDialog/Panel/VBox/Buttons/ChangeButton
+@onready var name_confirm_cancel_btn: Button = $NameConfirmDialog/Panel/VBox/Buttons/CancelButton
 @onready var name_confirm_join_btn: Button = $NameConfirmDialog/Panel/VBox/Buttons/JoinButton
 
 ## C-03 R-4: 起動時のサーバーレート同期通知
@@ -60,8 +60,11 @@ func _ready() -> void:
 	settings_button.pressed.connect(_on_settings_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	profile_badge_btn.pressed.connect(_on_profile_pressed)
-	name_confirm_change_btn.pressed.connect(_on_name_confirm_change_pressed)
+	name_confirm_cancel_btn.pressed.connect(_close_name_confirm_dialog)
 	name_confirm_join_btn.pressed.connect(_on_name_confirm_join_pressed)
+	# Enter でそのまま参加できるようにする(RV-09。LineEditにフォーカスがある状態で
+	# Enterを押しても何も起きないのは、この画面では行き止まりに感じる)
+	name_confirm_edit.text_submitted.connect(_on_name_confirm_text_submitted)
 	rating_sync_close_btn.pressed.connect(rating_sync_dialog.hide)
 	find_another_room_btn.pressed.connect(_on_find_another_room_pressed)
 	error_history_btn.pressed.connect(_on_error_history_pressed)
@@ -126,7 +129,16 @@ func _try_auto_join_from_query() -> void:
 
 
 ## C-05: 自動参加の直前に、参加する名前を確認・変更する機会を挟む
-## (?s= 経由の初回プレイヤーはデフォルト名のまま気づかず参加しがちなため)
+## (?s= 経由の初回プレイヤーはデフォルト名のまま気づかず参加しがちなため)。
+##
+## **出口は3つある(RV-09で追加)**: 「この名前で参加」/ Enter / 「やめる」・Esc。
+## 当初は「変更する」と「この名前で参加」の2択しか無く、参加以外の出口が存在しなかった。
+## Escも効かない——QuitMenu は Web かつタイトルでは open() が即 return するため
+## (autoload/quit_menu.gd 参照)、招待リンクで開いた Web 版プレイヤーは
+## このダイアログから抜けられなかった。
+## なお「変更する」ボタンは grab_focus()+select_all() しかしておらず、
+## ダイアログを開いた時点と同じ処理＝実質ノーオペだったので「やめる」に置き換えた
+## (名前の変更は、開いた時点で既にフォーカス済み・全選択済みの LineEdit で直接できる)。
 func _open_name_confirm_dialog(server: String) -> void:
 	_pending_join_server = server
 	name_confirm_edit.text = ProfileManager.player_name
@@ -148,9 +160,40 @@ func _is_default_name(n: String) -> bool:
 	return suffix.length() == 4 and suffix.is_valid_int()
 
 
-func _on_name_confirm_change_pressed() -> void:
-	name_confirm_edit.grab_focus()
-	name_confirm_edit.select_all()
+## 「やめる」/ Esc。ダイアログを閉じてタイトルに留まる。
+## **NetworkManager.auto_join_done は立てたまま触らない**——「?s= による自動参加は
+## 1回だけ」という既存仕様(network_manager.gd の同変数のコメント参照。接続失敗時に
+## 同じアドレスへ無限再接続しに行くのを防ぐためのガード)を壊さないため。
+## 参加し直したい場合はタイトルのメニューからアドレスを指定して入る
+func _close_name_confirm_dialog() -> void:
+	if not name_confirm_dialog.visible:
+		return
+	name_confirm_dialog.hide()
+	_pending_join_server = ""
+	status_label.text = "参加リンクからの自動参加をやめました。メニューから参加できます。"
+
+
+## Esc でも閉じられるようにする(RV-09)。
+##
+## **`_unhandled_input()` ではなく `_input()` でなければ動かない。**
+## このダイアログは開いた瞬間に `name_confirm_edit.grab_focus()` するが、
+## Godot 4 の LineEdit はフォーカス(編集)中の Esc を「編集終了」として消費するため、
+## イベントが `_unhandled_input()` まで降りてこない。実際、headless検証で Esc を流しても
+## このハンドラも QuitMenu の `_unhandled_input()` も両方とも発火しないことを確認した。
+## `_input()` は GUI(`_gui_input`)より前に呼ばれるので、ここでだけ確実に拾える。
+## ダイアログ表示中の Esc しか横取りしないので、他の画面の Esc(QuitMenu)には影響しない。
+func _input(event: InputEvent) -> void:
+	if not name_confirm_dialog.visible:
+		return
+	if not event.is_action_pressed("ui_cancel"):
+		return
+	get_viewport().set_input_as_handled()
+	_close_name_confirm_dialog()
+
+
+## LineEdit で Enter を押したときも「この名前で参加」と同じ扱いにする
+func _on_name_confirm_text_submitted(_text: String) -> void:
+	_on_name_confirm_join_pressed()
 
 
 func _on_name_confirm_join_pressed() -> void:

@@ -310,10 +310,10 @@ layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 16
 
-[node name="ChangeButton" type="Button" parent="NameConfirmDialog/Panel/VBox/Buttons"]
+[node name="CancelButton" type="Button" parent="NameConfirmDialog/Panel/VBox/Buttons"]
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
-text = "変更する"
+text = "やめる"
 
 [node name="JoinButton" type="Button" parent="NameConfirmDialog/Panel/VBox/Buttons"]
 custom_minimum_size = Vector2(140, 0)
