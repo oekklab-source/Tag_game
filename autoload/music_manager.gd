@@ -6,7 +6,9 @@ extends Node
 ## 再生が止まってしまう。Autoloadに持たせることでシーンをまたいで鳴り続けさせる。
 ##
 ## 音量は追加の配線をせず、Masterバス経由でSettingsManagerのマスター音量スライダーが
-## そのまま効く(現状Masterバス1本のみ。docs/concept/audio/title_bgm/SPEC.md 参照)。
+## そのまま効く(現状Masterバス1本のみ。docs/concept/audio/title_bgm/SPEC.md 参照。
+## docs/ 配下は .gdignore で Godot のリソース対象外なので、res:// では読めない
+## ドキュメント専用の置き場である。Phase 3 L-11)。
 ##
 ## 対戦中(world.tscn)は鳴らさない。NetworkManager.start_host() / start_client() で
 ## stop_lobby_bgm()、leave() で play_lobby_bgm() を呼び、対戦の開始/終了と連動させる。

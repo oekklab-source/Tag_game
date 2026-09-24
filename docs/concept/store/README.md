@@ -40,3 +40,33 @@ itch.io向け素材と同じ方針をSteam向けにも適用する。P1-1/P1-2(�
 
 既存のスクリーンショット5枚(`screenshots/`)はSteamの要件(最低5枚・最低1920×1080・16:9)を
 実測で満たすため、Steam向けに撮り直していない(`steam_page_ja.md`参照)。
+
+
+## `docs/concept/` にバイナリを置くときのルール（Phase 3 L-11、2026-09-25）
+
+`docs/` 直下には**空の `.gdignore` を置いてある**。Godot はこのファイルがあるフォルダを
+リソース系から丸ごと無視するので、ここに置いた PNG / OGG / MP3 は
+`.import` が作られず、書き出しビルド(`export_presets.cfg` は Web / Windows とも
+`export_filter="all_resources"`)にも入らない。`tools/blender/.gdignore` と同じ手法。
+
+**この仕組みが効いていることを前提に、以下を守ること:**
+
+1. **`docs/concept/` に置いたバイナリの `.import` を git に追加しない。**
+   `.gdignore` がある限り生成されないが、`.gdignore` を消したり別の場所へ移したりすると
+   復活する。`.import` が git に入っている = 書き出しに同梱されている、と考えてよい。
+2. **既に `assets/` にあるものを `docs/concept/` へコピーしない。**
+   2026-09-25 時点で `docs/concept/audio/title_bgm/title_bgm_concept.ogg` は
+   `assets/audio/bgm/title_bgm.ogg` と MD5 が完全一致している(`F87494BC...`)。
+   git 履歴からは消えないので残しているが、**これ以上増やさない**。
+   参考音源を残したい場合は、実装に使ったファイルへのパスを SPEC.md に書くだけにする。
+3. 新しくバイナリを足したら、`godot --headless --export-release "Web" <出力先>` を回して
+   `index.pck` のサイズが増えていないことを確認する。Web版はこれをブラウザに
+   ダウンロードさせるので、C-07(スマホのブラウザで遊ぶ)の狙いに直接効く。
+
+### 経緯
+
+2026-09-24 の差分レビュー(RV-07)で、`docs/concept/` 配下の約 11.7 MiB
+(スクリーンショット5枚 ≈ 4.7 MiB + `.ogg` 3.5 MiB + `.mp3` 3.6 MiB)が
+**Web / Windows 両方の書き出しに同梱されている**ことが判明した。
+`.import` サイドカーが git 管理下にあったため、`export_filter="all_resources"` が
+そのまま拾っていた。L-11 で `docs/.gdignore` を置き、`.import` 7個を削除して解消した。
