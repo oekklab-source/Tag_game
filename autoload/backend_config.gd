@@ -28,6 +28,9 @@ const USE_LIVE_FRIEND_BACKEND := true
 ## (service/rating-api/README.md参照)。デプロイ・動作確認が済むまでfalseにする。
 ## trueにする前に必ず: ①wrangler d1 create ②schema.sql適用 ③wrangler deploy
 ## ④実EOSトークンでの手動疎通確認、の順で行うこと。
+## **切替そのものの手順書は docs/DEPLOYMENT_CHECKLIST.md の「9. レートのサーバー権威化」
+## に集約してある(C-03 R-13)。** クライアント配布との順序・旧friend-apiの penalty:* キーの
+## 掃除・混在ビルドの扱いはそちらを見ること。
 ## R-4: このフラグはconstのため、true側の分岐(merge_server_inventory()のPDSマージ除外・
 ## RankingManager._reconcile_server_rating())はheadless自動テストでは検証できない。
 ## ⑤ここを一時的にtrueへ書き換えてtests/test_phase5_persistence.tscnを再実行し、

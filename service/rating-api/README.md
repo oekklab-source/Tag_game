@@ -157,7 +157,12 @@ npx wrangler d1 execute tag-game-rating-db --local --command \
    401/200双方の応答を確認する(手順は上記のローカル検証と同じ、`X-Debug-Puid`の代わりに
    `Authorization: Bearer <実トークン>`を使う)
 5. `wrangler.toml`の`[vars]`に`ALLOW_DEBUG_AUTH`を絶対に書かないこと(`.dev.vars`限定)
-6. **(C-03 R-5固有の注意)** `autoload/backend_config.gd`の`USE_LIVE_RATING_BACKEND`を
+6. **切替順序と旧KVの掃除の手順書は
+   [docs/DEPLOYMENT_CHECKLIST.md](../../docs/DEPLOYMENT_CHECKLIST.md) の
+   「9. レートのサーバー権威化」に集約してある(C-03 R-13)。** 同章には旧`service/friend-api`
+   の`penalty:*`キーの掃除手順と、`PROTOCOL_VERSION`を上げないまま挙動が変わる
+   R-11/R-12 の混在ビルドの扱いも書いてある。最も事故りやすい点だけ再掲すると:
+7. **(C-03 R-5固有の注意)** `autoload/backend_config.gd`の`USE_LIVE_RATING_BACKEND`を
    `true`に切り替えるタイミングと、旧`service/friend-api`の`/report-penalty`・
    `/consume-penalty`経路を削除したクライアントビルドを配布するタイミングを必ず同時に行う
    こと。現状(`USE_LIVE_FRIEND_BACKEND=true`・`USE_LIVE_RATING_BACKEND=false`)では
