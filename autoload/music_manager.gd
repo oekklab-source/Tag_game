@@ -10,6 +10,10 @@ extends Node
 ##
 ## 対戦中(world.tscn)は鳴らさない。NetworkManager.start_host() / start_client() で
 ## stop_lobby_bgm()、leave() で play_lobby_bgm() を呼び、対戦の開始/終了と連動させる。
+## ただしこの連動は NetworkManager を経由したときだけ効く。READMEのデバッグ起動
+## (godot --path . res://scenes/world.tscn の直起動)は start_host() を通らないため、
+## _ready() で無条件に再生すると対戦中もロビーBGMが鳴り続ける(C-07 T-8 / RV-16)。
+## そのため起動時の再生開始だけは「現在シーンが world.tscn でないこと」を見て判断する。
 
 const LOBBY_BGM := preload("res://assets/audio/bgm/title_bgm.ogg")
 
@@ -30,6 +34,18 @@ func _ready() -> void:
 		bgm.loop = true
 	_player.stream = LOBBY_BGM
 
+	# Autoload の _ready() はメインシーンより先に走るので、この時点では
+	# get_tree().current_scene がまだ null。1フレーム待ってから判定する
+	await get_tree().process_frame
+	_play_unless_in_match()
+
+
+## 起動時の再生開始のみ。world.tscn を直起動したデバッグ実行では鳴らさない
+## (ヘッダのコメント参照)。通常起動(title.tscn)では従来どおり即座に鳴り始める
+func _play_unless_in_match() -> void:
+	var scene := get_tree().current_scene
+	if scene != null and scene.scene_file_path == NetworkManager.WORLD_SCENE:
+		return
 	play_lobby_bgm()
 
 

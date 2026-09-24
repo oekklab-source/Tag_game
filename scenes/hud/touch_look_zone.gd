@@ -58,8 +58,11 @@ func _on_drag(event: InputEventScreenDrag) -> void:
 
 func _process(_delta: float) -> void:
 	if _active_finger != -1 and not touch_controls.visible:
-		# 例: ドラッグ中にポーズメニューが開いてPLAYING以外へ状態遷移した場合の保険。
-		# 指を離すイベントが来ない可能性があるため、ここでも強制解放する。
+		# ドラッグ中に TouchControls が消えた場合の保険。経路は
+		# (a) PLAYING 以外への状態遷移、(b) ポーズ(QuitMenu)が開いた、の2つ。
+		# (b)は状態遷移ではなく QuitMenu.opened_changed 経由で visible が落ちる
+		# (C-07 T-8、詳細は virtual_joystick.gd の同じ箇所)。
+		# どちらも指を離すイベントが来ないため、ここで強制解放する。
 		_active_finger = -1
 
 

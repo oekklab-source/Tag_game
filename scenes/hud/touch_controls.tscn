@@ -149,10 +149,17 @@ mouse_filter = 2
 theme_override_styles/panel = SubResource("joystick_knob_style")
 
 [node name="ActionDash" type="Panel" parent="."]
-offset_left = 1684.0
-offset_top = 844.0
-offset_right = 1780.0
-offset_bottom = 940.0
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -236.0
+offset_top = -236.0
+offset_right = -140.0
+offset_bottom = -140.0
+grow_horizontal = 0
+grow_vertical = 0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("action_btn_dash_style")
 script = ExtResource("4_touch_action_button")
@@ -171,10 +178,17 @@ vertical_alignment = 1
 text = "ダッシュ"
 
 [node name="ActionDive" type="Panel" parent="."]
-offset_left = 1800.0
-offset_top = 844.0
-offset_right = 1896.0
-offset_bottom = 940.0
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -120.0
+offset_top = -236.0
+offset_right = -24.0
+offset_bottom = -140.0
+grow_horizontal = 0
+grow_vertical = 0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("action_btn_style")
 script = ExtResource("4_touch_action_button")
@@ -193,10 +207,17 @@ vertical_alignment = 1
 text = "ダイブ"
 
 [node name="ActionUseItem" type="Panel" parent="."]
-offset_left = 1800.0
-offset_top = 960.0
-offset_right = 1896.0
-offset_bottom = 1056.0
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -120.0
+offset_top = -120.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 0
+grow_vertical = 0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("action_btn_style")
 script = ExtResource("4_touch_action_button")
@@ -215,10 +236,17 @@ vertical_alignment = 1
 text = "アイテム"
 
 [node name="ActionEmote" type="Panel" parent="."]
-offset_left = 1684.0
-offset_top = 960.0
-offset_right = 1780.0
-offset_bottom = 1056.0
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -236.0
+offset_top = -120.0
+offset_right = -140.0
+offset_bottom = -24.0
+grow_horizontal = 0
+grow_vertical = 0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("action_btn_style")
 script = ExtResource("4_touch_action_button")

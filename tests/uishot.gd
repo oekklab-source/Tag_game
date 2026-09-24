@@ -96,7 +96,50 @@ func _ready() -> void:
 	migration.queue_free()
 	await get_tree().process_frame
 
+	# 8) C-07 T-8: タッチUIを16:9以外のウィンドウサイズで撮る。
+	# project.godot は stretch/mode="canvas_items" + aspect="expand" なので、
+	# 論理ビューポートの寸法は実ウィンドウの縦横比で変わる(1920x1080固定ではない)。
+	# アンカー未設定のまま絶対座標で置いたノードは、ここで初めて破綻が目に見える。
+	# **T-6まではこのケースを一度も撮っていなかったため、「狭い/縦長で崩れないこと」
+	# という受け入れ基準が実際には検証されていなかった**(RV-05はそれで見逃された)。
+	# サイズは「実機の縦横比」を再現できればよく、実解像度である必要は無い。
+	# 実際 1080x2340 をそのまま指定すると**ウィンドウが画面の高さを超え**、
+	# 画面外になった領域が合成されず、撮れた画像の上部に別レイアウトの残像が
+	# 写り込む(T-8で実際に踏んだ。フレーム待ちを増やしても消えなかった)。
+	# 1/3 にして縦横比だけ合わせる: 2340x1080 -> 780x360、1080x2340 -> 360x780
+	await _shot_touch_controls(out, "touch_landscape", Vector2i(780, 360))
+	await _shot_touch_controls(out, "touch_portrait", Vector2i(360, 780))
+
 	get_tree().quit()
+
+
+## TouchControls を指定のウィンドウサイズ(実機の縦横比を再現する比率)で1枚撮る。
+## touch_controls.gd は SettingsManager と GameManager.state を見て自分の visible を
+## 決めるので、撮影の間だけ「タッチON」「PLAYING」を作ってから元へ戻す。
+## world.tscn は使わない——NetworkManager(Autoload)が同じホストポートへ再バインドしに
+## 行き、複数回インスタンス化すると画面がタイトル/ロビー/ネットワークエラーの
+## 混ざったものになるため(T-6セッションで実際に踏んだ罠)。
+func _shot_touch_controls(out: String, name: String, size: Vector2i) -> void:
+	var prev_size := DisplayServer.window_get_size()
+	var prev_mode: String = SettingsManager.touch_controls_mode
+	var prev_state: int = GameManager.state
+
+	DisplayServer.window_set_size(size)
+	SettingsManager.touch_controls_mode = "on"
+	GameManager.state = GameManager.State.PLAYING
+
+	var touch: CanvasLayer = load("res://scenes/hud/touch_controls.tscn").instantiate()
+	get_tree().root.add_child(touch)
+	# ウィンドウのリサイズが論理ビューポートへ反映されるまで数フレーム要る
+	for i in 20:
+		await get_tree().process_frame
+	await _shot(out, name)
+	touch.queue_free()
+
+	SettingsManager.touch_controls_mode = prev_mode
+	GameManager.state = prev_state
+	DisplayServer.window_set_size(prev_size)
+	await get_tree().process_frame
 
 
 func _shot(out: String, name: String) -> void:

@@ -18,6 +18,10 @@ func _ready() -> void:
 	# PLAYING中に変更できる導線も無い(設定画面はタイトルからしか開けない)ため、
 	# 毎フレームのポーリングは不要。GameManager.state_changedだけで十分
 	GameManager.state_changed.connect(_on_state_changed)
+	# T-8(RV-06): QuitMenuはポーズも状態遷移もしない(autoload/quit_menu.gd参照)ので、
+	# state_changedだけではポーズ中もTouchControlsがvisibleのままになり、
+	# ダイアログの裏で移動・視点回転・ダッシュが発火していた。専用シグナルで拾う
+	QuitMenu.opened_changed.connect(_on_quit_menu_toggled)
 	_refresh_visibility()
 
 
@@ -25,10 +29,18 @@ func _on_state_changed(_new_state: int) -> void:
 	_refresh_visibility()
 
 
+func _on_quit_menu_toggled(_is_open: bool) -> void:
+	_refresh_visibility()
+
+
+## 配下の virtual_joystick / touch_look_zone / touch_action_button は
+## いずれもこの CanvasLayer の visible だけを見て _input() を処理するので、
+## 「触らせたくない状況」はすべてここに集約する
 func _refresh_visibility() -> void:
 	visible = (
 		SettingsManager.should_show_touch_controls()
-		and GameManager.state == GameManager.State.PLAYING)
+		and GameManager.state == GameManager.State.PLAYING
+		and not QuitMenu.is_open())
 
 
 func _on_pause_pressed() -> void:

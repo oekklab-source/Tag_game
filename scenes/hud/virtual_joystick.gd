@@ -93,8 +93,13 @@ func _process(_delta: float) -> void:
 	if _active_finger == -1:
 		return
 	if not touch_controls.visible:
-		# 例: ドラッグ中にポーズメニューが開いてPLAYING以外へ状態遷移した場合の保険。
-		# 指を離すイベントが来ない可能性があるため、ここでも強制解放する。
+		# ドラッグ中に TouchControls が消えた場合の保険。
+		# 起こる経路は (a) ラウンドが終わって PLAYING 以外へ状態遷移した、
+		# (b) ポーズ(QuitMenu)が開いた、の2つ。**(b)は状態遷移ではない**——
+		# QuitMenu は get_tree().paused も GameManager.state も変えないので、
+		# touch_controls.gd が QuitMenu.opened_changed を購読して
+		# visible を落としている(C-07 T-8)。どちらの経路でも指を離すイベントは
+		# 来ないので、ここで強制解放する。
 		_force_release()
 		return
 	Input.action_press("move_right", maxf(_stick_vec.x, 0.0))

@@ -61,7 +61,10 @@ func _process(delta: float) -> void:
 	if _active_finger == -1:
 		return
 	if not touch_controls.visible:
-		# 例: ホールド中にポーズメニューが開いてPLAYING以外へ状態遷移した場合の保険。
+		# ホールド中に TouchControls が消えた場合の保険。経路は
+		# (a) PLAYING 以外への状態遷移、(b) ポーズ(QuitMenu)が開いた、の2つ。
+		# (b)は状態遷移ではなく QuitMenu.opened_changed 経由で visible が落ちる
+		# (C-07 T-8、詳細は virtual_joystick.gd の同じ箇所)。
 		# 指を離すイベントが来ない可能性があるため、ここでも強制解放する
 		# (releaseとして扱わないためposition=nullで、タップ発火/サブメニュー選択はしない)。
 		_release(null)
@@ -105,7 +108,11 @@ func _close_submenu() -> void:
 func _select_submenu(release_position: Variant) -> void:
 	if release_position == null:
 		return
-	for i in Player.TAUNT_STYLES.size():
+	# TAUNT_STYLES と TauntSubmenu の子(Taunt1..3)は現状3対3で一致しているが、
+	# player.gd 側にスタイルを足した瞬間に get_child() が範囲外で落ちる。
+	# 少ない方に合わせる(足りない分はシーンに円を追加するまで選べないだけ)
+	var selectable := mini(Player.TAUNT_STYLES.size(), taunt_submenu.get_child_count())
+	for i in selectable:
 		var circle: Control = taunt_submenu.get_child(i)
 		if circle.get_global_rect().has_point(release_position):
 			# taunt_style切替のみ(player.gdの_tick_taunt_style()がis_action_just_pressedで
