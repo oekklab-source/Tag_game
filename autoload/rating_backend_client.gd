@@ -11,11 +11,17 @@ static func _auth_headers() -> PackedStringArray:
 	return PackedStringArray(["Authorization: Bearer " + EosManager.get_id_token()])
 
 
-## toucher_puidはrunner_escaped=falseの時のみ有効な文字列、=trueの時は必ずnullで渡すこと
-## (呼び出し側=rating_report.gdの責務。ここではそのまま転送するだけで検証しない)
+## toucher_puidはrunner_escaped=falseの時のみ有効な文字列、=trueの時は必ずnullで渡すこと。
+## CPU鬼がトドメを刺した試合もnullで渡す(C-03 R-11。サーバーは toucher が null なら
+## §2.5のトドメ再分配を行わない)。
+## (どちらも呼び出し側=rating_report.gdの責務。ここではそのまま転送するだけで検証しない)
+##
+## cpu_hunter_countはCPUが埋めた鬼の人数(C-03 R-11)。hunter_puidsは人間だけなので、
+## これを送らないとサーバーの N が人間数になり、クライアントの楽観計算(CPU込みの
+## round_hunter_count)と必ず食い違う
 static func report_match(host: Node, match_id: String, runner_puid: String,
 		hunter_puids: Array, runner_escaped: bool, toucher_puid,
-		survival_time: float) -> Dictionary:
+		survival_time: float, cpu_hunter_count: int) -> Dictionary:
 	return await HttpJsonClient.post_json(host, RATING_API_BASE_URL + "report-match", {
 		"match_id": match_id,
 		"runner_puid": runner_puid,
@@ -23,6 +29,7 @@ static func report_match(host: Node, match_id: String, runner_puid: String,
 		"runner_escaped": runner_escaped,
 		"toucher_puid": toucher_puid,
 		"survival_time": survival_time,
+		"cpu_hunter_count": cpu_hunter_count,
 	}, _auth_headers())
 
 

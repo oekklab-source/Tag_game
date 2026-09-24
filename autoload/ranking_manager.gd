@@ -6,9 +6,20 @@ extends Node
 signal rating_changed(old_rating: int, new_rating: int, delta: int)
 ## C-03 R-4: サーバーが黙って補正したレートを、実際にユーザーへ知らせるべき瞬間にだけ発火する。
 ## 通常の試合終了時にも発火するrating_changedとは別に用意する(二重通知を防ぐため)。
-## クライアントとサーバーは同じElo計算式を使うため通常は一致する――delta==0(見た目上
-## 変化なし)の場合は発火しない。試合中の即時補正(apply_server_rating_correction)と
-## 起動時reconciliation(_reconcile_server_rating)の両方から発火しうる
+## delta==0(見た目上変化なし)の場合は発火しない。試合中の即時補正
+## (apply_server_rating_correction)と起動時reconciliation(_reconcile_server_rating)の
+## 両方から発火しうる。
+##
+## **「クライアントとサーバーは同じElo計算式を使うので常に一致する」わけではない**
+## (R-4時点のコメントはそう書いていたが誤り。C-03 R-11で実態に合わせて書き直した)。
+## 一致するのは次の条件がそろったときだけで、それ以外は数Ptのズレが出る:
+##  - 人数Nが一致すること。CPU鬼が枠を埋める試合は R-11 で cpu_hunter_count を
+##    送るようにしたので揃う。
+##  - 鬼側の楽観計算は下の calculate_rating_delta() が「味方の鬼は全員自分と同レート」
+##    と仮定する(自分のレートをN個複製する)ため、**人間の鬼が2人以上いて、かつ
+##    レートがばらついている試合では原理的に一致しない**。ここは意図的な簡略化で、
+##    最終的にはサーバー確定値がこのシグナル経由で上書きする。
+## つまり補正トーストは「例外的に出るもの」だが「絶対に出ないもの」ではない。
 signal server_rating_corrected(old_rating: int, new_rating: int, delta: int)
 
 ## rating_report.gdと同じ理由(headless単体実行でclass_nameのグローバル登録が

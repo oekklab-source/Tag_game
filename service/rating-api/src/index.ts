@@ -34,7 +34,7 @@
  *   GET  /leaderboard-top           -> 認証不要、レート上位N件を取得
  */
 
-import { calculateAllRatingChanges, roundHalfAwayFromZero, tierId, tierName } from "./rating_model.js";
+import { buildHunterRatings, calculateAllRatingChanges, roundHalfAwayFromZero, tierId, tierName } from "./rating_model.js";
 
 export interface Env {
 	DB: D1Database;
@@ -281,6 +281,8 @@ async function handleReportMatch(request: Request, env: Env, reporterPuid: strin
 	const runnerEscaped = body?.runner_escaped;
 	const toucherPuid: string | null = body?.toucher_puid ?? null;
 	let survivalTime = Number(body?.survival_time);
+	// C-03 R-11: CPU鬼の人数。未指定(旧クライアント)は0として扱う
+	const cpuHunterCount = body?.cpu_hunter_count === undefined ? 0 : Number(body.cpu_hunter_count);
 
 	if (
 		!isValidMatchId(matchId) ||
@@ -293,6 +295,17 @@ async function handleReportMatch(request: Request, env: Env, reporterPuid: strin
 	}
 	if (!isValidHunterPuids(runnerPuid, hunterPuids)) {
 		return json({ ok: false, reason: "invalid_hunter_count" });
+	}
+	// C-03 R-11: cpu_hunter_count は報告者が自由に決められる値なので、必ず上限を掛ける。
+	// 大きくすると人数補正 O(N) と Kファクターが動くため、無検証だと報酬を操作できてしまう。
+	// 人間+CPU の合計が MAX_HUNTERS を超えないことだけを条件にする(クライアント側の
+	// 1ラウンド定員 MAX_HUNTERS=3 よりは緩いが、ここはロビー定員由来の上限=7)
+	if (
+		!Number.isInteger(cpuHunterCount) ||
+		cpuHunterCount < 0 ||
+		hunterPuids.length + cpuHunterCount > MAX_HUNTERS
+	) {
+		return json({ ok: false, reason: "invalid_cpu_hunter_count" });
 	}
 	// C-03 R-10(RV-01): 報告者自身が参加者でない報告は受け付けない
 	if (!isReporterParticipant(reporterPuid, runnerPuid, hunterPuids)) {
@@ -342,9 +355,12 @@ async function handleReportMatch(request: Request, env: Env, reporterPuid: strin
 	const hunterRows = hunterPuids.map((p) => ratingByPuid.get(p)!);
 	const toucherIndex = toucherPuid === null ? -1 : hunterPuids.indexOf(toucherPuid);
 
+	// C-03 R-11: CPU鬼のぶんを末尾に足して N をクライアントと揃える。
+	// 末尾に足すので hunterDeltas[0..hunterPuids.length-1] は人間と1:1のまま対応し、
+	// 下の hunterResults のインデックス参照はそのままでよい。CPUぶんの増減は捨てる
 	const calc = calculateAllRatingChanges(
 		runnerRow.rating,
-		hunterRows.map((r) => r.rating),
+		buildHunterRatings(hunterRows.map((r) => r.rating), cpuHunterCount, DEFAULT_RATING),
 		survivalTime,
 		toucherIndex,
 		true,

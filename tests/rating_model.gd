@@ -20,6 +20,7 @@ func _ready() -> void:
 	test_tier_boundaries_match_bonus_thresholds()
 	test_per_client_touch_transfer_stays_zero_sum()
 	test_clean_escape_symmetric_across_clients()
+	test_cpu_hunter_padding_matches_server()
 
 	print("==================================================")
 	print("【TEST COMPLETED】全テストケースの検証完了")
@@ -220,3 +221,49 @@ func test_tier_boundaries_match_bonus_thresholds() -> void:
 	assert(RankingManager.tier_id(1800) == &"diamond")
 	assert(int(RankingManager.BONUS_ZERO_AT) == 1800)
 	print("   => ティア境界(1400/1800)とボーナスしきい値が一致していることを確認 [OK]")
+
+
+func test_cpu_hunter_padding_matches_server() -> void:
+	print("\n--- [10] C-03 R-11: CPU鬼を含むランクマッチでサーバーと同じ値になることの検証 ---")
+	# 1v1ランクマッチ(人間の鬼1人 + CPU鬼2体)を2分(120秒)で捕獲したケース。
+	# サーバー(service/rating-api)は hunter_puids(人間だけ)に cpu_hunter_count ぶんの
+	# プレースホルダ(人間鬼の平均レート)を足して N=3 で計算する。
+	#
+	# **ここの数値は service/rating-api/src/rating_model.test.ts の
+	# 「C-03 R-11: CPU hunters pad N so server matches the client's optimistic value」と
+	# 必ず同じ値にすること。** GDScriptとTSが同じ数値を主張していることが、
+	# クライアント/サーバー一致の機械的な担保になっている(RV-04)。
+	var padded: Array[float] = [1500.0, 1500.0, 1500.0] # buildHunterRatings([1500], 2) 相当
+	var server: Dictionary = RankingManager.calculate_all_rating_changes(1500.0, padded, 120.0, 0)
+	var server_runner := int(round(server["runner_delta"]))
+	var server_toucher := int(round(server["hunter_deltas"][0]))
+
+	# クライアント側の楽観計算(hud.gd が round_hunter_count=3 で呼ぶのと同じ経路)
+	var client_runner := RankingManager.calculate_rating_delta(true, false, 120.0, 3, false, 1500, 1500)
+	var client_toucher := RankingManager.calculate_rating_delta(false, true, 120.0, 3, true, 1500, 1500)
+
+	print("   サーバー: Runner %+d / トドメ役 %+d" % [server_runner, server_toucher])
+	print("   クライアント: Runner %+d / トドメ役 %+d" % [client_runner, client_toucher])
+	assert(server_runner == client_runner)
+	assert(server_toucher == client_toucher)
+	# ゴールデン値(rating_model.test.ts と同じ)
+	assert(server_runner == -1)
+	assert(server_toucher == 5)
+
+	# 補正前(CPUを数えない = N=1)は実際にずれていたことを明示しておく。
+	# ここが一致するようになったら R-11 が壊れている
+	var unpadded_ratings: Array[float] = [1500.0]
+	var unpadded: Dictionary = RankingManager.calculate_all_rating_changes(1500.0, unpadded_ratings, 120.0, 0)
+	var unpadded_runner := int(round(unpadded["runner_delta"]))
+	var unpadded_toucher := int(round(unpadded["hunter_deltas"][0]))
+	print("   (参考) CPUを数えない場合: Runner %+d / トドメ役 %+d ← これがR-11以前のサーバー値"
+		% [unpadded_runner, unpadded_toucher])
+	assert(unpadded_runner != client_runner)
+	assert(unpadded_toucher != client_toucher)
+
+	# CPU鬼がトドメを刺した試合(toucher_idx=-1)はトドメ再分配が起きず、鬼は全員同額
+	var by_cpu: Dictionary = RankingManager.calculate_all_rating_changes(1500.0, padded, 120.0, -1)
+	var d: Array = by_cpu["hunter_deltas"]
+	assert(is_equal_approx(d[0], d[1]) and is_equal_approx(d[1], d[2]))
+	print("   => CPU鬼がトドメの試合はトドメ再分配なしで鬼全員同額になることを確認 [OK]")
+	print("   => クライアント/サーバーのNが一致し、補正トーストが例外に戻ることを確認 [OK]")

@@ -5,12 +5,21 @@ extends Node
 ## (host_migration.gd / version_gate.gd と同じ子ノードパターン。
 ## _ready() で add_child され、全ピアで同一の NodePath になる)。
 ##
-## 既知の制約: 人間の鬼が3人未満のランクマッチはCPU鬼が残り枠を埋める
-## (game_manager.gd の request_start_round() 参照)。CPU鬼がタッチした場合は
-## report_touch() が tagger_id == -1 のまま _end_round.rpc() するため、
-## 有効な toucher_puid を用意できず報告自体をスキップする(should_report()参照)。
-## これは小規模ランクマッチ(1v1等)では普通に起こりうる既知のカバレッジ制約で、
-## 今回は意図的に先送りしている(未解決)
+## CPU鬼の扱い(C-03 R-11で解決済み。R-3時点の「既知の制約」はもう無い):
+## 人間の鬼が3人未満のランクマッチはCPU鬼が残り枠を埋める
+## (game_manager.gd の request_start_round() 参照)。ここには2つの論点があり、
+## どちらもR-11で対応した。
+##  1. **人数(N)の整合**: hunter_puids は人間だけなので、CPU鬼の人数を
+##     cpu_hunter_count として別に送り、サーバー側で人間鬼の平均レートの
+##     プレースホルダを N に足して揃える。送らないとクライアント N=3 /
+##     サーバー N=人間数 になり、期待値・分配・低レート帯ボーナスが全部ずれて、
+##     R-4の補正トーストが毎試合出る(RV-04)。
+##  2. **CPUがトドメを刺した試合**: report_touch() が tagger_id == -1 のまま
+##     _end_round.rpc() するため有効な toucher_puid が無い。R-3では報告自体を
+##     スキップしていたが(小規模ランクマッチでは普通に起こるため「負けても
+##     レートが動かない試合」が発生していた)、R-11からは toucher_puid = null で
+##     報告する。サーバーは toucher が null なら §2.5 のトドメ再分配を行わない
+##     ——つまり「誰も30%の上乗せを受け取らない捕獲試合」として正しく処理される。
 
 const USE_LIVE_RATING_BACKEND := BackendConfig.USE_LIVE_RATING_BACKEND
 
@@ -31,8 +40,8 @@ static func should_report(round_is_ranked: bool, reason: int, tagger_id: int) ->
 		return false
 	if reason == GameManager.EndReason.RUNNER_LEFT:
 		return false
-	if reason == GameManager.EndReason.TAGGED and tagger_id == -1:
-		return false
+	# C-03 R-11: TAGGED かつ tagger_id == -1(CPU鬼がトドメ)も報告する。
+	# toucher_puid = null で送ればサーバーはトドメ再分配なしで計算する(ヘッダ参照)
 	return true
 
 
@@ -49,6 +58,14 @@ static func build_hunter_puids(peer_profiles: Dictionary, human_hunter_ids: Arra
 			return null
 		out.append(puid)
 	return out
+
+
+## CPUが埋めた鬼の人数(C-03 R-11)。GameManager.round_hunter_count はCPU込みの値
+## (game_manager.gd の _start_round() 参照)なので、人間の鬼の人数を引けば求まる。
+## 0未満にはならないようにクランプする(round_hunter_count が 0 のまま=ラウンド外で
+## 呼ばれた場合に負数を送らないため)
+static func cpu_hunter_count(round_hunter_count: int, human_hunter_count: int) -> int:
+	return maxi(round_hunter_count - human_hunter_count, 0)
 
 
 static func _generate_match_id() -> String:
@@ -80,16 +97,20 @@ func report_match_result(runner_won: bool, reason: int, tagger_id: int) -> void:
 	var hunter_puids = build_hunter_puids(GameManager.peer_profiles, human_hunter_ids)
 	if hunter_puids == null:
 		return
+	var cpu_hunters := cpu_hunter_count(GameManager.round_hunter_count, human_hunter_ids.size())
 	var runner_escaped := runner_won
 	var toucher_puid = null
-	if not runner_escaped:
+	if not runner_escaped and tagger_id != -1:
+		# C-03 R-11: tagger_id == -1 はCPU鬼がトドメを刺した試合。その場合は
+		# toucher_puid を null のままにして報告する(スキップしない)
 		toucher_puid = String(GameManager.peer_profiles.get(tagger_id, {}).get("puid", ""))
 		if toucher_puid.is_empty():
 			return
 	var match_id := _generate_match_id()
 
 	var res := await _RatingBackendClientScript.report_match(
-		self, match_id, runner_puid, hunter_puids, runner_escaped, toucher_puid, survival_time)
+		self, match_id, runner_puid, hunter_puids, runner_escaped, toucher_puid,
+		survival_time, cpu_hunters)
 	if not res.get("api_ok", false) or not res.get("ok", false):
 		return
 

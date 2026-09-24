@@ -19,6 +19,7 @@ import {
 	BONUS_ZERO_AT,
 	MAX_TIME,
 	bonusWeight,
+	buildHunterRatings,
 	calculateAllRatingChanges,
 	calculateRatingDelta,
 	roundHalfAwayFromZero,
@@ -222,4 +223,69 @@ test("rounding: roundHalfAwayFromZero matches GDScript round(), not native Math.
 	// この食い違いこそがroundHalfAwayFromZero()を用意した理由であることを明示しておく。
 	assert.equal(Math.round(-2.5), -2);
 	assert.notEqual(Math.round(-2.5), roundHalfAwayFromZero(-2.5));
+});
+
+
+// --- [4] C-03 R-11: CPU鬼を含むランクマッチで、サーバーとクライアントのNが一致すること ---
+// クライアント(autoload/game_manager.gd)は人間の鬼が MAX_HUNTERS(=3)未満のとき
+// CPU鬼で埋め、その合計を round_hunter_count として楽観計算に使う。
+// 一方 /report-match が受け取る hunter_puids は人間だけなので、CPU鬼ぶんを
+// buildHunterRatings() で足さないと N が食い違い、R-4の補正トーストが毎試合出る(RV-04)。
+//
+// **このテストの数値は tests/rating_model.gd の同名ケースと必ず同じ値にすること。**
+// GDScript側とTS側が同じ数値を主張していることが、両者一致の機械的な担保になっている。
+test("C-03 R-11: CPU hunters pad N so server matches the client's optimistic value", () => {
+	// 1v1ランクマッチ: 人間の鬼1人(1500) + CPU鬼2体。2分(120秒)で人間の鬼が捕獲
+	const padded = buildHunterRatings([1500], 2);
+	assert.deepEqual(padded, [1500, 1500, 1500]);
+
+	const server = calculateAllRatingChanges(1500, padded, 120.0, 0, true);
+	const serverRunner = roundHalfAwayFromZero(server.runnerDelta);
+	const serverToucher = roundHalfAwayFromZero(server.hunterDeltas[0]);
+
+	// クライアント側の楽観計算(autoload/ranking_manager.gd の calculate_rating_delta 相当)
+	const clientRunner = calculateRatingDelta(true, false, 120.0, 3, false, 1500, 1500);
+	const clientToucher = calculateRatingDelta(false, true, 120.0, 3, true, 1500, 1500);
+
+	assert.equal(serverRunner, clientRunner);
+	assert.equal(serverToucher, clientToucher);
+	// ゴールデン値(tests/rating_model.gd と同じ)
+	assert.equal(serverRunner, -1);
+	assert.equal(serverToucher, 5);
+
+	// 補正前(CPUを数えない = N=1)は実際にずれていたことを、退行防止のため明示しておく。
+	// このケースが再び通るようになったら R-11 が壊れている
+	const unpadded = calculateAllRatingChanges(1500, [1500], 120.0, 0, true);
+	assert.notEqual(roundHalfAwayFromZero(unpadded.runnerDelta), clientRunner);
+	assert.notEqual(roundHalfAwayFromZero(unpadded.hunterDeltas[0]), clientToucher);
+});
+
+test("C-03 R-11: buildHunterRatings uses the human average as the CPU placeholder", () => {
+	// プレースホルダが人間の平均になるので、鬼レートの平均(=2.3節の R_H* の素)は
+	// CPUを足しても変わらない。これが Runner 側の期待勝率が一致する理由
+	const padded = buildHunterRatings([1400, 1600], 1);
+	assert.deepEqual(padded, [1400, 1600, 1500]);
+	const avgBefore = (1400 + 1600) / 2;
+	const avgAfter = padded.reduce((a, b) => a + b, 0) / padded.length;
+	isCloseTo(avgAfter, avgBefore);
+
+	// 0人指定・負数指定では何も足さない
+	assert.deepEqual(buildHunterRatings([1500], 0), [1500]);
+	assert.deepEqual(buildHunterRatings([1500], -3), [1500]);
+	// 人間が0人なら fallback を使う(通常は hunter_puids が最低1人なので到達しない)
+	assert.deepEqual(buildHunterRatings([], 2, 1234), [1234, 1234]);
+});
+
+test("C-03 R-11: a CPU finishing the tag reports with no touch-transfer", () => {
+	// CPU鬼がトドメを刺した試合(tagger_id == -1)は toucher_puid = null で報告する。
+	// §2.5 のトドメ再分配が起きないので、人間の鬼3人は全員同額になる
+	const padded = buildHunterRatings([1500], 2);
+	const r = calculateAllRatingChanges(1500, padded, 120.0, -1, true);
+	isCloseTo(r.hunterDeltas[0], r.hunterDeltas[1], 0.0001);
+	isCloseTo(r.hunterDeltas[1], r.hunterDeltas[2], 0.0001);
+	// トドメ有りのケース(上のテスト)ではトドメ役だけ多く貰う
+	const withToucher = calculateAllRatingChanges(1500, padded, 120.0, 0, true);
+	assert.ok(withToucher.hunterDeltas[0] > r.hunterDeltas[0]);
+	// 陣営としての取り分(合計)は再分配の有無で変わらない
+	isCloseTo(sum(withToucher.hunterDeltas), sum(r.hunterDeltas), 0.0001);
 });

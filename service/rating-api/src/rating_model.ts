@@ -99,6 +99,45 @@ export interface RatingChangeResult {
  * @param toucherIndex タッチした Hunter のインデックス(未捕獲または CPU の場合は -1)
  * @param applyBonus false にすると低レート帯ボーナスを適用しない従来の厳密ゼロサム計算になる
  */
+/**
+ * 人間の鬼のレート配列に、CPU鬼のぶんのプレースホルダを足して N を揃える(C-03 R-11)。
+ *
+ * クライアント(autoload/game_manager.gd の request_start_round())は人間の鬼が
+ * MAX_HUNTERS(=3)未満のとき残り枠をCPU鬼で埋め、その合計を round_hunter_count として
+ * 全ピアへ配る。一方 /report-match が受け取る hunter_puids は人間だけなので、
+ * 補正しないとクライアント N=3 / サーバー N=人間数 で必ず食い違い、
+ * 期待値・分配・低レート帯ボーナスが全部ずれる(RV-04)。
+ *
+ * プレースホルダは**人間の鬼の平均レート**にする。こうすると
+ * 2.3節の R_H*(= 鬼レートの平均 + O(N)) が人間だけの平均と一致したままになるので、
+ * Runner 側の期待勝率はクライアントの楽観計算と厳密に一致する。
+ * 人間の鬼が1人だけ(1v1ランクマッチ)の場合は鬼側の計算も完全一致する。
+ *
+ * **CPU鬼ぶんの増減は呼び出し側で捨てる**(hunterDeltas の先頭=人間ぶんだけを適用する)。
+ * その分ゼロサムは漏れるが、これはクライアントの既存挙動と同じで、
+ * 「サーバーとクライアントが一致すること」を優先した結果。docs/RATING_SYSTEM.md §6 参照。
+ *
+ * @param humanHunterRatings 人間の鬼のレート配列(最低1人)
+ * @param cpuHunterCount CPU鬼の人数(0以上。呼び出し側で上限を検証済みであること)
+ * @param fallbackRating 人間の鬼が0人だった場合に使う値(通常は到達しない防御的な既定値)
+ */
+export function buildHunterRatings(
+	humanHunterRatings: number[],
+	cpuHunterCount: number,
+	fallbackRating = 1500,
+): number[] {
+	const result = [...humanHunterRatings];
+	if (cpuHunterCount <= 0) return result;
+	const placeholder =
+		humanHunterRatings.length > 0
+			? humanHunterRatings.reduce((a, b) => a + b, 0) / humanHunterRatings.length
+			: fallbackRating;
+	for (let i = 0; i < cpuHunterCount; i++) {
+		result.push(placeholder);
+	}
+	return result;
+}
+
 export function calculateAllRatingChanges(
 	runnerRating: number,
 	hunterRatings: number[],

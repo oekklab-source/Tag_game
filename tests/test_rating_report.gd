@@ -1,6 +1,7 @@
 extends Node
 
-## C-03 R-3: rating_report.gd の純粋関数(should_report/build_hunter_puids)を
+## C-03 R-3 / R-11: rating_report.gd の純粋関数
+## (should_report / build_hunter_puids / cpu_hunter_count)を
 ## ネットワーク無しで直接検証するスクリプト
 
 const RatingReportScript := preload("res://autoload/game/rating_report.gd")
@@ -24,6 +25,7 @@ func _ready() -> void:
 
 	_test_should_report()
 	_test_build_hunter_puids()
+	_test_cpu_hunter_count()
 
 	print("==================================================")
 	print("test_rating_report 結果: PASS=%d, FAIL=%d" % [passed_count, failed_count])
@@ -45,8 +47,11 @@ func _test_should_report() -> void:
 		"非ランク(round_is_ranked=false) -> false")
 	_assert(RatingReportScript.should_report(true, RUNNER_LEFT, 5) == false,
 		"RUNNER_LEFT -> false(切断ペナルティ経路と二重処理を避ける)")
-	_assert(RatingReportScript.should_report(true, TAGGED, -1) == false,
-		"TAGGED + tagger_id=-1(CPU鬼タッチ) -> false(既知の制約)")
+	# C-03 R-11: R-3では「有効なtoucher_puidが作れない」という理由で報告自体を
+	# スキップしていた(小規模ランクマッチでは普通に起こるため、負けてもレートが
+	# 動かない試合が発生していた)。R-11からは toucher_puid=null で報告する
+	_assert(RatingReportScript.should_report(true, TAGGED, -1) == true,
+		"TAGGED + tagger_id=-1(CPU鬼タッチ) -> true(R-11でトドメ無しとして報告)")
 	_assert(RatingReportScript.should_report(true, TAGGED, 5) == true,
 		"TAGGED + 有効なtagger_id -> true")
 	_assert(RatingReportScript.should_report(true, TIME_UP, -1) == true,
@@ -65,3 +70,17 @@ func _test_build_hunter_puids() -> void:
 
 	var empty_result: Array = RatingReportScript.build_hunter_puids({}, [])
 	_assert(empty_result == [], "鬼が0人でも空配列を返す(nullにしない)")
+
+
+## C-03 R-11(RV-04): CPUが埋めた鬼の人数。これを送らないとサーバーの N が
+## 人間数になり、クライアントの楽観計算(CPU込みのround_hunter_count)と食い違う
+func _test_cpu_hunter_count() -> void:
+	print("\n--- cpu_hunter_count() ---")
+	_assert(RatingReportScript.cpu_hunter_count(3, 1) == 2,
+		"1v1ランクマッチ(鬼枠3・人間1) -> CPU2体")
+	_assert(RatingReportScript.cpu_hunter_count(3, 3) == 0,
+		"人間だけで鬼枠が埋まっている -> 0")
+	_assert(RatingReportScript.cpu_hunter_count(0, 0) == 0,
+		"ラウンド外(round_hunter_count=0) -> 0")
+	_assert(RatingReportScript.cpu_hunter_count(1, 3) == 0,
+		"人間の方が多い異常値でも負数を返さない(0にクランプ)")

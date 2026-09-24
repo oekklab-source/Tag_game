@@ -87,13 +87,24 @@ curl -s -X POST $BASE/rating -H "X-Debug-Puid: p-runner"
 
 # 3. report-match(報告者は参加者でなければならない。同じmatch_idを2回送って
 #    replayed:trueとレート非2重変動を確認)
-BODY='{"match_id":"test-match-0001","runner_puid":"p-runner","hunter_puids":["p-h1","p-h2"],"runner_escaped":false,"toucher_puid":"p-h1","survival_time":120}'
+BODY='{"match_id":"test-match-0001","runner_puid":"p-runner","hunter_puids":["p-h1","p-h2"],"runner_escaped":false,"toucher_puid":"p-h1","survival_time":120,"cpu_hunter_count":0}'
 curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-h1" -d "$BODY"
 curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-h1" -d "$BODY"
 curl -s -X POST $BASE/rating -H "X-Debug-Puid: p-runner"
 
+# 3b. cpu_hunter_count(C-03 R-11): CPU鬼を含む1v1ランクマッチ。
+#     人間の鬼1人 + CPU2体 = N:3 として計算される。
+#     上限(人間+CPU <= 7)を超えると invalid_cpu_hunter_count
+BODY_CPU='{"match_id":"test-match-0003","runner_puid":"p-runner","hunter_puids":["p-h1"],"runner_escaped":false,"toucher_puid":"p-h1","survival_time":120,"cpu_hunter_count":2}'
+curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-h1" -d "$BODY_CPU"
+BODY_CPU_NG='{"match_id":"test-match-0004","runner_puid":"p-runner","hunter_puids":["p-h1"],"runner_escaped":false,"toucher_puid":"p-h1","survival_time":120,"cpu_hunter_count":99}'
+curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-h1" -d "$BODY_CPU_NG"
+# CPU鬼がトドメを刺した試合は toucher_puid:null で報告する(トドメ再分配なし)
+BODY_CPU_TOUCH='{"match_id":"test-match-0005","runner_puid":"p-runner","hunter_puids":["p-h1"],"runner_escaped":false,"toucher_puid":null,"survival_time":120,"cpu_hunter_count":2}'
+curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-h1" -d "$BODY_CPU_TOUCH"
+
 # 4. 未claim参加者を含む試合 → not_claimed
-BODY2='{"match_id":"test-match-0002","runner_puid":"p-runner","hunter_puids":["p-unclaimed"],"runner_escaped":true,"toucher_puid":null,"survival_time":180}'
+BODY2='{"match_id":"test-match-0002","runner_puid":"p-runner","hunter_puids":["p-unclaimed"],"runner_escaped":true,"toucher_puid":null,"survival_time":180,"cpu_hunter_count":0}'
 curl -s -X POST $BASE/report-match -H "X-Debug-Puid: p-runner" -d "$BODY2"
 
 # 5. leaderboard(認証不要・GET)
