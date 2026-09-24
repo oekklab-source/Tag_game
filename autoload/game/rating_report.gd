@@ -68,6 +68,14 @@ static func cpu_hunter_count(round_hunter_count: int, human_hunter_count: int) -
 	return maxi(round_hunter_count - human_hunter_count, 0)
 
 
+## 補正RPCで届いた rating_after が「1試合ぶんの補正」としてあり得る値か(C-03 R-12 / RV-08)。
+## 絶対値域と、現在値からの変化幅の両方を見る
+static func is_plausible_correction(rating_after: int, current_rating: int) -> bool:
+	if rating_after < CORRECTION_RATING_MIN or rating_after > CORRECTION_RATING_MAX:
+		return false
+	return absi(rating_after - current_rating) <= CORRECTION_MAX_DELTA
+
+
 static func _generate_match_id() -> String:
 	return "m-" + Crypto.new().generate_random_bytes(16).hex_encode()
 
@@ -130,13 +138,44 @@ func report_match_result(runner_won: bool, reason: int, tagger_id: int) -> void:
 	_apply_rating_correction.rpc(entries)
 
 
+## サーバー(rating-api)側の RATING_MIN / RATING_MAX と同じ値。補正RPCで届いた値を
+## 受信側でも同じ範囲に閉じ込めるために持つ(C-03 R-12 / RV-08)
+const CORRECTION_RATING_MIN := 100
+const CORRECTION_RATING_MAX := 2500
+
+## 1試合で起こりうるレート変動の上限(絶対値)。内訳は
+## K_R = 16*sqrt(N) が N=7 で約42、低レート帯ボーナス(§2.6)が最大9、
+## 切断ペナルティが -64。いずれも十分に下回るよう余裕を持たせて100にしてある。
+## 「1試合ぶんの補正」としてあり得ない大きさの値を弾くのが目的で、
+## 正確な理論上限を詰めることには意味が無い
+const CORRECTION_MAX_DELTA := 100
+
+
 ## ホスト -> 全ピア。puidをキーにした補正値(peer_idではなくpuidにしたのは、RPC到達までの
 ## タイムラグの間にpeer_idの寿命(再接続等)を気にしなくて済むため)。自分のpuidが
-## entriesに無ければ何もしない(報告対象外だった、または自分がEOS未接続)
+## entriesに無ければ何もしない(報告対象外だった、または自分がEOS未接続)。
+##
+## **受信側で値域を検証する(C-03 R-12 / RV-08)**。このRPCはホスト権威なので、
+## 改造ホストは同席した他人の表示レートを任意の値へ書き換えられた。サーバー側の値は
+## 正しいままなので次回起動の _reconcile_server_rating() で戻るが、それまでの間
+## rating はマッチング可否(tier_lock、scenes/room_match_dialog.gd)と
+## ランキング表示に効いてしまう。
+##
+## **検証は RankingManager.apply_server_rating_correction() 側には置かないこと。**
+## あちらは起動時の reconciliation も通る共通路で、そこでは「前回の起動から大きく
+## 離れた値」が正当に届きうる。ここ(1試合ぶんの補正)だけが狭い範囲に収まるはず、
+## という前提で検証できる。
+## 逸脱したら補正を捨てる。既存の「失敗時は何もしない=ローカル自己計算がそのまま
+## 最終結果になる」規約と同じで、正しい値は次回起動の reconciliation で収束する
 @rpc("authority", "call_local", "reliable")
 func _apply_rating_correction(entries: Dictionary) -> void:
 	var my_puid := EosManager.product_user_id
 	if my_puid.is_empty() or not entries.has(my_puid):
 		return
 	var e: Dictionary = entries[my_puid]
-	RankingManager.apply_server_rating_correction(int(e.get("rating_after", ProfileManager.rating)))
+	var rating_after := int(e.get("rating_after", ProfileManager.rating))
+	if not is_plausible_correction(rating_after, ProfileManager.rating):
+		push_warning("[RatingReport] 補正値が範囲外なので破棄した: %d (現在 %d)"
+			% [rating_after, ProfileManager.rating])
+		return
+	RankingManager.apply_server_rating_correction(rating_after)

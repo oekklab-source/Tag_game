@@ -418,8 +418,16 @@ func merge_server_inventory(data: Dictionary) -> void:
 				runner_wins = int(data.get("runner_wins", runner_wins))
 				hunter_wins = int(data.get("hunter_wins", hunter_wins))
 				changed = true
-			casual_matches_played = int(data.get("casual_matches_played", casual_matches_played))
-			changed = true
+			# C-03 R-12(RV-13): 実際に値が変わったときだけ changed を立てる。
+			# 無条件に立てていたため、USE_LIVE_RATING_BACKEND=true のときに
+			# matches_played をリモートから採らない(上のガード)せいで
+			# remote_matches > matches_played が永久に真になり、クラウド同期のたびに
+			# save_profile() -> profile_updated -> GameManager._on_profile_updated()
+			# -> broadcast_my_profile() が無駄に走っていた
+			var remote_casual := int(data.get("casual_matches_played", casual_matches_played))
+			if remote_casual != casual_matches_played:
+				casual_matches_played = remote_casual
+				changed = true
 		if not BackendConfig.USE_LIVE_RATING_BACKEND:
 			# highest_rating は勝敗に関わらず常に退行させない(ratchet)
 			var remote_highest := int(data.get("highest_rating", highest_rating))

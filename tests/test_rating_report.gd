@@ -1,7 +1,7 @@
 extends Node
 
-## C-03 R-3 / R-11: rating_report.gd の純粋関数
-## (should_report / build_hunter_puids / cpu_hunter_count)を
+## C-03 R-3 / R-11 / R-12: rating_report.gd の純粋関数
+## (should_report / build_hunter_puids / cpu_hunter_count / is_plausible_correction)を
 ## ネットワーク無しで直接検証するスクリプト
 
 const RatingReportScript := preload("res://autoload/game/rating_report.gd")
@@ -26,6 +26,7 @@ func _ready() -> void:
 	_test_should_report()
 	_test_build_hunter_puids()
 	_test_cpu_hunter_count()
+	_test_is_plausible_correction()
 
 	print("==================================================")
 	print("test_rating_report 結果: PASS=%d, FAIL=%d" % [passed_count, failed_count])
@@ -84,3 +85,25 @@ func _test_cpu_hunter_count() -> void:
 		"ラウンド外(round_hunter_count=0) -> 0")
 	_assert(RatingReportScript.cpu_hunter_count(1, 3) == 0,
 		"人間の方が多い異常値でも負数を返さない(0にクランプ)")
+
+
+## C-03 R-12(RV-08): 補正RPCの受信側検証。改造ホストが同席者の表示レートを
+## 任意に書き換えられる経路を塞ぐ。rating は tier_lock のマッチング判定と
+## ランキング表示に効くため、一時的な書き換えでも実害がある
+func _test_is_plausible_correction() -> void:
+	print("\n--- is_plausible_correction() ---")
+	var f := RatingReportScript.is_plausible_correction
+
+	_assert(f.call(1512, 1500) == true, "通常の1試合ぶんの補正(+12) -> 採用")
+	_assert(f.call(1436, 1500) == true, "切断ペナルティ相当(-64) -> 採用")
+	_assert(f.call(1500, 1500) == true, "変化なし(delta=0) -> 採用")
+
+	_assert(f.call(2600, 1500) == false, "絶対値域の上限(2500)超え -> 破棄")
+	_assert(f.call(99, 150) == false, "絶対値域の下限(100)未満 -> 破棄")
+	_assert(f.call(2500, 1500) == false,
+		"値域内でも1試合の変化幅(100)を超えていれば破棄")
+	_assert(f.call(100, 1500) == false, "極端に下げる改ざんも破棄")
+
+	# 境界(ちょうど100の変化は許す / 101は許さない)
+	_assert(f.call(1600, 1500) == true, "変化幅ちょうど100 -> 採用")
+	_assert(f.call(1601, 1500) == false, "変化幅101 -> 破棄")

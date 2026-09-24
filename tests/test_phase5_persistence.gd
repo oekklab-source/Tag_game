@@ -235,8 +235,16 @@ func _test_cloud_merge_logic() -> void:
 		"schema_version": 5, "owned_costumes": ["default"], "owned_hats": ["none"],
 		"rating": 1700, "matches_played": 20, "highest_rating": 1700, "last_modified_unix": 1,
 	})
-	_assert(ProfileManager.rating == 1700 and ProfileManager.matches_played == 20,
-		"matches_played が多いクラスタがタイムスタンプに関わらず採用される")
+	# C-03 R-4: USE_LIVE_RATING_BACKEND=true の間、レート/戦績クラスタは
+	# rating-api(D1)が唯一の権威になるので PDS からはマージしない(merge_server_inventory()の
+	# ガード参照)。backend_config.gd のコメント⑤の「一時的にtrueへ書き換えて再実行」手順を
+	# 踏んだときに、この設計どおりの挙動が FAIL として出てしまわないよう期待値を切り替える
+	if BackendConfig.USE_LIVE_RATING_BACKEND:
+		_assert(ProfileManager.rating == 1600 and ProfileManager.matches_played == 10,
+			"USE_LIVE_RATING_BACKEND=true ではレート/戦績クラスタをPDSからマージしない")
+	else:
+		_assert(ProfileManager.rating == 1700 and ProfileManager.matches_played == 20,
+			"matches_played が多いクラスタがタイムスタンプに関わらず採用される")
 
 	# highest_rating はクラスタの勝敗に関わらず常に退行しない(ratchet)
 	ProfileManager._apply_data({
@@ -253,7 +261,63 @@ func _test_cloud_merge_logic() -> void:
 		"schema_version": 5, "owned_costumes": ["default"], "owned_hats": ["none"],
 		"rating": 1500, "matches_played": 3, "highest_rating": 2000, "last_modified_unix": 300,
 	})
-	_assert(ProfileManager.highest_rating == 2000, "リモートの highest_rating が大きければ採用される")
+	if BackendConfig.USE_LIVE_RATING_BACKEND:
+		_assert(ProfileManager.highest_rating == 1800,
+			"USE_LIVE_RATING_BACKEND=true では highest_rating もPDSからマージしない")
+	else:
+		_assert(ProfileManager.highest_rating == 2000,
+			"リモートの highest_rating が大きければ採用される")
+
+	# C-03 R-12(RV-13): casual_matches_played の代入直後にあった無条件の changed = true を
+	# 「実際に値が変わったときだけ」へ直した。
+	#
+	# **「無駄な保存が消えたこと」自体はここでは検証できない**。
+	# 無駄保存が起きるのは USE_LIVE_RATING_BACKEND == true のときだけで
+	# (レート/戦績クラスタが採用されなくなるため remote_matches > matches_played が
+	# 永久に真になる)、このフラグは const なので headless では切り替えられない
+	# (autoload/backend_config.gd のコメント⑤と同じ制約。手動フリップで確認する)。
+	# フラグが false の現状では、remote_ts が新しい場合は単純フィールドのLWW分岐が
+	# 先に changed = true を立てるため、どちらにせよ保存される。
+	#
+	# ここで守るのは**値のマージ結果が変わっていないこと**(この修正のリグレッション観点)。
+	ProfileManager._apply_data({
+		"schema_version": 5, "costume_id": "default", "owned_costumes": ["default"],
+		"hat_id": "none", "owned_hats": ["none"],
+		"matches_played": 10, "casual_matches_played": 7, "last_modified_unix": 100,
+	})
+	# リモートの方が試合数が多い(ts は古い) -> クラスタごと採用され casual も追随する
+	ProfileManager.merge_server_inventory({
+		"schema_version": 5, "owned_costumes": ["default"], "owned_hats": ["none"],
+		"matches_played": 12, "casual_matches_played": 9, "last_modified_unix": 50,
+	})
+	_assert(ProfileManager.casual_matches_played == 9,
+		"casual_matches_played が違えばリモート値を採用する")
+
+	# リモートに casual_matches_played キーが無い場合はローカル値を維持する
+	ProfileManager._apply_data({
+		"schema_version": 5, "costume_id": "default", "owned_costumes": ["default"],
+		"hat_id": "none", "owned_hats": ["none"],
+		"matches_played": 10, "casual_matches_played": 7, "last_modified_unix": 100,
+	})
+	ProfileManager.merge_server_inventory({
+		"schema_version": 5, "owned_costumes": ["default"], "owned_hats": ["none"],
+		"matches_played": 12, "last_modified_unix": 50,
+	})
+	_assert(ProfileManager.casual_matches_played == 7,
+		"リモートに casual_matches_played が無ければローカル値を維持する")
+
+	# 分岐に入らない条件(試合数が同じで ts も古い)では何も動かない
+	ProfileManager._apply_data({
+		"schema_version": 5, "costume_id": "default", "owned_costumes": ["default"],
+		"hat_id": "none", "owned_hats": ["none"],
+		"matches_played": 10, "casual_matches_played": 7, "last_modified_unix": 100,
+	})
+	ProfileManager.merge_server_inventory({
+		"schema_version": 5, "owned_costumes": ["default"], "owned_hats": ["none"],
+		"matches_played": 10, "casual_matches_played": 99, "last_modified_unix": 50,
+	})
+	_assert(ProfileManager.casual_matches_played == 7,
+		"古いリモート(同試合数)の casual_matches_played は反映されない")
 
 	# 実データを復元
 	ProfileManager.player_name = orig.player_name
