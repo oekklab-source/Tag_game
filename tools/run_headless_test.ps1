@@ -18,8 +18,16 @@
          子プロセスのPID」のみで、CPU使用量等の状況証拠で無関係なプロセスを
          巻き込むことは無い。
 
+      3. Godot 4.7.2(win64)の headless は get_tree().quit(code) を呼んでも
+         プロセスの終了コードが常に -1 になり、テストの成否を一切伝えない
+         (quit(0)/quit(3)/quit(7) のいずれでも -1 になることを実測で確認済み。
+         Phase 3 L-12)。そのためこのスクリプトは終了コードを信用せず、
+         テストの標準出力に出る失敗マーカー([FAIL] / SOME TESTS FAILED /
+         「N FAILED」/ FAIL=1以上)を走査して成否を判定する。
+
     タイムアウトで強制終了した場合は、シーンロード失敗・awaitのハング等
     「何かがおかしい」サインとして exit code 124 を返す。
+    テスト出力に失敗マーカーが見つかった場合は exit code 1 を返す。
 
 .PARAMETER ScenePath
     実行する res://tests/<name>.tscn のパス（例: res://tests/net_roles.tscn）。
@@ -85,13 +93,36 @@ try {
         Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
     }
 
-    Get-Content $outFile
-    Get-Content $errFile | ForEach-Object { Write-Host $_ -ForegroundColor DarkYellow }
+    $outText = Get-Content $outFile -Raw
+    $errText = Get-Content $errFile -Raw
+
+    if ($outText) { Write-Host $outText }
+    if ($errText) { Write-Host $errText -ForegroundColor DarkYellow }
 
     if (-not $finished) {
         exit 124
     }
-    exit $proc.ExitCode
+
+    # このリポジトリのテストが使っている失敗マーカー。書式は3系統あり、
+    # どれも「失敗した時だけ」出る(成功時は [OK] / ALL OK / ALL PASSED):
+    #   [FAIL]            … _assert() 系ヘルパ(test_phase*.gd 等19ファイル)
+    #   SOME TESTS FAILED … 同系統の末尾サマリ
+    #   「N FAILED」/「: FAILED」… failures カウンタ系
+    #                       (player_facing / player_look / respawn_penalty /
+    #                        slide_gameplay / perimeter_rim)
+    #   FAIL=<1以上>      … PASS=%d, FAIL=%d のサマリ行(FAIL=0 は成功なので除外)
+    # SCRIPT ERROR は意図的に含めていない。tests/debug_controls.tscn に
+    # 既存の未修正エラーがあり、無関係なテストを巻き込んで赤くするため。
+    $failPattern = '\[FAIL\]|SOME TESTS FAILED|FAIL=[1-9]|[1-9][0-9]* FAILED|: FAILED'
+    $combined = "$outText`n$errText"
+    if ($combined -match $failPattern) {
+        Write-Host "=> 失敗マーカーを検出したため exit 1 を返す (検出: '$($Matches[0])')" -ForegroundColor Red
+        exit 1
+    }
+
+    # ここまで来れば「タイムアウトせず、失敗マーカーも無い」。
+    # $proc.ExitCode は上記3.の理由で参照しない
+    exit 0
 }
 finally {
     Remove-Item $outFile, $errFile -ErrorAction SilentlyContinue

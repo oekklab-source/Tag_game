@@ -18,7 +18,7 @@ pwsh tools/run_headless_test.ps1 res://tests/<name>.tscn
 素の `godot` コマンドを直接使う場合は、以下の罠に注意すること:
 
 ```powershell
-godot --headless --path . res://tests/<name>.tscn -- --quit-after 600
+godot --headless --path . res://tests/<name>.tscn --quit-after 600
 ```
 
 - 常駐プロセス名は `godot.exe` ではなく `Godot_v4.7.2-stable_win64.exe`。
@@ -33,6 +33,17 @@ godot --headless --path . res://tests/<name>.tscn -- --quit-after 600
   メインシーンにフォールバックして走り続けることがある。単体実行し、実行後は明示的に止めること。
 - `tests/*.tscn` のうち `--headless` 不可なもの（PNG書き出し系: `uishot.tscn`,
   `screenshot.tscn`, `shot_stamina.tscn` 等）はエディタで実行する。
+- **`tests/test_phase5_persistence.tscn` は開発機の実セーブ（`user://profile.json` /
+  `user://settings.json`）を書き換える。** 2026-09-25 の Phase 3 L-12 で
+  テスト自身に退避・復元（`_backup_saves()` / `_restore_saves()`）を入れたので
+  そのまま流してよいが、このテストに手を入れるときは**必ず退避・復元を壊していないか
+  確認する**こと（過去、実行のたびに名前・レート・ジェムが破壊されていた）。
+- **Godotの終了コードは信用しないこと。** Godot 4.7.2(win64) の headless は
+  `get_tree().quit(code)` に何を渡してもプロセスの終了コードが常に `-1` になる
+  （実測確認済み）。`tools/run_headless_test.ps1` は終了コードではなく標準出力の
+  失敗マーカー（`[FAIL]` / `SOME TESTS FAILED` / `N FAILED` / `FAIL=1以上`）を走査して
+  exit 1 を返す。新しいテストを書くときは、この3系統のいずれかの書式で
+  失敗を出力すること（`_assert()` ヘルパを踏襲するのが最も確実）。
 
 ## RPC を変更するときの鉄則
 

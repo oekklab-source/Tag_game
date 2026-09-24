@@ -1,9 +1,28 @@
 extends Node
 
 ## Phase 5: データ永続化・システム連携検証スクリプト
+##
+## 実行方法:
+##   pwsh tools/run_headless_test.ps1 res://tests/test_phase5_persistence.tscn
+##
+## **このテストは開発機の実セーブファイルを書き換える。**
+## save_profile()/load_profile()/merge_server_inventory() の往復そのものが検証対象なので、
+## tests/costume_model.gd のような「ファイルI/Oを一切しない純粋テスト」には置けない。
+## そのため Phase 3 L-12 で二重の安全網を入れてある:
+##   1. _backup_saves() が user://profile.json / user://settings.json を .testbak へ退避し、
+##      _restore_saves() が終了時に書き戻す(正常終了と _exit_tree() の両方から呼ぶ。
+##      GDScript に finally が無いので、後者が保険)。
+##   2. 各テスト関数自身も、書き換えたメモリ上のフィールドを関数内で退避・復元する。
+## **1 だけでは足りない**: 2 が抜けているとテストAの汚染をテストBが「実データ」として
+## 退避してしまい、テスト間のアサートが意味を失う(実際に [2]->[3] でこれが起きており、
+## 実行のたびに実セーブの名前・レート・ジェムが壊れていた)。
 
 var passed_count := 0
 var failed_count := 0
+
+## 実パス -> 退避先パス。退避時にファイルが無かった場合は空文字(「テスト後に消す」の意)
+var _save_backups := {}
+var _restored := false
 
 func _assert(condition: bool, msg: String) -> void:
 	if condition:
@@ -18,6 +37,7 @@ func _ready() -> void:
 	print("==================================================")
 	print("【TEST】Phase 5: データ永続化・システム連携検証")
 	print("==================================================")
+	_backup_saves()
 	await get_tree().process_frame
 
 	await _test_profile_save_load()
@@ -36,7 +56,51 @@ func _ready() -> void:
 		print("=> Phase 5: ALL PASSED")
 	else:
 		printerr("=> Phase 5: SOME TESTS FAILED")
-	get_tree().quit()
+	_restore_saves()
+	# 意図としては終了コードで FAIL を伝えたいが、**Godot 4.7.2(win64) の headless は
+	# quit() に何を渡してもプロセスの終了コードが常に -1 になる**(quit(0)/quit(3)/quit(7)
+	# のいずれでも -1 になることを L-12 で実測確認済み)。そのため実際の成否判定は
+	# tools/run_headless_test.ps1 が標準出力の "[FAIL]" / "SOME TESTS FAILED" を
+	# 走査して行う。この引数はエンジン側が直った時に自然に効くように残してある
+	get_tree().quit(1 if failed_count > 0 else 0)
+
+
+## 実セーブファイルを退避する(L-12)。_ready() の先頭で1回だけ呼ぶ。
+## パスはテスト側にハードコードせず、各Autoloadの定数をそのまま参照する
+func _backup_saves() -> void:
+	for path in [ProfileManager.SAVE_PATH, SettingsManager.SAVE_PATH]:
+		if not FileAccess.file_exists(path):
+			# まだ存在しない = このテストが作ることになるので、後で消す目印を残す
+			_save_backups[path] = ""
+			continue
+		var bak: String = path + ".testbak"
+		if DirAccess.copy_absolute(path, bak) != OK:
+			printerr("  [WARN] 実セーブの退避に失敗: %s" % path)
+			continue
+		_save_backups[path] = bak
+	print("実セーブを退避: %s" % str(_save_backups.keys()))
+
+
+## 退避した実セーブを書き戻す。正常終了時と _exit_tree() の両方から呼ばれるので、
+## 二重復元しないようフラグで守る
+func _restore_saves() -> void:
+	if _restored:
+		return
+	_restored = true
+	for path in _save_backups:
+		var bak: String = _save_backups[path]
+		if bak.is_empty():
+			DirAccess.remove_absolute(path)
+			continue
+		DirAccess.copy_absolute(bak, path)
+		DirAccess.remove_absolute(bak)
+	print("実セーブを復元: %s" % str(_save_backups.keys()))
+
+
+func _exit_tree() -> void:
+	# 保険。テスト途中のランタイムエラーで上の復元に到達しなかった場合でも、
+	# ノードがツリーから外れるこのタイミングで必ず書き戻す
+	_restore_saves()
 
 
 ## 1. ProfileManager の保存と復元
@@ -45,6 +109,10 @@ func _test_profile_save_load() -> void:
 	# 現在のデータを退避
 	var orig_name: String = ProfileManager.player_name
 	var orig_rating: int = ProfileManager.rating
+	# L-12: costume_id/owned_costumes も書き換えるので必ず一緒に退避する。
+	# ここが抜けていたため、実行のたびに実セーブへ candy が混ざっていた
+	var orig_costume: StringName = ProfileManager.costume_id
+	var orig_owned: Array = ProfileManager.owned_costumes.duplicate()
 
 	# テストデータを設定して保存
 	ProfileManager.player_name = "TestHero99"
@@ -67,12 +135,20 @@ func _test_profile_save_load() -> void:
 	# 復元後に元のデータを戻す
 	ProfileManager.player_name = orig_name
 	ProfileManager.rating = orig_rating
+	ProfileManager.costume_id = orig_costume
+	ProfileManager.owned_costumes = orig_owned
 	ProfileManager.save_profile()
 
 
 ## 2. 破損データ・改ざんデータのフォールバック
 func _test_profile_corrupted_fallback() -> void:
 	print("\n--- [2] 不正データ・未所持コスチュームのフォールバック ---")
+	# L-12: _apply_data() は schema<6 の移行分岐(帽子初期化・ジェム0クリア・
+	# initial_rating_claimed リセット等)まで通るため、メモリ上のプロフィールが広範に壊れる。
+	# ここに復元が無かったせいで、次の [3] が壊れた値を「実データ」として退避->保存し、
+	# 実セーブが恒久的に汚染されていた(Phase 3 L-12 で発見)
+	var snapshot := ProfileManager.to_save_dict()
+
 	# 不正な未所持コスチュームを指定したデータ
 	var fake_data: Dictionary = {
 		"schema_version": 2,
@@ -85,6 +161,9 @@ func _test_profile_corrupted_fallback() -> void:
 
 	_assert(ProfileManager.costume_id == &"default", "未所持/存在しないコスチューム -> default に安全にフォールバック")
 	_assert(ProfileManager.owned_costumes.has("default"), "所持リストに default が必ず含まれる")
+
+	# 実データを復元する。to_save_dict() は schema_version=6 を含むので移行分岐を通らない
+	ProfileManager._apply_data(snapshot)
 
 
 ## 3. merge_server_inventory() のマージロジック検証。
