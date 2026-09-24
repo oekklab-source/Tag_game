@@ -40,10 +40,12 @@ godot --headless --path . res://tests/<name>.tscn --quit-after 600
   確認する**こと（過去、実行のたびに名前・レート・ジェムが破壊されていた）。
 - **Godotの終了コードは信用しないこと。** Godot 4.7.2(win64) の headless は
   `get_tree().quit(code)` に何を渡してもプロセスの終了コードが常に `-1` になる
-  （実測確認済み）。`tools/run_headless_test.ps1` は終了コードではなく標準出力の
-  失敗マーカー（`[FAIL]` / `SOME TESTS FAILED` / `N FAILED` / `FAIL=1以上`）を走査して
-  exit 1 を返す。新しいテストを書くときは、この3系統のいずれかの書式で
-  失敗を出力すること（`_assert()` ヘルパを踏襲するのが最も確実）。
+  （実測確認済み）。`tools/run_headless_test.ps1` は終了コードではなく、
+  **出力に大文字の `FAIL` が現れたら失敗**という規則で判定する
+  （成功時にも必ず出る `FAIL=0` だけは除外。大文字小文字は区別するので、
+  エンジンの `Failed to load script` 等は拾わない）。新しいテストを書くときは、
+  失敗時に大文字 `FAIL` を必ず出力すること（`_assert()` ヘルパの踏襲が最も確実）。
+  成功時の行に `FAIL` を含めてはいけない。
 
 ## RPC を変更するときの鉄則
 

@@ -103,20 +103,23 @@ try {
         exit 124
     }
 
-    # このリポジトリのテストが使っている失敗マーカー。書式は3系統あり、
-    # どれも「失敗した時だけ」出る(成功時は [OK] / ALL OK / ALL PASSED):
-    #   [FAIL]            … _assert() 系ヘルパ(test_phase*.gd 等19ファイル)
-    #   SOME TESTS FAILED … 同系統の末尾サマリ
-    #   「N FAILED」/「: FAILED」… failures カウンタ系
-    #                       (player_facing / player_look / respawn_penalty /
-    #                        slide_gameplay / perimeter_rim)
-    #   FAIL=<1以上>      … PASS=%d, FAIL=%d のサマリ行(FAIL=0 は成功なので除外)
-    # SCRIPT ERROR は意図的に含めていない。tests/debug_controls.tscn に
-    # 既存の未修正エラーがあり、無関係なテストを巻き込んで赤くするため。
-    $failPattern = '\[FAIL\]|SOME TESTS FAILED|FAIL=[1-9]|[1-9][0-9]* FAILED|: FAILED'
-    $combined = "$outText`n$errText"
-    if ($combined -match $failPattern) {
-        Write-Host "=> 失敗マーカーを検出したため exit 1 を返す (検出: '$($Matches[0])')" -ForegroundColor Red
+    # tests/*.gd の失敗出力は書式が統一されていない。実際に使われているものだけでも
+    #   [FAIL] %s / FAIL: %s / FAIL（%s） / FAIL ホスト… / N FAILED /
+    #   SOME TESTS FAILED / PASS=%d, FAIL=%d
+    # と5系統以上ある。個別に列挙すると必ず取りこぼす(実際、最初の実装は
+    # tests/quit_menu.gd の「ラベル: FAIL」形式を拾えていなかった)ので、
+    # 「大文字の FAIL が出力に現れたら失敗」という単純な規則にする。
+    #
+    # 唯一の例外が成功時にも必ず出る "FAIL=0"(PASS=%d, FAIL=%d のサマリ行)なので、
+    # 走査の前にそこだけ取り除く。
+    #
+    # -cmatch(大文字小文字を区別)である点が重要。エンジンが出す
+    # "Failed to load script" 等の混在表記まで拾うと、無関係な警告で赤くなる。
+    # 同じ理由で SCRIPT ERROR も含めていない(tests/debug_controls.tscn に
+    # 既存の未修正エラーがあるため)。
+    $scan = ("$outText`n$errText") -replace 'FAIL=0', ''
+    if ($scan -cmatch 'FAIL') {
+        Write-Host "=> 出力に FAIL があるため exit 1 を返す" -ForegroundColor Red
         exit 1
     }
 
