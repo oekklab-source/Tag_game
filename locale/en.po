@@ -50,6 +50,18 @@ msgstr "Always Show"
 msgid "常に非表示"
 msgstr "Always Hide"
 
+msgid "文字サイズ"
+msgstr "Text Size"
+
+msgid "標準"
+msgstr "Normal"
+
+msgid "大"
+msgstr "Large"
+
+msgid "特大"
+msgstr "Extra Large"
+
 msgid "既定に戻す"
 msgstr "Reset"
 

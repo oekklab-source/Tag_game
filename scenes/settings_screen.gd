@@ -19,6 +19,7 @@ signal closed
 @onready var volume_value_label: Label = $ContentMargin/Scroll/MainVBox/VolumeSection/Row/ValueLabel
 @onready var touch_mode_option: OptionButton = $ContentMargin/Scroll/MainVBox/TouchSection/Row/ModeOption
 @onready var language_option: OptionButton = $ContentMargin/Scroll/MainVBox/LanguageSection/Row/LanguageOption
+@onready var text_size_option: OptionButton = $ContentMargin/Scroll/MainVBox/TextSizeSection/Row/TextSizeOption
 @onready var reset_btn: Button = $ContentMargin/Scroll/MainVBox/ButtonsRow/ResetButton
 @onready var save_btn: Button = $ContentMargin/Scroll/MainVBox/ButtonsRow/SaveButton
 
@@ -35,6 +36,9 @@ const TOUCH_MODE_LABELS := ["自動", "常に表示", "常に非表示"]
 ## (en.po に msgid を置かないので、OptionButton の自動翻訳を通っても変わらない)
 const LANGUAGE_VALUES := ["auto", "ja", "en"]
 const LANGUAGE_LABELS := ["自動", "日本語", "English"]
+## L-10: 文字サイズ(倍率は SettingsManager.TEXT_SIZE_SCALES)
+const TEXT_SIZE_VALUES := ["normal", "large", "xlarge"]
+const TEXT_SIZE_LABELS := ["標準", "大", "特大"]
 
 
 func _ready() -> void:
@@ -50,11 +54,15 @@ func _ready() -> void:
 	for label in LANGUAGE_LABELS:
 		language_option.add_item(label)
 	language_option.item_selected.connect(_on_language_selected)
+	for label in TEXT_SIZE_LABELS:
+		text_size_option.add_item(label)
+	text_size_option.item_selected.connect(_on_text_size_selected)
 	reset_btn.pressed.connect(_on_reset_pressed)
 	save_btn.pressed.connect(_on_save_pressed)
 	_refresh_sliders()
 	_refresh_touch_mode()
 	_refresh_language()
+	_refresh_text_size()
 
 
 func _refresh_sliders() -> void:
@@ -74,6 +82,10 @@ func _refresh_touch_mode() -> void:
 
 func _refresh_language() -> void:
 	language_option.select(maxi(LANGUAGE_VALUES.find(SettingsManager.language), 0))
+
+
+func _refresh_text_size() -> void:
+	text_size_option.select(maxi(TEXT_SIZE_VALUES.find(SettingsManager.text_size), 0))
 
 
 func _update_sensitivity_label(value: float) -> void:
@@ -122,15 +134,24 @@ func _on_language_selected(index: int) -> void:
 	SettingsManager.save_settings()
 
 
+## 言語と同じく即保存する。選んだ瞬間にこの画面も含めて全体が拡大・縮小されるが、
+## 中身は ScrollContainer に入っているので、特大で縦にはみ出しても操作できる
+func _on_text_size_selected(index: int) -> void:
+	SettingsManager.set_text_size(TEXT_SIZE_VALUES[index])
+	SettingsManager.save_settings()
+
+
 func _on_reset_pressed() -> void:
 	SettingsManager.set_mouse_sensitivity(SettingsManager.DEFAULT_MOUSE_SENSITIVITY)
 	SettingsManager.set_master_volume(SettingsManager.DEFAULT_MASTER_VOLUME)
 	SettingsManager.set_touch_controls_mode(SettingsManager.DEFAULT_TOUCH_CONTROLS_MODE)
 	SettingsManager.set_language(SettingsManager.DEFAULT_LANGUAGE)
+	SettingsManager.set_text_size(SettingsManager.DEFAULT_TEXT_SIZE)
 	SettingsManager.save_settings()
 	_refresh_sliders()
 	_refresh_touch_mode()
 	_refresh_language()
+	_refresh_text_size()
 
 
 func _on_save_pressed() -> void:

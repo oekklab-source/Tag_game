@@ -366,9 +366,31 @@ func _test_settings_save_load() -> void:
 	SettingsManager.touch_controls_mode = "off"
 	_assert(not SettingsManager.should_show_touch_controls(), "modeが'off'のとき常にfalseを返す")
 
+	# L-10: 文字サイズ。保存・読込の往復、不正値/欠損キーのフォールバック、画面の拡大率への反映
+	var orig_text_size: String = SettingsManager.text_size
+	SettingsManager.text_size = "large"
+	SettingsManager.save_settings()
+	SettingsManager.text_size = SettingsManager.DEFAULT_TEXT_SIZE
+	SettingsManager.load_settings()
+	_assert(SettingsManager.text_size == "large", "文字サイズが正しく復元 (large)")
+	SettingsManager._apply_data({"text_size": "bogus"})
+	_assert(SettingsManager.text_size == SettingsManager.DEFAULT_TEXT_SIZE,
+		"不正な文字サイズ文字列はデフォルト(normal)にフォールバックされる")
+	SettingsManager._apply_data({"text_size": "xlarge"})
+	SettingsManager._apply_data({})
+	_assert(SettingsManager.text_size == SettingsManager.DEFAULT_TEXT_SIZE,
+		"文字サイズのキーが無い古い settings.json はデフォルト(normal)になる")
+	SettingsManager.set_text_size("xlarge")
+	_assert(is_equal_approx(get_tree().root.content_scale_factor, 1.3),
+		"set_text_size('xlarge') でルートの content_scale_factor が 1.3 になる")
+	SettingsManager.set_text_size("normal")
+	_assert(is_equal_approx(get_tree().root.content_scale_factor, 1.0),
+		"set_text_size('normal') で content_scale_factor が 1.0 に戻る")
+
 	SettingsManager.mouse_sensitivity = orig_sensitivity
 	SettingsManager.master_volume = orig_volume
 	SettingsManager.touch_controls_mode = orig_touch_mode
+	SettingsManager.set_text_size(orig_text_size)
 	SettingsManager.save_settings()
 
 

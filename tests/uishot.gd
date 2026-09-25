@@ -3,8 +3,11 @@ extends Node
 ## UI の見た目を PNG に落とす。--headless では描画されないのでウィンドウ有りで実行する。
 ##
 ##   godot --path . res://tests/uishot.tscn -- --shots <出力先フォルダ> [--locale en]
+##       [--text-size normal|large|xlarge]
 ##
-## --locale を付けるとその言語で撮る(L-09、英文のはみ出し確認用)。設定は保存しない
+## --locale を付けるとその言語で撮る(L-09、英文のはみ出し確認用)。
+## --text-size を付けるとその文字サイズ(UI全体の拡大率)で撮る(L-10、はみ出し確認用)。
+## どちらも設定は保存しない
 
 func _ready() -> void:
 	var out := "."
@@ -14,6 +17,8 @@ func _ready() -> void:
 			out = args[i + 1]
 		if args[i] == "--locale" and i + 1 < args.size():
 			TranslationServer.set_locale(args[i + 1])
+		if args[i] == "--text-size" and i + 1 < args.size():
+			SettingsManager.set_text_size(args[i + 1])
 	DirAccess.make_dir_recursive_absolute(out)
 	await get_tree().process_frame
 

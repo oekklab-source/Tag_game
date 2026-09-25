@@ -21,7 +21,10 @@ const COLOR_HUNTER := Color(1.0, 0.45, 0.4)
 ## このコンテナの実サイズへ自動追従するので、別途レンダリング解像度を落とす必要はない
 const COSTUME_PREVIEW_SCENE := preload("res://scenes/costume_preview.tscn")
 const PREVIEW_SIZE := 96
+## L-10: _fit_to_screen() で画面の上下左右に残す余白
+const FIT_MARGIN := 16.0
 
+@onready var box: PanelContainer = $Box
 @onready var status: Label = $Box/Col/Status
 @onready var status_sub: Label = $Box/Col/StatusSub
 @onready var list: VBoxContainer = $Box/Col/ListBox/List
@@ -205,6 +208,26 @@ func update_lobby(overlay_open: bool) -> void:
 		hint.text = tr("R キー: 役割を切りかえ　― ホストが始めるのを待っています")
 		hint.modulate = Color.WHITE
 	hint.visible = not hint.text.is_empty()
+	_fit_to_screen()
+
+
+## L-10: 文字サイズ「大/特大」(SettingsManager.TEXT_SIZE_SCALES、ルート Window の
+## content_scale_factor)では、使える画面の高さが 1080/1.3≒831 相当まで減る。参加者が並ぶと
+## このパネルは標準でも縦 800 前後あるため、そのままでは見出しと操作説明が画面外に切れる
+## (実測: 特大で両方とも見えなくなった)。はみ出すときだけパネルごと縮めて収める。
+## 縮めるのは Box ではなくこのノード自身: Box は CenterContainer の子なので、並べ直しのたびに
+## Container.fit_child_in_rect() が scale を 1 に戻してしまう。このノードの親は CanvasLayer
+## (Container ではない)なので scale が保たれ、画面中央を支点に縮めれば中央寄せも崩れない。
+## 使える広さは自分の size ではなく get_viewport_rect() で測る: このノードも Container なので、
+## Box の最小サイズが画面より大きいと自分の size まで画面の外へ広がってしまう(実測で縮まなかった)
+func _fit_to_screen() -> void:
+	var need := box.get_combined_minimum_size()
+	if need.x <= 0.0 or need.y <= 0.0:
+		return
+	var avail := get_viewport_rect().size - Vector2(FIT_MARGIN, FIT_MARGIN) * 2.0
+	var s := minf(1.0, minf(avail.x / need.x, avail.y / need.y))
+	pivot_offset = size / 2.0
+	scale = Vector2(s, s)
 
 
 ## 定員変更UIはホストかつEOSロビー経由(公開ロビーを持っている)の時だけ意味を持つ。

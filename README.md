@@ -589,6 +589,22 @@ UI が全部豆腐（□）になるので **`ui/fonts/` に丸ゴシックを�
   `tests/test_i18n.tscn` が機械的に検出する。見た目のはみ出しは
   `tests/uishot.tscn` を `-- --shots <出力先> --locale en` で撮って確認する。
 
+### 文字サイズ（標準 / 大 / 特大）
+
+設定画面の「文字サイズ」は、文字だけでなく **UI 全体を拡大する**。ルート Window の
+`content_scale_factor` を 1.0 / 1.15 / 1.3 にする方式で（`SettingsManager.TEXT_SIZE_SCALES`）、
+HUD やタッチ操作のボタンも一緒に大きくなる（3D の描画は変わらない）。
+
+- 文字だけを拡大しないのは、各画面の文字サイズが `.tscn` / `.gd` の約 80 か所に
+  個別の固定値で書かれていて、テーマの既定サイズを変えても効かないため。全部を倍率付きに
+  書き換えても、レイアウトが据え置きのまま文字だけ大きくなり、はみ出しが起きやすい。
+- 特大では使える画面が 1080/1.3 ≒ 831 相当の高さになる。縦に長い画面はそこに収まる
+  必要がある。設定・ショップはスクロールするので問題ない。なかま待ちのパネルは
+  はみ出すときだけ自分で縮む（`lobby_panel.gd` の `_fit_to_screen()`）。
+- 画面を足したり大きくしたりしたら、`tests/uishot.tscn` を
+  `-- --shots <出力先> --text-size xlarge`（英語なら `--locale en` も付ける）で撮って、
+  はみ出しを確認する。
+
 待機中は画面中央にロビーのパネルを出し、マウスを解放する。
 `hud.gd` の `_ignore_mouse()` は「HUD に操作できるウィジェットは一つも無い」
 前提でマウス入力を全部無視させているが、ロビーだけはその対象外にしてある
@@ -1291,7 +1307,7 @@ scenes/hud/minimap.gd         hud.tscnの$MapPanel。9ゾーンミニマップ�
 scenes/hud/lobby_panel.gd     hud.tscnの$Lobby。ロビー名簿・定員変更・役割選択ボタン
 ui/pop_theme.tres             全体に適用される POP テーマ
 locale/en.po                  英語の翻訳（msgid は日本語の原文。書き方は「表示言語」節）
-autoload/settings_manager.gd  マウス感度・音量・タッチ操作・表示言語の設定（user://settings.json）
+autoload/settings_manager.gd  マウス感度・音量・タッチ操作・表示言語・文字サイズの設定（user://settings.json）
 scenes/settings_screen.tscn(.gd) 設定画面
 tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
 tools/blender/character_common.py 着せ替えで共通の骨格・リグ・アニメ・書き出し。

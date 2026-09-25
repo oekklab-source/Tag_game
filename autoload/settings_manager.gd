@@ -1,6 +1,7 @@
 extends Node
 
-## プレイヤーのローカル設定（マウス感度・マスター音量）を管理・保存する Autoload。
+## プレイヤーのローカル設定（マウス感度・マスター音量・タッチ操作・表示言語・文字サイズ）を
+## 管理・保存する Autoload。
 ## user://settings.json にローカル保存する。ProfileManager（プロフィール・戦績・課金）とは
 ## 責務を分離し、クラウド同期は行わない。
 
@@ -19,17 +20,27 @@ const VALID_TOUCH_CONTROLS_MODES := ["auto", "on", "off"]
 ## (実測)。そのため「日本語以外なら英語」は fallback に頼らず resolve_locale() で明示的に決める
 const DEFAULT_LANGUAGE := "auto"
 const VALID_LANGUAGES := ["auto", "ja", "en"]
+## L-10: 文字サイズ。値→ルート Window の content_scale_factor の倍率(キーはホワイトリストも兼ねる)。
+## 文字だけでなく UI 全体(ボタン・パネル・HUD・タッチ操作)を一律に拡大する方式にしてある。
+## 各画面の文字サイズは .tscn/.gd に約80か所の個別の固定値で書かれており、テーマの既定サイズを
+## 変えても効かない。文字だけを拡大するにはその全部を倍率付きに書き換える必要があり、しかも
+## レイアウトが据え置きのまま文字だけ大きくなるので、はみ出しや折り返し崩れが起きやすい。
+## 全体拡大なら各画面の相対的なレイアウトがそのまま保たれる(stretch/mode=canvas_items 前提)
+const DEFAULT_TEXT_SIZE := "normal"
+const TEXT_SIZE_SCALES := {"normal": 1.0, "large": 1.15, "xlarge": 1.3}
 
 var mouse_sensitivity: float = DEFAULT_MOUSE_SENSITIVITY
 var master_volume: float = DEFAULT_MASTER_VOLUME
 var touch_controls_mode: String = DEFAULT_TOUCH_CONTROLS_MODE
 var language: String = DEFAULT_LANGUAGE
+var text_size: String = DEFAULT_TEXT_SIZE
 
 
 func _ready() -> void:
 	load_settings()
 	apply_master_volume()  # 起動直後からMasterバスに反映しておく
 	apply_language()
+	apply_text_size()
 
 
 ## メモリへの反映のみ。ディスクへの保存は呼び出し側の責務
@@ -82,6 +93,17 @@ static func resolve_locale(lang: String, os_language: String) -> String:
 	return "ja" if os_language == "ja" else "en"
 
 
+## メモリへの反映と同時に画面の拡大率へ即座に反映する（保存はしない）
+func set_text_size(v: String) -> void:
+	text_size = v
+	apply_text_size()
+
+
+## text_size の現在値をルート Window の content_scale_factor へ反映する
+func apply_text_size() -> void:
+	get_tree().root.content_scale_factor = TEXT_SIZE_SCALES.get(text_size, 1.0)
+
+
 ## タッチ操作UIを表示すべきか。"on"/"off"は明示的な上書き、"auto"(既定)は
 ## DisplayServer.is_touchscreen_available()に従う(プラットフォーム非依存。Web版の
 ## 「スマホでブラウザから遊ぶ」を主眼に最適化しており、Windows Desktopでの
@@ -103,6 +125,7 @@ func to_save_dict() -> Dictionary:
 		"master_volume": master_volume,
 		"touch_controls_mode": touch_controls_mode,
 		"language": language,
+		"text_size": text_size,
 	}
 
 
@@ -142,3 +165,5 @@ func _apply_data(data: Dictionary) -> void:
 		touch_mode if VALID_TOUCH_CONTROLS_MODES.has(touch_mode) else DEFAULT_TOUCH_CONTROLS_MODE)
 	var lang := String(data.get("language", DEFAULT_LANGUAGE))
 	language = lang if VALID_LANGUAGES.has(lang) else DEFAULT_LANGUAGE
+	var size_key := String(data.get("text_size", DEFAULT_TEXT_SIZE))
+	text_size = size_key if TEXT_SIZE_SCALES.has(size_key) else DEFAULT_TEXT_SIZE
