@@ -118,7 +118,8 @@ func _build_code_section() -> void:
 	add_row.add_theme_constant_override("separation", 16)
 	_code_input = LineEdit.new()
 	_code_input.placeholder_text = tr("フレンドコードを入力")
-	_code_input.custom_minimum_size = Vector2(200, 0)
+	_code_input.custom_minimum_size = Vector2(320, 0)
+	_code_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	add_row.add_child(_code_input)
 	var add_btn := Button.new()
 	add_btn.text = tr("フレンドを追加")
@@ -150,7 +151,8 @@ func _build_search_section() -> void:
 	row.add_child(_search_mode)
 	_search_input = LineEdit.new()
 	_search_input.placeholder_text = tr("名前 or コードを入力(完全一致)")
-	_search_input.custom_minimum_size = Vector2(220, 0)
+	_search_input.custom_minimum_size = Vector2(360, 0)
+	_search_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(_search_input)
 	var search_btn := Button.new()
 	search_btn.text = tr("検索")
