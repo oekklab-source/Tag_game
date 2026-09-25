@@ -40,12 +40,16 @@ const RARITY_COLORS := {
 }
 
 ## ⑥PurchaseManagerが返す理由識別子(英語定数)を、画面表示用の日本語文言に変換する。
-## 未知の識別子(purchase_item系が返す既存の生の日本語メッセージ等)はそのまま表示する
+## 文言は表示する時点で tr() する(L-09)。L-09 で purchase_item 系も生の日本語から
+## 識別子に揃えたので、未知の識別子はサーバー由来の想定外の値だけになる(そのまま表示する)
 const FAILURE_MESSAGES := {
 	"unknown_pack": "不明な通貨パックです",
 	"network_error": "通信エラーが発生しました。時間をおいて再度お試しください",
 	"user_cancelled": "購入がキャンセルされました",
 	"purchase_timeout": "決済の確認がタイムアウトしました。次回起動時に自動的に再確認されます。",
+	"unknown_item": "不明なアイテムです",
+	"already_owned": "すでに所持しています",
+	"not_enough_gems": "ジェムが足りません",
 }
 
 var _pending_gift_kind: StringName = &""
@@ -98,7 +102,7 @@ func _setup_pack_row() -> void:
 		vbox.add_theme_constant_override("separation", 6)
 
 		var name_lbl := Label.new()
-		name_lbl.text = String(def.get("name", ""))
+		name_lbl.text = tr(String(def.get("name", "")))
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		vbox.add_child(name_lbl)
 
@@ -109,7 +113,7 @@ func _setup_pack_row() -> void:
 		vbox.add_child(price_lbl)
 
 		var buy_btn := Button.new()
-		buy_btn.text = "購入する"
+		buy_btn.text = tr("購入する")
 		buy_btn.pressed.connect(_on_buy_pack_pressed.bind(id, buy_btn))
 		vbox.add_child(buy_btn)
 
@@ -141,8 +145,8 @@ func _on_confirm_buy_pressed() -> void:
 
 func _on_buy_pack_pressed(pack_id: StringName, btn: Button) -> void:
 	var def := CurrencyPackCatalog.get_def(pack_id)
-	var msg := "『%s』を%sで購入します。よろしいですか？" % [
-		String(def.get("name", "")), String(def.get("display_price", ""))]
+	var msg := tr("『%s』を%sで購入します。よろしいですか？") % [
+		tr(String(def.get("name", ""))), String(def.get("display_price", ""))]
 	_open_confirm_overlay(msg, _do_buy_pack_pressed.bind(pack_id, btn))
 
 
@@ -155,13 +159,13 @@ func _do_buy_pack_pressed(pack_id: StringName, btn: Button) -> void:
 	var cancel_callable := _on_cancel_pack_pressed.bind(btn)
 	btn.pressed.disconnect(buy_callable)
 	btn.pressed.connect(cancel_callable)
-	btn.text = "処理中...(キャンセル)"
+	btn.text = tr("処理中...(キャンセル)")
 
 	# H-10対策: OS.shell_open()がポップアップブロック等で実際にはチェックアウトページを
 	# 開けていなくても、このゲーム側からは成否が分からない。検知は諦め、URLが分かり次第
 	# 常に「開かない場合はこちら」の再試行リンクを出しておくことで逃げ道を作る
 	var fallback_btn := Button.new()
-	fallback_btn.text = "開かない場合はこちら"
+	fallback_btn.text = tr("開かない場合はこちら")
 	fallback_btn.visible = false
 	var fallback_url := ""
 	var on_checkout_opened := func(pid: StringName, url: String) -> void:
@@ -186,7 +190,7 @@ func _do_buy_pack_pressed(pack_id: StringName, btn: Button) -> void:
 	# queue_free()されている場合があるため、status_labelへのアクセス前にガードする
 	if ok and is_instance_valid(status_label):
 		var def := CurrencyPackCatalog.get_def(pack_id)
-		status_label.text = "💎%d を獲得しました！" % int(def.get("gems", 0))
+		status_label.text = tr("💎%d を獲得しました！") % int(def.get("gems", 0))
 
 
 func _on_cancel_pack_pressed(_btn: Button) -> void:
@@ -225,33 +229,33 @@ func _build_item_card(kind: StringName, id: StringName, def: Dictionary) -> Cont
 	vbox.add_child(_build_preview(kind, id, owned))
 
 	var name_lbl := Label.new()
-	name_lbl.text = String(def.get("name", String(id)))
+	name_lbl.text = tr(String(def.get("name", String(id))))
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(name_lbl)
 
 	var price := int(def.get("price", 0))
 
 	var price_lbl := Label.new()
-	price_lbl.text = "所持済み" if owned else "💎 %d" % price
+	price_lbl.text = tr("所持済み") if owned else "💎 %d" % price
 	price_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	price_lbl.add_theme_color_override("font_color",
 		Color(0.5, 0.9, 0.6) if owned else Color(0.9, 0.75, 0.4))
 	vbox.add_child(price_lbl)
 
 	var buy_btn := Button.new()
-	buy_btn.text = "購入する"
+	buy_btn.text = tr("購入する")
 	buy_btn.disabled = owned
 	buy_btn.pressed.connect(_on_buy_item_pressed.bind(kind, id))
 	vbox.add_child(buy_btn)
 
 	var gift_btn := Button.new()
-	gift_btn.text = "🎁 プレゼントする"
+	gift_btn.text = tr("🎁 プレゼントする")
 	# M-03対策: プレゼントはEOSのP2Pメッシュ経由でしか配信できず、Web版では
 	# EOSGが恒久的に動作しない(room_match_dialog.gd:57と同じ制約)ため、
 	# 挑戦させて後から失敗理由を出すのではなく、ここで先に無効化して伝える
 	if OS.has_feature("web"):
 		gift_btn.disabled = true
-		gift_btn.tooltip_text = "Web版ではプレゼント機能は利用できません（EOSのP2P接続が必要なため）"
+		gift_btn.tooltip_text = tr("Web版ではプレゼント機能は利用できません（EOSのP2P接続が必要なため）")
 	else:
 		gift_btn.disabled = price <= 0
 	gift_btn.pressed.connect(_open_gift_picker.bind(kind, id))
@@ -309,20 +313,20 @@ func _on_buy_item_pressed(kind: StringName, id: StringName) -> void:
 	var def := CostumeCatalog.get_def(id) if kind == &"costume" else HatCatalog.get_def(id)
 	var price := int(def.get("price", 0))
 	var after := ProfileManager.premium_currency - price
-	var msg := "『%s』を💎%dで購入します。（購入後の残高: 💎%d）" % [
-		String(def.get("name", String(id))), price, after]
+	var msg := tr("『%s』を💎%dで購入します。（購入後の残高: 💎%d）") % [
+		tr(String(def.get("name", String(id)))), price, after]
 	_open_confirm_overlay(msg, _do_buy_item_pressed.bind(kind, id))
 
 
 func _do_buy_item_pressed(kind: StringName, id: StringName) -> void:
 	if PurchaseManager.purchase_item(kind, id):
 		var def := CostumeCatalog.get_def(id) if kind == &"costume" else HatCatalog.get_def(id)
-		status_label.text = "「%s」を購入しました！" % String(def.get("name", String(id)))
+		status_label.text = tr("「%s」を購入しました！") % tr(String(def.get("name", String(id))))
 		_setup_item_grid()
 
 
 func _on_purchase_failed(reason: String) -> void:
-	status_label.text = FAILURE_MESSAGES.get(reason, reason)
+	status_label.text = tr(FAILURE_MESSAGES.get(reason, reason))
 
 
 ## ③プレゼント相手選択ピッカーを開く（登録済みフレンド全員を表示、送信結果で成否を判定する）
@@ -330,7 +334,7 @@ func _open_gift_picker(kind: StringName, id: StringName) -> void:
 	_pending_gift_kind = kind
 	_pending_gift_id = id
 	var def := CostumeCatalog.get_def(id) if kind == &"costume" else HatCatalog.get_def(id)
-	gift_title_label.text = "「%s」を贈る相手を選択" % String(def.get("name", String(id)))
+	gift_title_label.text = tr("「%s」を贈る相手を選択") % tr(String(def.get("name", String(id))))
 
 	for child in gift_friend_list.get_children():
 		child.queue_free()
@@ -338,7 +342,7 @@ func _open_gift_picker(kind: StringName, id: StringName) -> void:
 	var friends := await FriendManager.get_friends()
 	if friends.is_empty():
 		var empty_lbl := Label.new()
-		empty_lbl.text = "フレンドがいません。プレゼントを贈るにはまずフレンド登録してください。"
+		empty_lbl.text = tr("フレンドがいません。プレゼントを贈るにはまずフレンド登録してください。")
 		empty_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 		gift_friend_list.add_child(empty_lbl)
 
@@ -347,7 +351,7 @@ func _open_gift_picker(kind: StringName, id: StringName) -> void:
 		# shop_btn.hide()と同じ確立済みイディオム)
 		if get_tree().current_scene == self:
 			var add_friend_btn := Button.new()
-			add_friend_btn.text = "フレンドを追加する"
+			add_friend_btn.text = tr("フレンドを追加する")
 			add_friend_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			add_friend_btn.pressed.connect(_on_add_friend_pressed)
 			gift_friend_list.add_child(add_friend_btn)
@@ -358,11 +362,12 @@ func _open_gift_picker(kind: StringName, id: StringName) -> void:
 
 			var name_lbl := Label.new()
 			name_lbl.text = String(f.get("name", "Friend"))
+			name_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED  # プレイヤー名は利用者の入力(L-09)
 			name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(name_lbl)
 
 			var send_btn := Button.new()
-			send_btn.text = "贈る"
+			send_btn.text = tr("贈る")
 			send_btn.pressed.connect(_on_send_gift_pressed.bind(String(f.get("id", "")), String(f.get("name", "Friend"))))
 			row.add_child(send_btn)
 
@@ -390,31 +395,31 @@ func _on_send_gift_pressed(friend_puid: String, friend_name: String) -> void:
 
 	# ⑥ジェムを消費する前に、相手が既に所持していないか問い合わせて確認する
 	# (ギフト配信自体が既にP2P・オンライン限定なので、この確認だけ新しい制約が増えるわけではない)
-	status_label.text = "%s さんの所持状況を確認中..." % friend_name
+	status_label.text = tr("%s さんの所持状況を確認中...") % friend_name
 	var check: Dictionary = await GiftManager.query_owned(friend_puid, kind, id)
 	if not check.get("reachable", false):
-		status_label.text = "%s さんに届けられませんでした（相手が起動していないか接続できませんでした）。" % friend_name
+		status_label.text = tr("%s さんに届けられませんでした（相手が起動していないか接続できませんでした）。") % friend_name
 		return
 	if check.get("owned", false):
-		status_label.text = "%s さんは既にこのアイテムを持っています。" % friend_name
+		status_label.text = tr("%s さんは既にこのアイテムを持っています。") % friend_name
 		return
 
 	if not PurchaseManager.spend_for_gift(kind, id):
-		status_label.text = "ジェムが足りません"
+		status_label.text = tr("ジェムが足りません")
 		return
 
-	status_label.text = "%s さんに送信中..." % friend_name
+	status_label.text = tr("%s さんに送信中...") % friend_name
 	var ok: bool = await GiftManager.send_gift(friend_puid, kind, id)
 	if ok:
-		status_label.text = "%s さんにプレゼントを贈りました！" % friend_name
+		status_label.text = tr("%s さんにプレゼントを贈りました！") % friend_name
 	else:
 		PurchaseManager.refund_gift(kind, id)
-		status_label.text = "%s さんに届けられませんでした（相手が起動していないか接続できませんでした）。ジェムは返金されました。" % friend_name
+		status_label.text = tr("%s さんに届けられませんでした（相手が起動していないか接続できませんでした）。ジェムは返金されました。") % friend_name
 
 
 func _on_gift_received(kind: StringName, id: StringName, from_name: String) -> void:
 	var def := CostumeCatalog.get_def(id) if kind == &"costume" else HatCatalog.get_def(id)
-	status_label.text = "%s さんから「%s」をプレゼントされました！" % [from_name, String(def.get("name", String(id)))]
+	status_label.text = tr("%s さんから「%s」をプレゼントされました！") % [from_name, tr(String(def.get("name", String(id))))]
 	_setup_item_grid()
 
 

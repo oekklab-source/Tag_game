@@ -540,3 +540,573 @@ msgstr "A player has a different build (you v%d / them v%d).\nRedeploy the web v
 
 msgid "参加者 %d から応答がありません。\n古いビルドで参加している可能性があります（Web 版の再デプロイと再読み込みを試してください）。"
 msgstr "No response from player %d.\nThey may be on an old build (try redeploying the web version and reloading)."
+
+# --- ティア名 (autoload/ranking_manager) ---
+msgid "ブロンズ"
+msgstr "Bronze"
+
+msgid "シルバー"
+msgstr "Silver"
+
+msgid "ゴールド"
+msgstr "Gold"
+
+msgid "プラチナ"
+msgstr "Platinum"
+
+msgid "ダイヤ"
+msgstr "Diamond"
+
+msgid "マスター"
+msgstr "Master"
+
+# --- カタログ (autoload/*_catalog) ---
+msgid "きほん"
+msgstr "Basic"
+
+msgid "ネオン"
+msgstr "Neon"
+
+msgid "モノトーン"
+msgstr "Monotone"
+
+msgid "キャンディ"
+msgstr "Candy"
+
+msgid "めいさい"
+msgstr "Camo"
+
+msgid "さくら"
+msgstr "Sakura"
+
+msgid "シャドウ"
+msgstr "Shadow"
+
+msgid "なし"
+msgstr "None"
+
+msgid "パーティハット"
+msgstr "Party Hat"
+
+msgid "キャップ"
+msgstr "Cap"
+
+msgid "プロペラ帽"
+msgstr "Propeller Cap"
+
+msgid "まほうつかいの帽子"
+msgstr "Wizard Hat"
+
+msgid "王冠"
+msgstr "Crown"
+
+msgid "ネコミミビーニー"
+msgstr "Cat-Ear Beanie"
+
+msgid "ジェム 300個"
+msgstr "300 Gems"
+
+msgid "ジェム 800個"
+msgstr "800 Gems"
+
+msgid "ジェム 2000個"
+msgstr "2000 Gems"
+
+# --- ショップ (scenes/shop_screen) ---
+msgid "← タイトルへ"
+msgstr "← Title"
+
+msgid "ジェムを購入"
+msgstr "Buy Gems"
+
+msgid "限定コスチューム・帽子"
+msgstr "Limited Outfits & Hats"
+
+msgid "贈る相手を選択"
+msgstr "Choose a Friend"
+
+msgid "購入する"
+msgstr "Buy"
+
+msgid "不明な通貨パックです"
+msgstr "Unknown gem pack"
+
+msgid "通信エラーが発生しました。時間をおいて再度お試しください"
+msgstr "A network error occurred. Please try again later"
+
+msgid "購入がキャンセルされました"
+msgstr "Purchase canceled"
+
+msgid "決済の確認がタイムアウトしました。次回起動時に自動的に再確認されます。"
+msgstr "Payment confirmation timed out. It will be checked again automatically the next time you start the game."
+
+msgid "不明なアイテムです"
+msgstr "Unknown item"
+
+msgid "すでに所持しています"
+msgstr "You already own this"
+
+msgid "ジェムが足りません"
+msgstr "Not enough Gems"
+
+msgid "『%s』を%sで購入します。よろしいですか？"
+msgstr "Buy \"%s\" for %s?"
+
+msgid "処理中...(キャンセル)"
+msgstr "Processing... (Cancel)"
+
+msgid "開かない場合はこちら"
+msgstr "Click here if it doesn't open"
+
+msgid "💎%d を獲得しました！"
+msgstr "You got 💎%d!"
+
+msgid "所持済み"
+msgstr "Owned"
+
+msgid "🎁 プレゼントする"
+msgstr "🎁 Gift"
+
+msgid "Web版ではプレゼント機能は利用できません（EOSのP2P接続が必要なため）"
+msgstr "Gifting isn't available in the web version (it needs an EOS P2P connection)"
+
+msgid "『%s』を💎%dで購入します。（購入後の残高: 💎%d）"
+msgstr "Buy \"%s\" for 💎%d? (Balance after: 💎%d)"
+
+msgid "「%s」を購入しました！"
+msgstr "You bought \"%s\"!"
+
+msgid "「%s」を贈る相手を選択"
+msgstr "Who should get \"%s\"?"
+
+msgid "フレンドがいません。プレゼントを贈るにはまずフレンド登録してください。"
+msgstr "You have no friends yet. Add a friend first to send a gift."
+
+msgid "フレンドを追加する"
+msgstr "Add a Friend"
+
+msgid "贈る"
+msgstr "Send"
+
+msgid "%s さんの所持状況を確認中..."
+msgstr "Checking what %s already owns..."
+
+msgid "%s さんに届けられませんでした（相手が起動していないか接続できませんでした）。"
+msgstr "Couldn't deliver to %s (they're offline or couldn't be reached)."
+
+msgid "%s さんは既にこのアイテムを持っています。"
+msgstr "%s already has this item."
+
+msgid "%s さんに送信中..."
+msgstr "Sending to %s..."
+
+msgid "%s さんにプレゼントを贈りました！"
+msgstr "You sent a gift to %s!"
+
+msgid "%s さんに届けられませんでした（相手が起動していないか接続できませんでした）。ジェムは返金されました。"
+msgstr "Couldn't deliver to %s (they're offline or couldn't be reached). Your Gems were refunded."
+
+msgid "%s さんから「%s」をプレゼントされました！"
+msgstr "%s sent you \"%s\"!"
+
+# --- きせかえ (scenes/costume_screen) ---
+msgid "ショップへ"
+msgstr "To Shop"
+
+msgid "プレイヤー名:"
+msgstr "Player Name:"
+
+msgid "名前を入力"
+msgstr "Enter a name"
+
+msgid "キャラクター"
+msgstr "Character"
+
+msgid "スキン柄"
+msgstr "Skin Pattern"
+
+msgid "カラー"
+msgstr "Colors"
+
+msgid "帽子"
+msgstr "Hat"
+
+msgid "現在のレート:"
+msgstr "Current Rating:"
+
+msgid "総対戦回数:"
+msgstr "Total Matches:"
+
+msgid "総勝率:"
+msgstr "Win Rate:"
+
+msgid "保存してタイトルへ"
+msgstr "Save & Back to Title"
+
+msgid "破棄して戻る"
+msgstr "Discard & Go Back"
+
+msgid "%.1f%% (%d勝)"
+msgstr "%.1f%% (%d wins)"
+
+msgid "使用できます"
+msgstr "Available"
+
+msgid "このキャラクターは固定デザインです"
+msgstr "This character has a fixed design"
+
+msgid "🔒 未所持"
+msgstr "🔒 Not owned"
+
+msgid "色 %d:"
+msgstr "Color %d:"
+
+msgid "「%s」は未所持です（試着のみ・保存では反映されません。ショップで購入できます）"
+msgstr "You don't own \"%s\" (try-on only — it won't be saved. You can buy it in the Shop)"
+
+msgid "%sは固定デザインです。帽子は変更できます"
+msgstr "%s has a fixed design. You can still change the hat"
+
+msgid "保存していない変更があります。破棄して戻りますか？"
+msgstr "You have unsaved changes. Discard them and go back?"
+
+msgid "使用できない言葉が含まれています"
+msgstr "That name contains a word you can't use"
+
+# --- フレンド (scenes/friend_screen, autoload/gift_manager) ---
+msgid "更新"
+msgstr "Refresh"
+
+msgid "🎁 ショップでプレゼント"
+msgstr "🎁 Gift from the Shop"
+
+msgid "オンライン"
+msgstr "Online"
+
+msgid "オフライン"
+msgstr "Offline"
+
+msgid "オンラインのフレンドはいません"
+msgstr "No friends online"
+
+msgid "オフラインのフレンドはいません"
+msgstr "No friends offline"
+
+msgid "EOSに接続されていないため、フレンド一覧はサンプル表示です。"
+msgstr "Not connected to EOS, so this friend list is only a sample."
+
+msgid "マイフレンドコード:"
+msgstr "My Friend Code:"
+
+msgid "コピー"
+msgstr "Copy"
+
+msgid "フレンドコードを入力"
+msgstr "Enter a friend code"
+
+msgid "フレンドを追加"
+msgstr "Add Friend"
+
+msgid "フレンドを検索"
+msgstr "Find Friends"
+
+msgid "名前で検索"
+msgstr "Search by Name"
+
+msgid "コードで検索"
+msgstr "Search by Code"
+
+msgid "名前 or コードを入力(完全一致)"
+msgstr "Enter a name or code (exact match)"
+
+msgid "検索"
+msgstr "Search"
+
+msgid "検索回数の上限に達しました。しばらくしてから試してください。"
+msgstr "You've hit the search limit. Please try again in a while."
+
+msgid "見つかりませんでした。"
+msgstr "No one found."
+
+msgid "%s（コード: %s）"
+msgstr "%s (Code: %s)"
+
+msgid "追加"
+msgstr "Add"
+
+msgid "%s さんにリクエストを送りました。"
+msgstr "Sent a request to %s."
+
+msgid "送信済み"
+msgstr "Sent"
+
+msgid "リクエストの送信に失敗しました。"
+msgstr "Couldn't send the request."
+
+msgid "取得失敗"
+msgstr "Couldn't load"
+
+msgid "届いているリクエスト"
+msgstr "Friend Requests"
+
+msgid "フレンド削除の確認"
+msgstr "Remove Friend?"
+
+msgid "削除する"
+msgstr "Remove"
+
+msgid "フレンド情報"
+msgstr "Friend Info"
+
+msgid "フレンド情報の取得に失敗しました。"
+msgstr "Couldn't load friend info."
+
+msgid "レート: [%s] %d Pt"
+msgstr "Rating: [%s] %d pts"
+
+msgid "戦績: %d戦（にげる勝ち %d / おに勝ち %d）"
+msgstr "Record: %d matches (Runner wins %d / Chaser wins %d)"
+
+msgid "戦績データがまだありません。"
+msgstr "No match record yet."
+
+msgid "最終ログイン: 不明"
+msgstr "Last online: unknown"
+
+msgid "最終ログイン: たった今"
+msgstr "Last online: just now"
+
+msgid "最終ログイン: %d分前"
+msgstr "Last online: %d min ago"
+
+msgid "最終ログイン: %d時間前"
+msgstr "Last online: %d h ago"
+
+msgid "最終ログイン: %d日前"
+msgstr "Last online: %d days ago"
+
+msgid "届いているリクエストはありません"
+msgstr "No friend requests"
+
+msgid "承諾"
+msgstr "Accept"
+
+msgid "拒否"
+msgstr "Decline"
+
+msgid "ロビーに招待"
+msgstr "Invite to Lobby"
+
+msgid "詳細"
+msgstr "Details"
+
+msgid "削除"
+msgstr "Remove"
+
+msgid "接続先をコピーしました。%s さんにDirectConnectタブへ貼り付けてもらってください。"
+msgstr "Copied the address. Ask %s to paste it into the DirectConnect tab."
+
+msgid "招待に失敗しました(ロビーに参加していないか、接続先アドレスがまだ準備できていません)。"
+msgstr "Couldn't invite (you're not in a lobby, or the address isn't ready yet)."
+
+msgid "%s さんをフレンドから削除しますか？"
+msgstr "Remove %s from your friends?"
+
+msgid "%s さんをフレンドから削除しました。"
+msgstr "Removed %s from your friends."
+
+msgid "%s さんの削除に失敗しました。"
+msgstr "Couldn't remove %s."
+
+msgid "リクエストの送信に失敗しました(コードが正しいか確認してください)。"
+msgstr "Couldn't send the request (check that the code is correct)."
+
+msgid "フレンドコードをコピーしました。"
+msgstr "Copied your friend code."
+
+# --- ランキング (scenes/ranking_dialog) ---
+msgid "グローバルランキング"
+msgstr "Global Rankings"
+
+msgid "あなたの順位:"
+msgstr "Your Rank:"
+
+msgid "ランキングを取得中..."
+msgstr "Loading rankings..."
+
+msgid "ランキングの取得に失敗しました。時間をおいて再度更新してください。"
+msgstr "Couldn't load rankings. Please refresh again later."
+
+msgid "最新ランキングを取得しました"
+msgstr "Rankings updated"
+
+msgid "EOSに接続されていないため、ランキングはサンプル表示です。"
+msgstr "Not connected to EOS, so these rankings are only a sample."
+
+msgid "ランキングデータがまだありません。"
+msgstr "No ranking data yet."
+
+msgid "更新する"
+msgstr "Refresh"
+
+msgid "圏外"
+msgstr "Unranked"
+
+# --- ルームマッチ (scenes/room_match_dialog) ---
+msgid "ルームマッチ (EOS P2P)"
+msgstr "Room Match (EOS P2P)"
+
+msgid "表示するレート帯を絞り込みます"
+msgstr "Filter rooms by rating tier"
+
+msgid "おまかせマッチ"
+msgstr "Quick Match"
+
+msgid "中断"
+msgstr "Stop"
+
+msgid "おまかせマッチの検索を中断します"
+msgstr "Stop searching for a Quick Match"
+
+msgid "+ 部屋を作成"
+msgstr "+ Create Room"
+
+msgid "部屋名:"
+msgstr "Room Name:"
+
+msgid "最大人数:"
+msgstr "Max Players:"
+
+msgid "あなたのレート帯:"
+msgstr "Your Tier:"
+
+msgid "同じレート帯のみ参加可にする"
+msgstr "Same tier only"
+
+msgid "この設定で作成"
+msgstr "Create Room"
+
+msgid "接続アドレス:"
+msgstr "Address:"
+
+msgid "アドレス指定で参加"
+msgstr "Join by Address"
+
+msgid "直結ホスト開始"
+msgstr "Host Direct"
+
+msgid "自分のレート帯のみ"
+msgstr "My tier only"
+
+msgid "近いレート帯まで(±1)"
+msgstr "Nearby tiers (±1)"
+
+msgid "すべて表示"
+msgstr "Show all"
+
+msgid "部屋をさがす"
+msgstr "Find a Room"
+
+msgid "部屋をつくる"
+msgstr "Create a Room"
+
+msgid "リンクで参加"
+msgstr "Join by Link"
+
+msgid "Web版ではオンラインマッチメイキングは利用できません。「DirectConnect」タブをご利用ください。"
+msgstr "Online matchmaking isn't available in the web version. Please use the \"DirectConnect\" tab."
+
+msgid "%sの部屋"
+msgstr "%s's Room"
+
+msgid "あなたのレート帯: %s"
+msgstr "Your tier: %s"
+
+msgid "ロビーを検索中..."
+msgstr "Searching for lobbies..."
+
+msgid "ロビー一覧を更新しました (%d件)"
+msgstr "Lobby list updated (%d)"
+
+msgid "EOSに接続されていないため、ロビー一覧はサンプル表示です。"
+msgstr "Not connected to EOS, so this lobby list is only a sample."
+
+msgid "条件に合うロビーがありません。フィルタを緩めるか「部屋を作成」してください。"
+msgstr "No lobbies match. Loosen the filter or \"Create Room\"."
+
+msgid "部屋を作成する"
+msgstr "Create a Room"
+
+msgid "%d / %d人"
+msgstr "%d / %d players"
+
+msgid "レート差 %+d"
+msgstr "Rating gap %+d"
+
+msgid " 🔒同帯限定"
+msgstr " 🔒Same tier"
+
+msgid "🔒同帯限定"
+msgstr "🔒Same tier"
+
+msgid "参加"
+msgstr "Join"
+
+msgid "このロビーは同じレート帯のみ参加できます"
+msgstr "Only players in the same tier can join this lobby"
+
+msgid "ロビーに参加中..."
+msgstr "Joining lobby..."
+
+msgid "マッチング中… 空いている部屋を探しています"
+msgstr "Matching… looking for an open room"
+
+msgid "近いレート帯の部屋に参加中..."
+msgstr "Joining a room in a nearby tier..."
+
+msgid "空いている部屋が無いので新規作成します..."
+msgstr "No open rooms, so creating a new one..."
+
+msgid "%sの部屋(%s)"
+msgstr "%s's Room (%s)"
+
+msgid "おまかせマッチを中断しました"
+msgstr "Quick Match stopped"
+
+msgid "ロビーを作成中..."
+msgstr "Creating lobby..."
+
+msgid "ロビーを作成しました！ゲームを開始します。"
+msgstr "Lobby created! Starting the game."
+
+msgid "ロビーの作成に失敗しました。"
+msgstr "Couldn't create the lobby."
+
+msgid "ロビーへの参加に失敗しました。"
+msgstr "Couldn't join the lobby."
+
+msgid "ロビーに参加しました！ゲームへ接続中..."
+msgstr "Joined the lobby! Connecting to the game..."
+
+msgid "ホストの準備が完了していません。少し待ってから再度お試しください。"
+msgstr "The host isn't ready yet. Please wait a moment and try again."
+
+msgid "アドレスを入力してください"
+msgstr "Please enter an address"
+
+# --- サンプル表示のロビー名 (autoload/eos_manager、EOS 未接続時のみ) ---
+msgid "初心者歓迎！タグゲーム"
+msgstr "Beginners Welcome! Tag Game"
+
+msgid "ガチ勢レート戦部屋"
+msgstr "Serious Ranked Room"
+
+msgid "まったり部屋"
+msgstr "Chill Room"
+
+# --- 多重起動の警告 (autoload/profile_manager) ---
+msgid "Tag_Game はすでに別のウィンドウで起動しています。\n\n同時に起動したままだと、セーブデータ（プレゼントの受け取りなど）が正しく保存されないことがあるため、このウィンドウはこのまま終了します。\n\n先に起動しているウィンドウを閉じてから、もう一度起動しなおしてください。"
+msgstr "Tag_Game is already running in another window.\n\nRunning two copies at once can keep save data (like received gifts) from being saved correctly, so this window will now close.\n\nClose the other window first, then start the game again."
+
+msgid "多重起動のため、このウィンドウは終了します"
+msgstr "Already running — this window will close"

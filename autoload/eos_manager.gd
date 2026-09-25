@@ -268,11 +268,11 @@ func request_lobby_list() -> void:
 			# ここでは待たない)。_is_searching_lobbiesはワーカー側が責任を持って解除する
 	else:
 		var mock_lobbies = [
-			{"id": "mock-1001", "name": "初心者歓迎！タグゲーム", "members": 2, "max_members": 6,
+			{"id": "mock-1001", "name": tr("初心者歓迎！タグゲーム"), "members": 2, "max_members": 6,
 				"host_rating": 1250, "tier": "silver", "tier_lock": false},
-			{"id": "mock-1002", "name": "ガチ勢レート戦部屋", "members": 4, "max_members": 8,
+			{"id": "mock-1002", "name": tr("ガチ勢レート戦部屋"), "members": 4, "max_members": 8,
 				"host_rating": 1950, "tier": "diamond", "tier_lock": true},
-			{"id": "mock-1003", "name": "まったり部屋", "members": 1, "max_members": 8,
+			{"id": "mock-1003", "name": tr("まったり部屋"), "members": 1, "max_members": 8,
 				"host_rating": 1500, "tier": "gold", "tier_lock": false},
 		]
 		lobby_match_list.emit(mock_lobbies)

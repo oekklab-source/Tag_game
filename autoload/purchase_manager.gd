@@ -17,6 +17,11 @@ const REASON_UNKNOWN_PACK := "unknown_pack"
 const REASON_NETWORK := "network_error"
 const REASON_CANCELLED := "user_cancelled"
 const REASON_PURCHASE_TIMEOUT := "purchase_timeout"
+## purchase_item() の失敗理由。以前は生の日本語を emit していたが、表示側
+## (shop_screen.gd の FAILURE_MESSAGES)で訳せるよう識別子に揃えた(L-09)
+const REASON_UNKNOWN_ITEM := "unknown_item"
+const REASON_ALREADY_OWNED := "already_owned"
+const REASON_NOT_ENOUGH_GEMS := "not_enough_gems"
 
 ## service/commerce-api/ のデプロイ・実機決済確認(成功/拒否/強制終了リカバリ)が
 ## 2026-09-07に完了したため true。Stripeにはローカルで起動時判定できるSDKが無いため、
@@ -65,13 +70,13 @@ func buy_currency_pack(pack_id: StringName) -> bool:
 func purchase_item(kind: StringName, id: StringName) -> bool:
 	var price := _item_price(kind, id)
 	if price < 0:
-		purchase_failed.emit("不明なアイテムです")
+		purchase_failed.emit(REASON_UNKNOWN_ITEM)
 		return false
 	if _owns(kind, id):
-		purchase_failed.emit("すでに所持しています")
+		purchase_failed.emit(REASON_ALREADY_OWNED)
 		return false
 	if not ProfileManager.spend_currency(price):
-		purchase_failed.emit("ジェムが足りません")
+		purchase_failed.emit(REASON_NOT_ENOUGH_GEMS)
 		return false
 	_grant(kind, id)
 	currency_changed.emit()

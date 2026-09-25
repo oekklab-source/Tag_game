@@ -221,7 +221,7 @@ func _on_name_confirm_join_pressed() -> void:
 
 func _update_badge() -> void:
 	profile_badge_name.text = ProfileManager.player_name
-	profile_badge_rating.text = "%s %d Pt" % [RankingManager.tier_name(ProfileManager.rating), ProfileManager.rating]
+	profile_badge_rating.text = "%s %d Pt" % [tr(RankingManager.tier_name(ProfileManager.rating)), ProfileManager.rating]
 	profile_badge_color.color = RankingManager.tier_color(ProfileManager.rating)
 
 

@@ -33,9 +33,9 @@ func open() -> void:
 
 func refresh() -> void:
 	spinner.set_active(true)
-	status_label.text = "ランキングを取得中..."
+	status_label.text = tr("ランキングを取得中...")
 	my_name_val.text = ProfileManager.player_name
-	my_rating_val.text = "%s %d" % [RankingManager.tier_name(ProfileManager.rating), ProfileManager.rating]
+	my_rating_val.text = "%s %d" % [tr(RankingManager.tier_name(ProfileManager.rating)), ProfileManager.rating]
 	my_rank_val.text = "-"
 	# C-03 R-6: サーバーデプロイ後(USE_LIVE_RATING_BACKEND=true)はrating-apiを優先する。
 	# false(現状)の間は他のR-4/R-5と同じゲート規約により、既存のEOS経路(本物+
@@ -54,11 +54,11 @@ func _refresh_from_rating_api() -> void:
 	var res := await _RatingBackendClientScript.get_leaderboard_top(self)
 	spinner.set_active(false)
 	if not (res.get("api_ok", false) and res.get("ok", false)):
-		status_label.text = "ランキングの取得に失敗しました。時間をおいて再度更新してください。"
+		status_label.text = tr("ランキングの取得に失敗しました。時間をおいて再度更新してください。")
 		status_label.add_theme_color_override("font_color", Color(1, 0.4, 0.3, 1))
 		_render_entries([])
 		return
-	status_label.text = "最新ランキングを取得しました"
+	status_label.text = tr("最新ランキングを取得しました")
 	status_label.remove_theme_color_override("font_color")
 	_render_entries(convert_rating_api_entries(res.get("entries", [])))
 
@@ -89,13 +89,13 @@ func _on_leaderboard_loaded(entries: Array) -> void:
 	# L-05付随修正: EOS接続済みでもタイムアウト/エラー(last_leaderboard_error)なら、
 	# 「本当に0件」と区別できるよう専用のエラー文言を出す(以前は常に成功文言のまま誤表示していた)
 	if EosManager.is_eos_available and not EosManager.last_leaderboard_error.is_empty():
-		status_label.text = "ランキングの取得に失敗しました。時間をおいて再度更新してください。"
+		status_label.text = tr("ランキングの取得に失敗しました。時間をおいて再度更新してください。")
 		status_label.add_theme_color_override("font_color", Color(1, 0.4, 0.3, 1))
 	elif not EosManager.is_eos_available:
-		status_label.text = "EOSに接続されていないため、ランキングはサンプル表示です。"
+		status_label.text = tr("EOSに接続されていないため、ランキングはサンプル表示です。")
 		status_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
 	else:
-		status_label.text = "最新ランキングを取得しました"
+		status_label.text = tr("最新ランキングを取得しました")
 		status_label.remove_theme_color_override("font_color")
 	_render_entries(entries)
 
@@ -106,12 +106,12 @@ func _render_entries(entries: Array) -> void:
 
 	if entries.is_empty():
 		var empty_lbl := Label.new()
-		empty_lbl.text = "ランキングデータがまだありません。"
+		empty_lbl.text = tr("ランキングデータがまだありません。")
 		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		rank_list_container.add_child(empty_lbl)
 
 		var empty_refresh_btn := Button.new()
-		empty_refresh_btn.text = "更新する"
+		empty_refresh_btn.text = tr("更新する")
 		empty_refresh_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		empty_refresh_btn.pressed.connect(refresh)
 		rank_list_container.add_child(empty_refresh_btn)
@@ -140,7 +140,7 @@ func _render_entries(entries: Array) -> void:
 		# ②レート帯（ティア）バッジ
 		var tier_lbl := Label.new()
 		tier_lbl.custom_minimum_size = Vector2(72, 0)
-		tier_lbl.text = "[%s]" % RankingManager.tier_name(score)
+		tier_lbl.text = "[%s]" % tr(RankingManager.tier_name(score))
 		tier_lbl.add_theme_color_override("font_color", RankingManager.tier_color(score))
 
 		# 着せ替え画面での名前変更はEOS Connectのログイン済みDisplayNameへ次回ログインまで
@@ -152,6 +152,7 @@ func _render_entries(entries: Array) -> void:
 
 		var name_lbl := Label.new()
 		name_lbl.text = display_name
+		name_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED  # プレイヤー名は利用者の入力(L-09)
 		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 		var score_lbl := Label.new()
@@ -182,7 +183,7 @@ func _render_entries(entries: Array) -> void:
 			rank_list_container.add_child(row)
 			
 	if not my_rank_found:
-		my_rank_val.text = "圏外"
+		my_rank_val.text = tr("圏外")
 
 
 func _on_close_pressed() -> void:

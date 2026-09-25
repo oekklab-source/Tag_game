@@ -97,12 +97,11 @@ func _acquire_instance_lock() -> bool:
 		# 表示できるUIツリーがまだ無い最初期(autoload._ready())で発生するため
 		# ゲーム内スタイルのパネルには置き換えられない(README/CLAUDE.md参照)。
 		# 文言だけでも「なぜ・これからどうなるか」を明確にしておく
+		# L-09: この時点ではまだ SettingsManager(autoload の後ろのほう)が言語設定を
+		# 反映していないので、OS の言語で決まる起動時ロケールで訳される
 		OS.alert(
-			"Tag_Game はすでに別のウィンドウで起動しています。\n\n"
-			+ "同時に起動したままだと、セーブデータ（プレゼントの受け取りなど）が正しく"
-			+ "保存されないことがあるため、このウィンドウはこのまま終了します。\n\n"
-			+ "先に起動しているウィンドウを閉じてから、もう一度起動しなおしてください。",
-			"多重起動のため、このウィンドウは終了します")
+			tr("Tag_Game はすでに別のウィンドウで起動しています。\n\n同時に起動したままだと、セーブデータ（プレゼントの受け取りなど）が正しく保存されないことがあるため、このウィンドウはこのまま終了します。\n\n先に起動しているウィンドウを閉じてから、もう一度起動しなおしてください。"),
+			tr("多重起動のため、このウィンドウは終了します"))
 		get_tree().quit()
 		return false
 	var out := FileAccess.open(INSTANCE_LOCK_PATH, FileAccess.WRITE)
@@ -304,7 +303,7 @@ static func name_error(name: String) -> String:
 	var lower := name.to_lower()
 	for w in NG_WORDS:
 		if lower.contains(w.to_lower()):
-			return "使用できない言葉が含まれています"
+			return TranslationServer.translate("使用できない言葉が含まれています")
 	return ""
 
 

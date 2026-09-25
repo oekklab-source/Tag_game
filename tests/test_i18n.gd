@@ -20,25 +20,19 @@ extends Node
 const PO_PATH := "res://locale/en.po"
 const SCAN_DIRS := ["res://scenes", "res://autoload"]
 
-## まだ tr() 化していないファイル(L-09 のセッション S2/S3 で順に減らし、最後は空にする)。
-## ここにあるファイルは [3][4] の対象外
-const PENDING_FILES := [
-	"res://scenes/costume_screen.gd", "res://scenes/costume_screen.tscn",
-	"res://scenes/friend_screen.gd", "res://scenes/friend_screen.tscn",
-	"res://scenes/ranking_dialog.gd", "res://scenes/ranking_dialog.tscn",
-	"res://scenes/shop_screen.gd", "res://scenes/shop_screen.tscn",
-	"res://scenes/room_match_dialog.gd", "res://scenes/room_match_dialog.tscn",
-	"res://autoload/ranking_manager.gd", "res://autoload/gift_manager.gd",
-	"res://autoload/purchase_manager.gd", "res://autoload/eos_manager.gd",
-	"res://autoload/costume_catalog.gd", "res://autoload/hat_catalog.gd",
-	"res://autoload/currency_pack_catalog.gd", "res://autoload/profile_manager.gd",
-]
+## まだ tr() 化していないファイル。L-09 の S1〜S3 で全部片付けたので空。
+## 大きな画面を段階的に訳すときは、ここに一時的に入れて [3][4] の対象外にできる
+const PENDING_FILES := []
 
 ## 訳さないことが正しい日本語リテラル。{ファイル: {リテラル: 理由}}。
 ## 理由を書けないものは登録しないこと(訳し忘れの逃げ道にしない)
 const UNTRANSLATED_OK := {
 	"res://scenes/settings_screen.gd": {
 		"日本語": "言語の選択肢は、読めない言語の画面からでも探せるよう各言語の自称で固定する",
+	},
+	"res://autoload/profile_manager.gd": {
+		"運営": "名前の禁止語リスト(照合用で表示しない)",
+		"モデレーター": "名前の禁止語リスト(照合用で表示しない)",
 	},
 }
 
