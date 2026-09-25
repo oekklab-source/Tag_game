@@ -18,6 +18,7 @@ signal closed
 @onready var volume_slider: HSlider = $ContentMargin/Scroll/MainVBox/VolumeSection/Row/Slider
 @onready var volume_value_label: Label = $ContentMargin/Scroll/MainVBox/VolumeSection/Row/ValueLabel
 @onready var touch_mode_option: OptionButton = $ContentMargin/Scroll/MainVBox/TouchSection/Row/ModeOption
+@onready var language_option: OptionButton = $ContentMargin/Scroll/MainVBox/LanguageSection/Row/LanguageOption
 @onready var reset_btn: Button = $ContentMargin/Scroll/MainVBox/ButtonsRow/ResetButton
 @onready var save_btn: Button = $ContentMargin/Scroll/MainVBox/ButtonsRow/SaveButton
 
@@ -29,6 +30,11 @@ var _syncing := false
 ## room_match_dialog.gdのTierFilterと同じ「_ready()でadd_item、選択後はindexで引く」方式
 const TOUCH_MODE_VALUES := ["auto", "on", "off"]
 const TOUCH_MODE_LABELS := ["自動", "常に表示", "常に非表示"]
+## L-09: 言語の選択肢。"自動"だけは表示言語に合わせて訳すが、言語名は
+## 「今読めない言語の画面からでも自分の言語を探せる」ように各言語の自称で固定する
+## (en.po に msgid を置かないので、OptionButton の自動翻訳を通っても変わらない)
+const LANGUAGE_VALUES := ["auto", "ja", "en"]
+const LANGUAGE_LABELS := ["自動", "日本語", "English"]
 
 
 func _ready() -> void:
@@ -41,10 +47,14 @@ func _ready() -> void:
 	for label in TOUCH_MODE_LABELS:
 		touch_mode_option.add_item(label)
 	touch_mode_option.item_selected.connect(_on_touch_mode_selected)
+	for label in LANGUAGE_LABELS:
+		language_option.add_item(label)
+	language_option.item_selected.connect(_on_language_selected)
 	reset_btn.pressed.connect(_on_reset_pressed)
 	save_btn.pressed.connect(_on_save_pressed)
 	_refresh_sliders()
 	_refresh_touch_mode()
+	_refresh_language()
 
 
 func _refresh_sliders() -> void:
@@ -60,6 +70,10 @@ func _refresh_sliders() -> void:
 ## _syncingガードは不要
 func _refresh_touch_mode() -> void:
 	touch_mode_option.select(maxi(TOUCH_MODE_VALUES.find(SettingsManager.touch_controls_mode), 0))
+
+
+func _refresh_language() -> void:
+	language_option.select(maxi(LANGUAGE_VALUES.find(SettingsManager.language), 0))
 
 
 func _update_sensitivity_label(value: float) -> void:
@@ -100,13 +114,23 @@ func _on_touch_mode_selected(index: int) -> void:
 	SettingsManager.save_settings()
 
 
+## タッチ操作と同じく即保存する。画面の作り直しは要らない: この画面の文言は
+## .tscn 由来(auto_translate)と OptionButton の項目だけで、どちらもロケール変更の
+## 通知でその場で訳し直される(数値ラベルは言語に依存しない)
+func _on_language_selected(index: int) -> void:
+	SettingsManager.set_language(LANGUAGE_VALUES[index])
+	SettingsManager.save_settings()
+
+
 func _on_reset_pressed() -> void:
 	SettingsManager.set_mouse_sensitivity(SettingsManager.DEFAULT_MOUSE_SENSITIVITY)
 	SettingsManager.set_master_volume(SettingsManager.DEFAULT_MASTER_VOLUME)
 	SettingsManager.set_touch_controls_mode(SettingsManager.DEFAULT_TOUCH_CONTROLS_MODE)
+	SettingsManager.set_language(SettingsManager.DEFAULT_LANGUAGE)
 	SettingsManager.save_settings()
 	_refresh_sliders()
 	_refresh_touch_mode()
+	_refresh_language()
 
 
 func _on_save_pressed() -> void:

@@ -6,6 +6,8 @@ extends Node
 
 
 func _ready() -> void:
+	# L-09: 日本語の原文を照合するので、OS の言語(英語環境なら en)に関係なく ja に固定する
+	TranslationServer.set_locale("ja")
 	var screen: Control = load("res://scenes/costume_screen.tscn").instantiate()
 	add_child(screen)
 	await get_tree().process_frame

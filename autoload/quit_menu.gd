@@ -41,9 +41,9 @@ func open() -> void:
 	if OS.has_feature("web"):
 		if _on_title():
 			return
-		question.text = "タイトルにもどりますか？"
+		question.text = tr("タイトルにもどりますか？")
 	else:
-		question.text = "ゲームを終わりますか？"
+		question.text = tr("ゲームを終わりますか？")
 	# H-06: 「アプリを終了」と「試合だけ退出してタイトルへ」を分離。試合中でなければ
 	# 戻る先が無い(既にタイトル)ので出さない
 	leave_match_button.visible = NetworkManager.mode != NetworkManager.Mode.NONE

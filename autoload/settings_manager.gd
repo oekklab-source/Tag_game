@@ -12,15 +12,24 @@ const MOUSE_SENSITIVITY_MAX := 0.01
 const DEFAULT_TOUCH_CONTROLS_MODE := "auto"
 ## _apply_data() でのホワイトリスト検証に使う。順序に意味は無い
 const VALID_TOUCH_CONTROLS_MODES := ["auto", "on", "off"]
+## L-09: 表示言語。"auto" は OS(Web版ならブラウザ)の言語が日本語なら日本語、それ以外は英語。
+## 翻訳は res://locale/en.po の1枚だけで、msgid は日本語の原文そのもの。
+## project.godot の locale/fallback は "ja"(=原文を返す)にしてある。"en" にすると、
+## Godot はロケール ja の訳が無い文字列を fallback で訳すため、日本語環境でも全部英語になる
+## (実測)。そのため「日本語以外なら英語」は fallback に頼らず resolve_locale() で明示的に決める
+const DEFAULT_LANGUAGE := "auto"
+const VALID_LANGUAGES := ["auto", "ja", "en"]
 
 var mouse_sensitivity: float = DEFAULT_MOUSE_SENSITIVITY
 var master_volume: float = DEFAULT_MASTER_VOLUME
 var touch_controls_mode: String = DEFAULT_TOUCH_CONTROLS_MODE
+var language: String = DEFAULT_LANGUAGE
 
 
 func _ready() -> void:
 	load_settings()
 	apply_master_volume()  # 起動直後からMasterバスに反映しておく
+	apply_language()
 
 
 ## メモリへの反映のみ。ディスクへの保存は呼び出し側の責務
@@ -53,6 +62,26 @@ func set_touch_controls_mode(v: String) -> void:
 	touch_controls_mode = v
 
 
+## メモリへの反映と同時にロケールへ即座に反映する（保存はしない）。
+## .tscn 由来の文言(auto_translate)はロケール変更の通知でその場で切り替わる
+func set_language(v: String) -> void:
+	language = v
+	apply_language()
+
+
+## language の現在値を TranslationServer へ反映する
+func apply_language() -> void:
+	TranslationServer.set_locale(resolve_locale(language, OS.get_locale_language()))
+
+
+## 設定値と OS の言語コード("ja" / "en" / "fr" 等)から、実際に使うロケールを決める
+## (純粋関数、tests/test_i18n.gd で直接検証)
+static func resolve_locale(lang: String, os_language: String) -> String:
+	if lang != "auto":
+		return lang
+	return "ja" if os_language == "ja" else "en"
+
+
 ## タッチ操作UIを表示すべきか。"on"/"off"は明示的な上書き、"auto"(既定)は
 ## DisplayServer.is_touchscreen_available()に従う(プラットフォーム非依存。Web版の
 ## 「スマホでブラウザから遊ぶ」を主眼に最適化しており、Windows Desktopでの
@@ -73,6 +102,7 @@ func to_save_dict() -> Dictionary:
 		"mouse_sensitivity": mouse_sensitivity,
 		"master_volume": master_volume,
 		"touch_controls_mode": touch_controls_mode,
+		"language": language,
 	}
 
 
@@ -110,3 +140,5 @@ func _apply_data(data: Dictionary) -> void:
 	var touch_mode := String(data.get("touch_controls_mode", DEFAULT_TOUCH_CONTROLS_MODE))
 	touch_controls_mode = (
 		touch_mode if VALID_TOUCH_CONTROLS_MODES.has(touch_mode) else DEFAULT_TOUCH_CONTROLS_MODE)
+	var lang := String(data.get("language", DEFAULT_LANGUAGE))
+	language = lang if VALID_LANGUAGES.has(lang) else DEFAULT_LANGUAGE

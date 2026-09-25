@@ -8,6 +8,8 @@ var _failures := 0
 
 
 func _ready() -> void:
+	# L-09: 日本語の原文を照合するので、OS の言語(英語環境なら en)に関係なく ja に固定する
+	TranslationServer.set_locale("ja")
 	_check_case(false, true, GameManager.EndReason.TIME_UP,
 		"にげきられた…", "逃げる人をつかまえられなかった", "鬼・逃げ切られた")
 	_check_case(false, false, GameManager.EndReason.TAGGED,

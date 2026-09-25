@@ -50,6 +50,9 @@ var _pending_join_server := ""
 
 
 func _ready() -> void:
+	# L-09: プレイヤー名は利用者の入力なので訳さない。Label は既定で auto_translate が
+	# 有効で、たまたま en.po の msgid と同じ名前(「設定」等)だと英訳されて表示されてしまう
+	profile_badge_name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	# ボタン接続
 	play_button.pressed.connect(_on_play_pressed)
 	solo_button.pressed.connect(_on_solo_pressed)
@@ -83,7 +86,7 @@ func _ready() -> void:
 		quit_button.visible = false
 
 	# H-09: ボタン文言を実際の遷移先(Web=DirectConnectタブ既定, デスクトップ=ロビー全体)に合わせる
-	play_button.text = "参加する（リンク/アドレス指定）" if OS.has_feature("web") else "オンラインプレイ（部屋を探す・作る）"
+	play_button.text = tr("参加する（リンク/アドレス指定）") if OS.has_feature("web") else tr("オンラインプレイ（部屋を探す・作る）")
 
 	# 初期状態ではダイアログを隠す（①きせかえは専用シーンへ遷移するため、
 	# ここで隠すダイアログには含まれない）
@@ -143,7 +146,7 @@ func _open_name_confirm_dialog(server: String) -> void:
 	_pending_join_server = server
 	name_confirm_edit.text = ProfileManager.player_name
 	var is_default := _is_default_name(ProfileManager.player_name)
-	name_confirm_warning.text = "名前がまだ設定されていません。変更をおすすめします" if is_default else ""
+	name_confirm_warning.text = tr("名前がまだ設定されていません。変更をおすすめします") if is_default else ""
 	name_confirm_dialog.show()
 	name_confirm_edit.grab_focus()
 	name_confirm_edit.select_all()
@@ -170,7 +173,7 @@ func _close_name_confirm_dialog() -> void:
 		return
 	name_confirm_dialog.hide()
 	_pending_join_server = ""
-	status_label.text = "参加リンクからの自動参加をやめました。メニューから参加できます。"
+	status_label.text = tr("参加リンクからの自動参加をやめました。メニューから参加できます。")
 
 
 ## Esc でも閉じられるようにする(RV-09)。
@@ -207,7 +210,7 @@ func _on_name_confirm_join_pressed() -> void:
 			name_confirm_edit.select_all()
 			return
 	name_confirm_dialog.hide()
-	status_label.text = "参加リンクからホストへ接続中..."
+	status_label.text = tr("参加リンクからホストへ接続中...")
 	# L-06検討時の判断: ここにローディングスピナーは付けない。start_client()は
 	# awaitなしで即座にchange_scene_to_file(world.tscn)するため、このシーンごと
 	# 次フレームで破棄されアニメーションが一切目に映らない(付け忘れではない)
@@ -230,10 +233,12 @@ func _on_server_rating_corrected(_old_rating: int, new_rating: int, delta: int) 
 	rating_sync_dialog.show()
 
 
-## C-03 R-4: 起動時レート同期ダイアログの本文(純粋関数、tests/で直接検証)
+## C-03 R-4: 起動時レート同期ダイアログの本文(純粋関数、tests/で直接検証)。
+## static 関数では Object.tr() が使えないので TranslationServer.translate() で訳す(L-09)
 static func rating_sync_dialog_text(delta: int, new_rating: int) -> String:
 	var sign_str := "+" if delta >= 0 else ""
-	return "前回の対戦時には確定していなかったレートがサーバーと同期され、%s%d Pt 補正されました（現在 %d Pt）。" \
+	return TranslationServer.translate(
+		"前回の対戦時には確定していなかったレートがサーバーと同期され、%s%d Pt 補正されました（現在 %d Pt）。") \
 		% [sign_str, delta, new_rating]
 
 
@@ -297,7 +302,7 @@ func _on_error_history_pressed() -> void:
 ## 新しいエラーを上に表示する(error_logは古い→新しい順の配列のため反転する)
 func _refresh_error_log_dialog() -> void:
 	if NetworkManager.error_log.is_empty():
-		error_log_list_label.text = "エラー履歴はありません。"
+		error_log_list_label.text = tr("エラー履歴はありません。")
 		return
 	var reversed := NetworkManager.error_log.duplicate()
 	reversed.reverse()

@@ -19,6 +19,8 @@ func _assert(condition: bool, msg: String) -> void:
 
 
 func _ready() -> void:
+	# L-09: 日本語の原文を照合するので、OS の言語(英語環境なら en)に関係なく ja に固定する
+	TranslationServer.set_locale("ja")
 	print("==================================================")
 	print("【TEST】C-03 R-4: レート同期通知の文言検証")
 	print("==================================================")

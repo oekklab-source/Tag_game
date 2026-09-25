@@ -11,6 +11,8 @@ var _fail := 0
 
 
 func _ready() -> void:
+	# L-09: 日本語の原文を照合するので、OS の言語(英語環境なら en)に関係なく ja に固定する
+	TranslationServer.set_locale("ja")
 	print("=== 終了確認メニューの検証 ===")
 	var shots := ""
 	var args := OS.get_cmdline_user_args()

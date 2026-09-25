@@ -1,0 +1,148 @@
+# 3D Chase Game — 英語訳 (L-09)
+#
+# msgid は日本語の原文そのもの。日本語ロケールではこのファイルは使われず、tr() は原文を返す。
+# ja 以外のロケールは project.godot の locale/fallback="en" によりこのファイルで表示される。
+#
+# 書き方の規則(tests/test_i18n.tscn が機械的に検査する):
+# - msgstr を空にしない。
+# - %d / %s / %.1f 等の書式指定は、msgid と同じ種類を同じ順番で残す。
+# - 新しい UI 文言を足したら、コード側を tr("…") にしてここにも追加する。
+#
+# 用語集(訳を揃えるため、ここに無い訳語を新しく作る前に確認すること):
+#   鬼 / おに = Chaser        にげる人 / 逃走者 = Runner
+#   ジェム = Gems             レート = Rating         Pt = pts
+#   きせかえ = Wardrobe       ショップ = Shop         フレンド = Friends
+#   ランキング = Rankings     部屋 = Room             ホスト = Host
+#   ソロ練習 = Solo Practice  オンラインプレイ = Online Play
+# 口調: 原文はひらがな中心の子ども向けなので、短く平易な英語にする。
+msgid ""
+msgstr ""
+"Project-Id-Version: 3D Chase Game\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+
+# --- 設定画面 (scenes/settings_screen) ---
+msgid "設定"
+msgstr "Settings"
+
+msgid "マウス感度"
+msgstr "Mouse Sensitivity"
+
+msgid "マスター音量"
+msgstr "Master Volume"
+
+msgid "※まだBGM・効果音がありません"
+msgstr "* No music or sound effects yet"
+
+msgid "タッチ操作"
+msgstr "Touch Controls"
+
+msgid "自動"
+msgstr "Auto"
+
+msgid "常に表示"
+msgstr "Always Show"
+
+msgid "常に非表示"
+msgstr "Always Hide"
+
+msgid "既定に戻す"
+msgstr "Reset"
+
+msgid "保存してもどる"
+msgstr "Save & Back"
+
+# --- タイトル画面 (scenes/title) ---
+msgid "- オンライン鬼ごっこバトル -"
+msgstr "- Online Tag Battle -"
+
+msgid "オンラインプレイ (EOS P2P)"
+msgstr "Online Play (EOS P2P)"
+
+msgid "参加する（リンク/アドレス指定）"
+msgstr "Join (Link / Address)"
+
+msgid "オンラインプレイ（部屋を探す・作る）"
+msgstr "Online Play (Find or Create a Room)"
+
+msgid "ソロ練習 (VS CPU・レート変動なし)"
+msgstr "Solo Practice (VS CPU, Unrated)"
+
+msgid "きせかえ"
+msgstr "Wardrobe"
+
+msgid "ショップ"
+msgstr "Shop"
+
+msgid "フレンド"
+msgstr "Friends"
+
+msgid "ランキング"
+msgstr "Rankings"
+
+msgid "ゲーム終了"
+msgstr "Quit Game"
+
+msgid "別の部屋をさがす"
+msgstr "Find Another Room"
+
+msgid "接続エラーの履歴"
+msgstr "Connection Error History"
+
+msgid "エラー履歴はありません。"
+msgstr "No errors so far."
+
+msgid "この名前で参加します"
+msgstr "You'll join with this name"
+
+msgid "名前がまだ設定されていません。変更をおすすめします"
+msgstr "You haven't set a name yet. We recommend changing it."
+
+msgid "やめる"
+msgstr "Cancel"
+
+msgid "この名前で参加"
+msgstr "Join with This Name"
+
+msgid "参加リンクからの自動参加をやめました。メニューから参加できます。"
+msgstr "Stopped auto-joining from the link. You can join from the menu."
+
+msgid "参加リンクからホストへ接続中..."
+msgstr "Connecting to the host from the link..."
+
+msgid "レートの同期について"
+msgstr "About Rating Sync"
+
+msgid "前回の対戦時には確定していなかったレートがサーバーと同期され、%s%d Pt 補正されました（現在 %d Pt）。"
+msgstr "Your rating from your last match, which wasn't finalized yet, has been synced with the server and adjusted by %s%d pts (now %d pts)."
+
+msgid "閉じる"
+msgstr "Close"
+
+# --- 終了確認メニュー (autoload/quit_menu) ---
+msgid "ゲームを終わりますか？"
+msgstr "Quit the game?"
+
+msgid "タイトルにもどりますか？"
+msgstr "Go back to the title screen?"
+
+msgid "はい"
+msgstr "Yes"
+
+msgid "いいえ"
+msgstr "No"
+
+msgid "試合を退出してタイトルへ"
+msgstr "Leave Match & Go to Title"
+
+# --- オーバーレイ類 ---
+msgid "ホストとの接続が切れました。引き継ぎ先を確認しています…"
+msgstr "Lost connection to the host. Looking for a new host…"
+
+msgid "🔒 試着中"
+msgstr "🔒 Trying On"
+
+msgid "言語 / Language"
+msgstr "Language"

@@ -11,6 +11,8 @@ const HUD_SCENE := preload("res://scenes/hud.tscn")
 
 
 func _ready() -> void:
+	# L-09: 日本語の原文を照合するので、OS の言語(英語環境なら en)に関係なく ja に固定する
+	TranslationServer.set_locale("ja")
 	await get_tree().process_frame
 	var me: Player = PLAYER_SCENE.instantiate()
 	me.name = "1"

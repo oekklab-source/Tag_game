@@ -151,6 +151,25 @@ custom_minimum_size = Vector2(280, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 
+[node name="LanguageSection" type="VBoxContainer" parent="ContentMargin/Scroll/MainVBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SectionTitle" type="Label" parent="ContentMargin/Scroll/MainVBox/LanguageSection"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
+theme_override_font_sizes/font_size = 22
+text = "言語 / Language"
+
+[node name="Row" type="HBoxContainer" parent="ContentMargin/Scroll/MainVBox/LanguageSection"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="LanguageOption" type="OptionButton" parent="ContentMargin/Scroll/MainVBox/LanguageSection/Row"]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="ButtonsRow" type="HBoxContainer" parent="ContentMargin/Scroll/MainVBox"]
 layout_mode = 2
 alignment = 1

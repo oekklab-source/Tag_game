@@ -153,6 +153,11 @@ taunt_3={
 ]
 }
 
+[internationalization]
+
+locale/translations=PackedStringArray("res://locale/en.po")
+locale/fallback="ja"
+
 [layer_names]
 
 3d_physics/layer_1="World"
