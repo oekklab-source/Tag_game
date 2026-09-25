@@ -136,3 +136,21 @@ func _test_cpu_navigation(world: Node, cpu: CharacterBody3D) -> void:
 
 	var moved := cpu.global_position.distance_to(initial_pos)
 	_assert(moved > 2.0, "CPU が巡回目標へ向かって自律移動 (移動量: %.2f m > 2.0m)" % moved)
+
+
+# --- Phase 3 L-12: 実セーブ(user://profile.json / settings.json)の保護 ---
+# このテストはラウンドを回す/プロフィールを触るため、通常のゲーム終了経路
+# (GameManager._end_round() -> hud.gd -> ProfileManager.record_casual_match())から
+# 間接的に save_profile() を踏み、開発機の実セーブを書き換えてしまう。
+# _enter_tree/_exit_tree で挟むので、テスト本体のコードには一切触れていない。
+# 詳細と実測値は tests/save_guard.gd のヘッダを参照。
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
+
+
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
+
+
+func _exit_tree() -> void:
+	_SaveGuard.restore(_save_backup)

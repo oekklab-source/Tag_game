@@ -148,3 +148,21 @@ func _shot(out: String, name: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png("%s/%s.png" % [out, name])
 	print("saved %s.png" % name)
+
+
+# --- Phase 3 L-12: 実セーブ(user://profile.json / settings.json)の保護 ---
+# このテストはラウンドを回す/プロフィールを触るため、通常のゲーム終了経路
+# (GameManager._end_round() -> hud.gd -> ProfileManager.record_casual_match())から
+# 間接的に save_profile() を踏み、開発機の実セーブを書き換えてしまう。
+# _enter_tree/_exit_tree で挟むので、テスト本体のコードには一切触れていない。
+# 詳細と実測値は tests/save_guard.gd のヘッダを参照。
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
+
+
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
+
+
+func _exit_tree() -> void:
+	_SaveGuard.restore(_save_backup)

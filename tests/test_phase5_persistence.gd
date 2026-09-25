@@ -9,9 +9,9 @@ extends Node
 ## save_profile()/load_profile()/merge_server_inventory() の往復そのものが検証対象なので、
 ## tests/costume_model.gd のような「ファイルI/Oを一切しない純粋テスト」には置けない。
 ## そのため Phase 3 L-12 で二重の安全網を入れてある:
-##   1. _backup_saves() が user://profile.json / user://settings.json を .testbak へ退避し、
-##      _restore_saves() が終了時に書き戻す(正常終了と _exit_tree() の両方から呼ぶ。
-##      GDScript に finally が無いので、後者が保険)。
+##   1. tests/save_guard.gd が user://profile.json / user://settings.json を .testbak へ
+##      退避し、終了時に書き戻す(_enter_tree/_exit_tree で挟むので、テスト本体が
+##      どこで終わっても・途中でランタイムエラーが出ても必ず通る)。
 ##   2. 各テスト関数自身も、書き換えたメモリ上のフィールドを関数内で退避・復元する。
 ## **1 だけでは足りない**: 2 が抜けているとテストAの汚染をテストBが「実データ」として
 ## 退避してしまい、テスト間のアサートが意味を失う(実際に [2]->[3] でこれが起きており、
@@ -20,9 +20,10 @@ extends Node
 var passed_count := 0
 var failed_count := 0
 
-## 実パス -> 退避先パス。退避時にファイルが無かった場合は空文字(「テスト後に消す」の意)
-var _save_backups := {}
-var _restored := false
+## Phase 3 L-12: 実セーブの退避/復元は tests/save_guard.gd に集約してある
+## (ラウンドを回す他のテストも同じ仕組みで守る必要があったため、2026-09-25に共通化した)
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
 
 func _assert(condition: bool, msg: String) -> void:
 	if condition:
@@ -37,7 +38,6 @@ func _ready() -> void:
 	print("==================================================")
 	print("【TEST】Phase 5: データ永続化・システム連携検証")
 	print("==================================================")
-	_backup_saves()
 	await get_tree().process_frame
 
 	await _test_profile_save_load()
@@ -56,51 +56,23 @@ func _ready() -> void:
 		print("=> Phase 5: ALL PASSED")
 	else:
 		printerr("=> Phase 5: SOME TESTS FAILED")
-	_restore_saves()
+	_SaveGuard.restore(_save_backup)
 	# 意図としては終了コードで FAIL を伝えたいが、**Godot 4.7.2(win64) の headless は
 	# quit() に何を渡してもプロセスの終了コードが常に -1 になる**(quit(0)/quit(3)/quit(7)
 	# のいずれでも -1 になることを L-12 で実測確認済み)。そのため実際の成否判定は
-	# tools/run_headless_test.ps1 が標準出力の "[FAIL]" / "SOME TESTS FAILED" を
-	# 走査して行う。この引数はエンジン側が直った時に自然に効くように残してある
+	# tools/run_headless_test.ps1 が標準出力の "FAIL" を走査して行う。
+	# この引数はエンジン側が直った時に自然に効くように残してある
 	get_tree().quit(1 if failed_count > 0 else 0)
 
 
-## 実セーブファイルを退避する(L-12)。_ready() の先頭で1回だけ呼ぶ。
-## パスはテスト側にハードコードせず、各Autoloadの定数をそのまま参照する
-func _backup_saves() -> void:
-	for path in [ProfileManager.SAVE_PATH, SettingsManager.SAVE_PATH]:
-		if not FileAccess.file_exists(path):
-			# まだ存在しない = このテストが作ることになるので、後で消す目印を残す
-			_save_backups[path] = ""
-			continue
-		var bak: String = path + ".testbak"
-		if DirAccess.copy_absolute(path, bak) != OK:
-			printerr("  [WARN] 実セーブの退避に失敗: %s" % path)
-			continue
-		_save_backups[path] = bak
-	print("実セーブを退避: %s" % str(_save_backups.keys()))
-
-
-## 退避した実セーブを書き戻す。正常終了時と _exit_tree() の両方から呼ばれるので、
-## 二重復元しないようフラグで守る
-func _restore_saves() -> void:
-	if _restored:
-		return
-	_restored = true
-	for path in _save_backups:
-		var bak: String = _save_backups[path]
-		if bak.is_empty():
-			DirAccess.remove_absolute(path)
-			continue
-		DirAccess.copy_absolute(bak, path)
-		DirAccess.remove_absolute(bak)
-	print("実セーブを復元: %s" % str(_save_backups.keys()))
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
 
 
 func _exit_tree() -> void:
 	# 保険。テスト途中のランタイムエラーで上の復元に到達しなかった場合でも、
 	# ノードがツリーから外れるこのタイミングで必ず書き戻す
-	_restore_saves()
+	_SaveGuard.restore(_save_backup)
 
 
 ## 1. ProfileManager の保存と復元
