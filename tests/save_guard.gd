@@ -26,6 +26,20 @@ extends RefCounted
 ## `test_phase7_stability` は1回の実行で `casual_matches_played` を +9、
 ## `test_phase1_rules` は +2 していた。grep で `save_profile` を探すだけでは見つからない。
 ##
+## **クラウドセーブも守る**: `backup()` は `EosManager.cloud_sync_blocked_for_tests` を立て、
+## 起動時のクラウドセーブ同期(EOS PDS)を止める。ローカルの退避・復元だけでは足りない。
+## 同期はテスト本体と並行して走る(EOS ログインに数秒かかる)ので、テストがメモリ上で
+## 書き換えた値が実アカウントのクラウドへ上がり、`highest_rating` は大きい方を採る(ratchet)
+## ため、その後は EOS にログインするたびに開発機へ戻ってくる。2026-09-25 に
+## `highest_rating=10004` がこの経路で残っているのを見つけ、クラウド側を手で直した。
+## `_enter_tree()` は EOS ログインの完了より必ず前なので、同期が始まる前に止められる。
+## 実際のクラウド読み書きを確かめるテスト(`test_eos_live_smoke`)だけは
+## `backup(false)` でローカルの保護だけにする。
+##
+## **退避先の名前にプロセス ID を付ける**: `net_roles` / `net_anim` / `net_live` / `emote` は
+## ホストとクライアントの2プロセスが同じ `user://` を使う。同じ退避先だと、先に終わった側が
+## 退避先を消し、後の側が書き戻せなくなる。
+##
 ## `class_name` ではなく `preload()` で参照させているのは、新規スクリプトの
 ## `class_name` グローバル登録が headless 単体実行では更新されておらず
 ## "not declared in the current scope" になるケースがあるため
@@ -36,14 +50,17 @@ const BACKUP_SUFFIX := ".testbak"
 
 
 ## 実セーブを退避する。戻り値は restore() にそのまま渡す。
-## 値が空文字のエントリは「退避時にファイルが無かった＝テスト後に消す」の意
-static func backup() -> Dictionary:
+## 値が空文字のエントリは「退避時にファイルが無かった＝テスト後に消す」の意。
+## block_cloud=true(既定)ならクラウドセーブ同期も止める(ヘッダ参照)
+static func backup(block_cloud: bool = true) -> Dictionary:
+	if block_cloud:
+		EosManager.cloud_sync_blocked_for_tests = true
 	var out := {}
 	for path in _guarded_paths():
 		if not FileAccess.file_exists(path):
 			out[path] = ""
 			continue
-		var bak: String = path + BACKUP_SUFFIX
+		var bak: String = "%s%s.%d" % [path, BACKUP_SUFFIX, OS.get_process_id()]
 		if DirAccess.copy_absolute(path, bak) != OK:
 			printerr("  [WARN] 実セーブの退避に失敗: %s" % path)
 			continue

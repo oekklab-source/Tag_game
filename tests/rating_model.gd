@@ -267,3 +267,18 @@ func test_cpu_hunter_padding_matches_server() -> void:
 	assert(is_equal_approx(d[0], d[1]) and is_equal_approx(d[1], d[2]))
 	print("   => CPU鬼がトドメの試合はトドメ再分配なしで鬼全員同額になることを確認 [OK]")
 	print("   => クライアント/サーバーのNが一致し、補正トーストが例外に戻ることを確認 [OK]")
+
+# --- 実セーブ(user://profile.json / settings.json)とクラウドセーブの保護 ---
+# ラウンドを回さないテストでも、EOS にログインできる環境では起動時のクラウドセーブ同期が
+# 実セーブを書き換える(2026-09-25 に boost_panel の実行中に実測)。どのテストが
+# 踏むかを個別に見極めるより、全テストで一律に挟む。詳細は tests/save_guard.gd のヘッダ。
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
+
+
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
+
+
+func _exit_tree() -> void:
+	_SaveGuard.restore(_save_backup)

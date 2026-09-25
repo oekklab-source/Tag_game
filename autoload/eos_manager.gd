@@ -30,6 +30,12 @@ const SYNC_PROFILE_TIMEOUT_SEC := 8.0
 const LOBBY_SEARCH_TIMEOUT_SEC := 10.0
 
 var is_eos_available: bool = false
+## テスト専用のスイッチ。true の間は起動時のクラウドセーブ同期(sync_profile_with_cloud)を
+## 何もせずに抜ける。tests/save_guard.gd の backup() が立てる。
+## 同期はテスト本体と並行して走るため、テストがメモリ上で書き換えた値(rating=9999 等)が
+## 実アカウントの PDS に上がり、highest_rating の ratchet で開発機へ戻り続けていた
+## (2026-09-25 に highest_rating=10004 を実測、クラウド側を手で直した)
+var cloud_sync_blocked_for_tests: bool = false
 var product_user_id: String = ""
 var current_lobby_id: String = ""
 var is_host: bool = false
@@ -662,7 +668,7 @@ func _sync_profile_with_cloud_bounded() -> void:
 ## - クラウド側の存在有無自体が確認できない場合(一時的な通信障害/PDS不調など):
 ##   「未保存」と誤認して上書きしてしまうデータ消失を避けるため、同期処理を中断する
 func sync_profile_with_cloud() -> void:
-	if not is_eos_available:
+	if not is_eos_available or cloud_sync_blocked_for_tests:
 		return
 	var status: HPlayerDataStorage.FileQueryStatus = \
 		await HPlayerDataStorage.query_file_status_async(CLOUD_PROFILE_FILENAME)

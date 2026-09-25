@@ -107,3 +107,18 @@ func _test_is_plausible_correction() -> void:
 	# 境界(ちょうど100の変化は許す / 101は許さない)
 	_assert(f.call(1600, 1500) == true, "変化幅ちょうど100 -> 採用")
 	_assert(f.call(1601, 1500) == false, "変化幅101 -> 破棄")
+
+# --- 実セーブ(user://profile.json / settings.json)とクラウドセーブの保護 ---
+# ラウンドを回さないテストでも、EOS にログインできる環境では起動時のクラウドセーブ同期が
+# 実セーブを書き換える(2026-09-25 に boost_panel の実行中に実測)。どのテストが
+# 踏むかを個別に見極めるより、全テストで一律に挟む。詳細は tests/save_guard.gd のヘッダ。
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
+
+
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
+
+
+func _exit_tree() -> void:
+	_SaveGuard.restore(_save_backup)

@@ -56,3 +56,18 @@ func _test_rating_sync_dialog_text() -> void:
 	_assert(TitleScript.rating_sync_dialog_text(-5, 1495) ==
 		"前回の対戦時には確定していなかったレートがサーバーと同期され、-5 Pt 補正されました（現在 1495 Pt）。",
 		"負の補正(-5)の文言")
+
+# --- 実セーブ(user://profile.json / settings.json)とクラウドセーブの保護 ---
+# ラウンドを回さないテストでも、EOS にログインできる環境では起動時のクラウドセーブ同期が
+# 実セーブを書き換える(2026-09-25 に boost_panel の実行中に実測)。どのテストが
+# 踏むかを個別に見極めるより、全テストで一律に挟む。詳細は tests/save_guard.gd のヘッダ。
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
+
+
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
+
+
+func _exit_tree() -> void:
+	_SaveGuard.restore(_save_backup)
