@@ -561,10 +561,33 @@ godot --headless --path . res://tests/emote.tscn -- client 127.0.0.1
 
 ### UI
 
-表示は日本語。Godot の既定フォントは日本語のグリフを持たず、そのままだと
+表示は日本語と英語。Godot の既定フォントは日本語のグリフを持たず、そのままだと
 UI が全部豆腐（□）になるので **`ui/fonts/` に丸ゴシックを同梱している**
 （M PLUS Rounded 1c、OFL。JIS 第一水準にサブセット済みで 1.6 MB）。
 テーマ `ui/pop_theme.tres` の `default_font` から全 Control に効く。
+
+### 表示言語（日本語 / 英語）
+
+翻訳は `locale/en.po` の1枚だけで、**msgid は日本語の原文そのもの**。日本語で表示するときは
+翻訳を通らず原文がそのまま出る。言語は設定画面で「自動 / 日本語 / English」から選び、
+「自動」は OS（Web 版ならブラウザ）の言語が日本語なら日本語、それ以外は英語になる
+（`SettingsManager.resolve_locale()`）。
+
+- **新しい UI 文言は `tr("…")` で書き、`locale/en.po` に英訳を足す。** `.tscn` の
+  `text` などは Control の自動翻訳で訳されるので、コード側の変更は要らない（en.po には足す）。
+  static 関数では `tr()` が使えないので `TranslationServer.translate()` を使う。
+  カタログ名・ティア名などの定数は原文のまま持ち、表示する時点で `tr()` する。
+- **`locale/fallback` は `"ja"` にしてある。** `"en"` にすると、Godot はロケール ja の
+  訳が無い文字列を fallback で訳すため、日本語環境でも全部英語になる。
+- **ネットワークや保存に流す文字列は送る側で訳さない。** 例: `notify_rejected` の理由は
+  日本語の原文のまま送り、受け取った側で `tr()` する（RPC は変えていない）。
+- **プレイヤー名など利用者の入力を出す Label は `auto_translate_mode` を切る。**
+  名前が msgid と一致すると（「設定」など）勝手に英訳されるため。
+- 同梱フォントは JIS 第一水準のサブセットなので、訳文に em dash（—）などの欧文記号を
+  使うと英語版だけ豆腐になる。
+- 以上の抜け（未登録の msgid・訳し忘れ・書式指定の不一致・フォントに無い文字）は
+  `tests/test_i18n.tscn` が機械的に検出する。見た目のはみ出しは
+  `tests/uishot.tscn` を `-- --shots <出力先> --locale en` で撮って確認する。
 
 待機中は画面中央にロビーのパネルを出し、マウスを解放する。
 `hud.gd` の `_ignore_mouse()` は「HUD に操作できるウィジェットは一つも無い」
@@ -1267,6 +1290,9 @@ scenes/hud.tscn(.gd)          役割バッジ・円形タイマー・バフ・�
 scenes/hud/minimap.gd         hud.tscnの$MapPanel。9ゾーンミニマップとコンパス回転・距離表示
 scenes/hud/lobby_panel.gd     hud.tscnの$Lobby。ロビー名簿・定員変更・役割選択ボタン
 ui/pop_theme.tres             全体に適用される POP テーマ
+locale/en.po                  英語の翻訳（msgid は日本語の原文。書き方は「表示言語」節）
+autoload/settings_manager.gd  マウス感度・音量・タッチ操作・表示言語の設定（user://settings.json）
+scenes/settings_screen.tscn(.gd) 設定画面
 tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
 tools/blender/character_common.py 着せ替えで共通の骨格・リグ・アニメ・書き出し。
                               服が増えてもここは触らない
@@ -1311,8 +1337,9 @@ tests/manhole.tscn            マンホールの出口に水平速度が乗る�
 tests/separation.tscn         キャラが重なっても必ずほどけるか（空中静止の回帰）
 tests/net_roles.tscn          2ピアで役割選択と湧き位置の分散を検証
 tests/net_live.tscn           実際の起動経路と実キー入力で通信対戦が始まるかの検証
-tests/uishot.tscn             UI（タイトル/ロビー/対戦中/リザルト）を PNG 書き出し（--headless 不可）
+tests/uishot.tscn             UI（タイトル/ロビー/対戦中/リザルト/各画面）を PNG 書き出し（--headless 不可、--locale en で英語）
 tests/quit_menu.tscn          Esc の終了確認メニューの開閉・既定フォーカス・キーリピートの検証
+tests/test_i18n.tscn          翻訳の整合性（未登録 msgid・訳し忘れ・書式指定・フォントの字形・言語設定）の検証
 tests/host_conflict.tscn      ポートが埋まっているときホストを弾いて理由を出すかの検証
 tests/costume_model.tscn      ④コスチューム・⑤帽子のデータモデル（所持・移行・整合性）を検証
 tests/test_eos_credentials_check.tscn eos_credentials.cfg の検証ロジック（起動可否と出荷可否の境界）

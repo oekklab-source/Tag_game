@@ -14,10 +14,14 @@ extends Node
 ##       「開発者向け出力(print/push_warning 等)」か「UNTRANSLATED_OK に理由付きで登録」の
 ##       どれかであること(＝訳し忘れの検出)
 ##   [5] SettingsManager の language 設定(ホワイトリスト・ロケール反映)。保存は呼ばない
+##   [6] 訳文で新しく使った文字が、同梱フォント(JIS第一水準サブセット)にあること。
+##       無いと英語版だけ豆腐(□)になる。原文にもある文字(絵文字など)は元から
+##       システムフォントへのフォールバックで出ているので対象外
 ##
 ## 抜けていた msgid は一覧で出力するので、そのまま en.po に足せばよい。
 
 const PO_PATH := "res://locale/en.po"
+const FONT_PATH := "res://ui/fonts/MPLUSRounded1c-Bold.ttf"
 const SCAN_DIRS := ["res://scenes", "res://autoload"]
 
 ## まだ tr() 化していないファイル。L-09 の S1〜S3 で全部片付けたので空。
@@ -67,6 +71,7 @@ func _ready() -> void:
 	_check_tscn_texts(tscn_files)
 	_check_gd_untranslated(gd_files)
 	_check_settings_language()
+	_check_glyphs()
 
 	print("test_i18n 結果: PASS=%d, FAIL=%d" % [_pass, _fail])
 	print("=> test_i18n: ALL PASSED" if _fail == 0 else "=> test_i18n: SOME TESTS FAILED")
@@ -207,6 +212,21 @@ func _check_settings_language() -> void:
 
 	SettingsManager.language = saved_language
 	TranslationServer.set_locale(saved_locale)
+
+
+# ---------------------------------------------------------------- [6]
+func _check_glyphs() -> void:
+	var font: FontFile = load(FONT_PATH)
+	var bad: Array[String] = []
+	for id in _po:
+		var s: String = _po[id]
+		for i in s.length():
+			var c := s.unicode_at(i)
+			if not font.has_char(c) and not (id as String).contains(s[i]):
+				bad.append("U+%04X %s: %s" % [c, s[i], s])
+	for b in bad:
+		printerr("    フォントに無い文字: ", b)
+	_ok("[6] 訳文で新しく使った文字がすべてフォントにある", bad.is_empty())
 
 
 # ---------------------------------------------------------------- helpers

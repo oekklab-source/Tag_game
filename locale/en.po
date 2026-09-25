@@ -1,4 +1,4 @@
-# 3D Chase Game — 英語訳 (L-09)
+# 3D Chase Game - 英語訳 (L-09)
 #
 # msgid は日本語の原文そのもの。日本語ロケールではこのファイルは使われず、tr() は原文を返す。
 # ja 以外のロケールは project.godot の locale/fallback="en" によりこのファイルで表示される。
@@ -10,11 +10,13 @@
 #
 # 用語集(訳を揃えるため、ここに無い訳語を新しく作る前に確認すること):
 #   鬼 / おに = Chaser        にげる人 / 逃走者 = Runner
-#   ジェム = Gems             レート = Rating         Pt = pts
+#   ジェム = Gems             レート = Rating         Pt = Pt(数値ラベルは訳さず "1500 Pt" のまま出るので揃える)
 #   きせかえ = Wardrobe       ショップ = Shop         フレンド = Friends
 #   ランキング = Rankings     部屋 = Room             ホスト = Host
 #   ソロ練習 = Solo Practice  オンラインプレイ = Online Play
 # 口調: 原文はひらがな中心の子ども向けなので、短く平易な英語にする。
+# 記号: 同梱フォントは JIS 第一水準のサブセットなので、em dash(—)等の欧文記号は無い。
+#       訳文で新しく使う文字がフォントにあるかは tests/test_i18n の [6] が検査する。
 msgid ""
 msgstr ""
 "Project-Id-Version: 3D Chase Game\n"
@@ -116,7 +118,7 @@ msgid "レートの同期について"
 msgstr "About Rating Sync"
 
 msgid "前回の対戦時には確定していなかったレートがサーバーと同期され、%s%d Pt 補正されました（現在 %d Pt）。"
-msgstr "Your rating from your last match, which wasn't finalized yet, has been synced with the server and adjusted by %s%d pts (now %d pts)."
+msgstr "Your rating from your last match, which wasn't finalized yet, has been synced with the server and adjusted by %s%d Pt (now %d Pt)."
 
 msgid "閉じる"
 msgstr "Close"
@@ -212,7 +214,7 @@ msgid "[走] にげろ！"
 msgstr "[R] Run!"
 
 msgid "[鬼] おに ― にげる人をつかまえろ！"
-msgstr "[C] Chaser — Catch the Runner!"
+msgstr "[C] Chaser - Catch the Runner!"
 
 msgid "Esc: メニュー（マウスも離れる） / F: ナイス！"
 msgstr "Esc: Menu (frees the mouse) / F: Nice!"
@@ -224,7 +226,7 @@ msgid "にげる時間！ 今のうちに走れ"
 msgstr "Head start! Run while you can"
 
 msgid "にげる時間 ― おには動けない"
-msgstr "Head start — Chasers can't move yet"
+msgstr "Head start - Chasers can't move yet"
 
 msgid "デバッグ: R バナナ / T ブロック / Y ロケット / E 使用 / Q メイン画面"
 msgstr "Debug: R Banana / T Block / Y Rocket / E Use / Q Main Screen"
@@ -248,7 +250,7 @@ msgid "さっき目撃　%s　あと%d秒"
 msgstr "Last seen: %s  (%ds left)"
 
 msgid "レート: %d Pt (%s%d)"
-msgstr "Rating: %d pts (%s%d)"
+msgstr "Rating: %d Pt (%s%d)"
 
 msgid "練習モード（レート変動なし）"
 msgstr "Practice mode (unrated)"
@@ -311,10 +313,10 @@ msgid "%s を手に入れた（E キー）"
 msgstr "Got %s! (E key)"
 
 msgid "%s が切断 ― CPUが代わりに逃げます"
-msgstr "%s disconnected — a CPU will run instead"
+msgstr "%s disconnected - a CPU will run instead"
 
 msgid "レートがサーバーと同期され、%s%d Pt 補正されました（現在 %d Pt）"
-msgstr "Your rating was synced with the server and adjusted by %s%d pts (now %d pts)"
+msgstr "Your rating was synced with the server and adjusted by %s%d Pt (now %d Pt)"
 
 msgid "ブースト！"
 msgstr "Boost!"
@@ -357,7 +359,7 @@ msgid "招待リンク: %s"
 msgstr "Invite link: %s"
 
 msgid "（うち CPU の鬼 %d人）"
-msgstr " (incl. %d CPU Chasers)"
+msgstr " (incl. CPU Chasers: %d)"
 
 msgid "ホスト（あなた）"
 msgstr "Host (You)"
@@ -375,13 +377,13 @@ msgid "　Enter キー: 開始"
 msgstr "   Enter: Start"
 
 msgid "　― ホストが始めるのを待っています"
-msgstr "   — Waiting for the host to start"
+msgstr "   - Waiting for the host to start"
 
 msgid "デバッグ中: あなたが鬼、CPUが逃げる役です。Enter キー: 開始"
 msgstr "Debug: You're the Chaser and a CPU is the Runner. Enter: Start"
 
 msgid "R キー: 役割を切りかえ　― ホストが始めるのを待っています"
-msgstr "R: Switch role   — Waiting for the host to start"
+msgstr "R: Switch role   - Waiting for the host to start"
 
 msgid "定員を%d人に変更しました"
 msgstr "Max players set to %d"
@@ -762,7 +764,7 @@ msgid "色 %d:"
 msgstr "Color %d:"
 
 msgid "「%s」は未所持です（試着のみ・保存では反映されません。ショップで購入できます）"
-msgstr "You don't own \"%s\" (try-on only — it won't be saved. You can buy it in the Shop)"
+msgstr "You don't own \"%s\" (try-on only - it won't be saved. You can buy it in the Shop)"
 
 msgid "%sは固定デザインです。帽子は変更できます"
 msgstr "%s has a fixed design. You can still change the hat"
@@ -802,7 +804,7 @@ msgid "コピー"
 msgstr "Copy"
 
 msgid "フレンドコードを入力"
-msgstr "Enter a friend code"
+msgstr "Friend code"
 
 msgid "フレンドを追加"
 msgstr "Add Friend"
@@ -817,7 +819,7 @@ msgid "コードで検索"
 msgstr "Search by Code"
 
 msgid "名前 or コードを入力(完全一致)"
-msgstr "Enter a name or code (exact match)"
+msgstr "Name or code (exact)"
 
 msgid "検索"
 msgstr "Search"
@@ -862,7 +864,7 @@ msgid "フレンド情報の取得に失敗しました。"
 msgstr "Couldn't load friend info."
 
 msgid "レート: [%s] %d Pt"
-msgstr "Rating: [%s] %d pts"
+msgstr "Rating: [%s] %d Pt"
 
 msgid "戦績: %d戦（にげる勝ち %d / おに勝ち %d）"
 msgstr "Record: %d matches (Runner wins %d / Chaser wins %d)"
@@ -1109,4 +1111,4 @@ msgid "Tag_Game はすでに別のウィンドウで起動しています。\n\n
 msgstr "Tag_Game is already running in another window.\n\nRunning two copies at once can keep save data (like received gifts) from being saved correctly, so this window will now close.\n\nClose the other window first, then start the game again."
 
 msgid "多重起動のため、このウィンドウは終了します"
-msgstr "Already running — this window will close"
+msgstr "Already running - this window will close"

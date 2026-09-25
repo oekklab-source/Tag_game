@@ -2,7 +2,9 @@ extends Node
 
 ## UI の見た目を PNG に落とす。--headless では描画されないのでウィンドウ有りで実行する。
 ##
-##   godot --path . res://tests/uishot.tscn -- --shots <出力先フォルダ>
+##   godot --path . res://tests/uishot.tscn -- --shots <出力先フォルダ> [--locale en]
+##
+## --locale を付けるとその言語で撮る(L-09、英文のはみ出し確認用)。設定は保存しない
 
 func _ready() -> void:
 	var out := "."
@@ -10,6 +12,8 @@ func _ready() -> void:
 	for i in args.size():
 		if args[i] == "--shots" and i + 1 < args.size():
 			out = args[i + 1]
+		if args[i] == "--locale" and i + 1 < args.size():
+			TranslationServer.set_locale(args[i + 1])
 	DirAccess.make_dir_recursive_absolute(out)
 	await get_tree().process_frame
 
@@ -90,11 +94,21 @@ func _ready() -> void:
 	# 7) ホストマイグレーション中のオーバーレイ
 	var migration: CanvasLayer = load("res://scenes/migration_overlay.tscn").instantiate()
 	get_tree().root.add_child(migration)
-	migration.set_text("新しいホストへ引き継ぎ中…")
+	migration.set_text(tr("別のプレイヤーへホストを引き継いでいます…"))
 	await get_tree().process_frame
 	await _shot(out, "migration_overlay")
 	migration.queue_free()
 	await get_tree().process_frame
+
+	# 7b) L-09: タイトルから開く専用シーン。英語で撮ったときの文言のはみ出しを見るため
+	for scene_name in ["settings_screen", "shop_screen", "costume_screen", "friend_screen"]:
+		var screen: Node = load("res://scenes/%s.tscn" % scene_name).instantiate()
+		get_tree().root.add_child(screen)
+		for i in 10:
+			await get_tree().process_frame
+		await _shot(out, scene_name)
+		screen.queue_free()
+		await get_tree().process_frame
 
 	# 8) C-07 T-8: タッチUIを16:9以外のウィンドウサイズで撮る。
 	# project.godot は stretch/mode="canvas_items" + aspect="expand" なので、
