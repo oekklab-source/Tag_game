@@ -981,13 +981,30 @@ python -m http.server 8123 --directory export/web
   **これが無いままビルドすると、クラッシュせずに黙って EOS がオフライン/フォールバック
   モードのまま出荷される**（[autoload/eos_manager.gd](autoload/eos_manager.gd) の
   `"eos_credentials.cfg not configured yet. Running in Offline / Fallback mode."`
-  の分岐に落ちるだけなので気付きにくい）。ビルド前に必ず存在を確認すること
+  の分岐に落ちるだけなので気付きにくい）。下記の `tools/export_windows.ps1` で書き出せば
+  機械的に止まる。`encryption_key` が空・64桁の16進でない場合も同様に止める
+  （空のまま出荷するとクラウドセーブだけが黙って常に失敗するため）
+- Client Secret を平文で exe に同梱するのは**意図どおり**。GameClient 型ポリシーの認証情報は
+  クライアントに埋め込む前提の設計（Epic 公式 dev-portal/client-credentials）で、
+  権限の確認は [docs/DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md) の「6.」で済ませてある
 
 ### ビルドコマンド
 
-```sh
-godot --headless --export-release "Windows Desktop" export/windows/TagGame.exe
+```powershell
+pwsh tools/export_windows.ps1
 ```
+
+中身は `godot --headless --export-release "Windows Desktop" export/windows/TagGame.exe` だが、
+**素の godot コマンドを直接叩かないこと**。
+[addons/tag_game_export_guard/](addons/tag_game_export_guard/export_guard.gd) が
+`eos_credentials.cfg` の不備を検出すると、`[TagGameExportGuard] BLOCKED` を出力する。
+ところが Godot 4.7.2 ではプラグインから書き出しを中断できず、そのまま exe ができて
+終了コードも 0 になる（実測済み）。ラッパーはこの目印を拾い、exe を削除して exit 1 で止める。
+エディタから書き出す場合も、書き出しダイアログの `tag_game/require_eos_credentials` の下に
+赤字の警告が、結果一覧にエラーが出るだけで、書き出し自体は通ってしまう。
+意図的に EOS なしの版を作るときは、プリセットの `tag_game/require_eos_credentials` を
+false にする（判断が `export_presets.cfg` の差分に残る）。Web 版は認証情報を同梱しないので、
+このガードの対象外。
 
 `export/` は `.gitignore` 対象なので追加設定は不要。出力される配布物一式（実測済み）:
 
@@ -1213,6 +1230,11 @@ autoload/rating_backend_client.gd rating-api（/report-match /report-disconnect-
                               /claim-initial-rating /rating /leaderboard-top）のHTTPクライアント
 autoload/profile_manager.gd   プレイヤー名・カスタムカラー・戦績・レートのローカル/EOS管理
 autoload/backend_config.gd    friend-api/commerce-api/rating-api の URL と USE_LIVE_* フラグを一元管理
+autoload/eos_credentials_check.gd eos_credentials.cfg の検証（実行時の起動可否と出荷可否）。
+                              EosManager と書き出しガードで共有
+addons/tag_game_export_guard/ Windows 書き出し時に eos_credentials.cfg の不備を知らせる
+                              エクスポートプラグイン（止めるのは tools/export_windows.ps1）
+tools/export_windows.ps1      Windows 版の書き出し。認証情報の不備を検出したら exe を消して失敗させる
 autoload/music_manager.gd     タイトル/ロビー系画面のBGMを保持するAutoload。change_scene_to_file()を
                               またいで鳴り続けさせる（NetworkManagerの対戦開始/終了と連動して停止/再生）
 scenes/title.tscn(.gd)        タイトル画面（エントリーシーン）。メインメニュー・プロフィールバッジ・
@@ -1293,6 +1315,7 @@ tests/uishot.tscn             UI（タイトル/ロビー/対戦中/リザルト
 tests/quit_menu.tscn          Esc の終了確認メニューの開閉・既定フォーカス・キーリピートの検証
 tests/host_conflict.tscn      ポートが埋まっているときホストを弾いて理由を出すかの検証
 tests/costume_model.tscn      ④コスチューム・⑤帽子のデータモデル（所持・移行・整合性）を検証
+tests/test_eos_credentials_check.tscn eos_credentials.cfg の検証ロジック（起動可否と出荷可否の境界）
 tests/hat_placement.gd        ⑤帽子の装着位置（Chestボーン基準オフセット）を目視調整するスクリプト
                               （godot --path . --script res://tests/hat_placement.gd -- <出力先>）
 tests/hunter_squad.tscn       鬼3人の定員と連携（分担探索・挟み込み）の検証

@@ -25,6 +25,7 @@ signal leaderboard_loaded(entries: Array)
 signal leaderboard_score_uploaded(success: bool, score: int)
 
 const CREDENTIALS_PATH := "res://eos_credentials.cfg"
+const _CredentialsCheck := preload("res://autoload/eos_credentials_check.gd")
 const SYNC_PROFILE_TIMEOUT_SEC := 8.0
 const LOBBY_SEARCH_TIMEOUT_SEC := 10.0
 
@@ -163,23 +164,18 @@ func _load_credentials() -> HCredentials:
 	if cfg.load(CREDENTIALS_PATH) != OK:
 		return null
 
-	var product_id: String = cfg.get_value("eos", "product_id", "")
-	var sandbox_id: String = cfg.get_value("eos", "sandbox_id", "")
-	var deployment_id: String = cfg.get_value("eos", "deployment_id", "")
-	var client_id: String = cfg.get_value("eos", "client_id", "")
-	var client_secret: String = cfg.get_value("eos", "client_secret", "")
-	if product_id.is_empty() or sandbox_id.is_empty() or deployment_id.is_empty() \
-			or client_id.is_empty() or client_secret.is_empty():
+	# 必須項目の判定は書き出しガード(addons/tag_game_export_guard/)と共通化してある
+	if not _CredentialsCheck.is_runtime_usable(cfg):
 		return null
 
 	var credentials := HCredentials.new()
 	credentials.product_name = cfg.get_value("eos", "product_name", "Tag_Game")
 	credentials.product_version = cfg.get_value("eos", "product_version", "1.0")
-	credentials.product_id = product_id
-	credentials.sandbox_id = sandbox_id
-	credentials.deployment_id = deployment_id
-	credentials.client_id = client_id
-	credentials.client_secret = client_secret
+	credentials.product_id = cfg.get_value("eos", "product_id", "")
+	credentials.sandbox_id = cfg.get_value("eos", "sandbox_id", "")
+	credentials.deployment_id = cfg.get_value("eos", "deployment_id", "")
+	credentials.client_id = cfg.get_value("eos", "client_id", "")
+	credentials.client_secret = cfg.get_value("eos", "client_secret", "")
 	credentials.encryption_key = cfg.get_value("eos", "encryption_key", "")
 	return credentials
 
