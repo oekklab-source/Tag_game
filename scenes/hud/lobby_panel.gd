@@ -86,16 +86,16 @@ func _ready() -> void:
 ## H-04: キック確認ダイアログ(OK/キャンセルを1つ使い回し、対象は_pending_kick_idに保持する)
 func _build_kick_confirm_dialog() -> void:
 	_kick_confirm_dialog = ConfirmationDialog.new()
-	_kick_confirm_dialog.title = "参加者を退出させる"
-	_kick_confirm_dialog.ok_button_text = "退出させる"
-	_kick_confirm_dialog.cancel_button_text = "キャンセル"
+	_kick_confirm_dialog.title = tr("参加者を退出させる")
+	_kick_confirm_dialog.ok_button_text = tr("退出させる")
+	_kick_confirm_dialog.cancel_button_text = tr("キャンセル")
 	_kick_confirm_dialog.confirmed.connect(_on_kick_confirmed)
 	add_child(_kick_confirm_dialog)
 
 
 func _on_kick_pressed(id: int) -> void:
 	_pending_kick_id = id
-	_kick_confirm_dialog.dialog_text = "%s をロビーから退出させますか？" \
+	_kick_confirm_dialog.dialog_text = tr("%s をロビーから退出させますか？") \
 		% _display_name(id, multiplayer.get_unique_id())
 	_kick_confirm_dialog.popup_centered()
 
@@ -111,15 +111,15 @@ func _on_kick_confirmed() -> void:
 ## 再確定のいずれでもNetworkManager.public_address_readyから呼ばれる
 func _on_public_address_ready(_addr: String) -> void:
 	_public_address_confirmed = true
-	invite_label.text = "招待リンク: %s" % NetworkManager.join_link()
+	invite_label.text = tr("招待リンク: %s") % NetworkManager.join_link()
 
 
 func _on_copy_link_pressed() -> void:
 	DisplayServer.clipboard_set(NetworkManager.join_link())
-	copy_link_button.text = "コピーしました"
+	copy_link_button.text = tr("コピーしました")
 	copy_link_button.disabled = true
 	await get_tree().create_timer(1.5).timeout
-	copy_link_button.text = "リンクをコピー"
+	copy_link_button.text = tr("リンクをコピー")
 	copy_link_button.disabled = false
 
 
@@ -170,9 +170,9 @@ func update_lobby(overlay_open: bool) -> void:
 	var cpu_fill: int = maxi(GameManager.MAX_HUNTERS - humans_on_hunt, 0)
 	if GameManager.debug_cpu_runner:
 		cpu_fill = 0  # デバッグ（CPU逃走者）は1対1の検証用で CPU 鬼を足さない
-	var fill_text := "" if cpu_fill <= 0 else "（うち CPU の鬼 %d人）" % cpu_fill
-	status.text = "ホスト（あなた）" if is_host else "参加中（ホストは別の人）"
-	status_sub.text = "4人であそぶ: %d人が参加中%s" % [ids.size(), fill_text]
+	var fill_text := "" if cpu_fill <= 0 else tr("（うち CPU の鬼 %d人）") % cpu_fill
+	status.text = tr("ホスト（あなた）") if is_host else tr("参加中（ホストは別の人）")
+	status_sub.text = tr("4人であそぶ: %d人が参加中%s") % [ids.size(), fill_text]
 
 	_rebuild_roster(ids, me, is_host, is_eos_matched)
 
@@ -181,9 +181,9 @@ func update_lobby(overlay_open: bool) -> void:
 		GameManager.set_debug_cpu_runner(false)
 	debug_cpu_runner_button.visible = debug_available
 	debug_cpu_runner_button.set_pressed_no_signal(GameManager.debug_cpu_runner)
-	debug_cpu_runner_button.text = "デバッグ: CPU逃走者 ON" if GameManager.debug_cpu_runner else "デバッグ: CPU逃走者 OFF"
+	debug_cpu_runner_button.text = tr("デバッグ: CPU逃走者 ON") if GameManager.debug_cpu_runner else tr("デバッグ: CPU逃走者 OFF")
 	var i_am_runner := GameManager.wanted_runner == me
-	role_button.text = "デバッグ中: あなたは鬼" if GameManager.debug_cpu_runner else ("おにに戻る" if i_am_runner else "逃げる役になる")
+	role_button.text = tr("デバッグ中: あなたは鬼") if GameManager.debug_cpu_runner else (tr("おにに戻る") if i_am_runner else tr("逃げる役になる"))
 	role_button.disabled = GameManager.debug_cpu_runner
 	role_button.visible = not is_eos_matched
 	start_button.visible = is_host
@@ -193,16 +193,16 @@ func update_lobby(overlay_open: bool) -> void:
 		hint.text = GameManager.peer_notice
 		hint.modulate = Color(1.0, 0.55, 0.4)
 	elif is_eos_matched:
-		hint.text = "この対戦は鬼がランダムで決まります（立候補不可）%s" \
-			% ("　Enter キー: 開始" if is_host else "　― ホストが始めるのを待っています")
+		hint.text = tr("この対戦は鬼がランダムで決まります（立候補不可）%s") \
+			% (tr("　Enter キー: 開始") if is_host else tr("　― ホストが始めるのを待っています"))
 		hint.modulate = Color.WHITE
 	elif is_host and GameManager.debug_cpu_runner:
-		hint.text = "デバッグ中: あなたが鬼、CPUが逃げる役です。Enter キー: 開始"
+		hint.text = tr("デバッグ中: あなたが鬼、CPUが逃げる役です。Enter キー: 開始")
 		hint.modulate = Color.WHITE
 	elif is_host:
 		hint.text = ""
 	else:
-		hint.text = "R キー: 役割を切りかえ　― ホストが始めるのを待っています"
+		hint.text = tr("R キー: 役割を切りかえ　― ホストが始めるのを待っています")
 		hint.modulate = Color.WHITE
 	hint.visible = not hint.text.is_empty()
 
@@ -226,11 +226,11 @@ func _on_max_members_apply_pressed() -> void:
 	var new_max := int(max_members_spin.value)
 	var ok: bool = await EosManager.update_max_members(new_max)
 	if ok:
-		toast_requested.emit("定員を%d人に変更しました" % new_max, COLOR_RUNNER)
+		toast_requested.emit(tr("定員を%d人に変更しました") % new_max, COLOR_RUNNER)
 	else:
 		max_members_spin.value = EosManager.get_current_lobby_max_members()
 		toast_requested.emit(
-			"定員の変更に失敗しました（現在: %d人）" % int(max_members_spin.value), COLOR_HUNTER)
+			tr("定員の変更に失敗しました（現在: %d人）") % int(max_members_spin.value), COLOR_HUNTER)
 
 
 ## 一覧は毎フレーム作り直さず、中身が変わったときだけ組み直す。
@@ -250,14 +250,14 @@ func _rebuild_roster(ids: Array[int], me: int, is_host: bool, is_eos_matched: bo
 		list.remove_child(c)
 		c.queue_free()
 	if ids.is_empty():
-		list.add_child(_roster_note("だれもいません"))
+		list.add_child(_roster_note(tr("だれもいません")))
 		return
 	for id in ids:
 		list.add_child(_roster_row(id, me, is_host, is_eos_matched))
 	if is_eos_matched:
-		list.add_child(_roster_note("鬼は開始時にランダムで決まります（立候補不可）"))
+		list.add_child(_roster_note(tr("鬼は開始時にランダムで決まります（立候補不可）")))
 	elif GameManager.wanted_runner < 0:
-		list.add_child(_roster_note("逃げる役が未定です（開始時にランダムで決まります）"))
+		list.add_child(_roster_note(tr("逃げる役が未定です（開始時にランダムで決まります）")))
 
 
 ## 1行 = 名前 + 役割バッジ。ホストなら行ごとクリックして指名できる
@@ -270,6 +270,8 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	h.add_theme_constant_override("separation", 12)
 	h.add_child(_roster_preview(id))
 	var name_label := Label.new()
+	# L-09: プレイヤー名は利用者の入力なので自動翻訳させない(title.gd の profile_badge_name と同じ理由)
+	name_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	name_label.text = _display_name(id, me)
 	name_label.add_theme_font_size_override("font_size", 19)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -278,7 +280,7 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	var rating_label := Label.new()
 	if GameManager.peer_profiles.has(id):
 		var rating := int(GameManager.peer_profiles[id].get("rating", 1500))
-		tier_badge.text = "[%s]" % RankingManager.tier_name(rating)
+		tier_badge.text = "[%s]" % tr(RankingManager.tier_name(rating))
 		tier_badge.modulate = RankingManager.tier_color(rating)
 		tier_badge.add_theme_font_size_override("font_size", 15)
 		rating_label.text = "%d Pt" % rating
@@ -289,7 +291,7 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	# 絵文字は ui/pop_theme.tres の和文フォント(MPLUSRounded1c-Bold.ttf)にフォールバックが
 	# 無く文字化け(豆腐化)のリスクがあるため避け、フォントが対応を謳う日本語グリフの
 	# 範囲内に収まる漢字にした(tier_badge の "[%s]" と同じ角括弧表記に揃えている)
-	badge.text = "[走] にげる" if is_runner else "[鬼] おに"
+	badge.text = tr("[走] にげる") if is_runner else tr("[鬼] おに")
 	badge.add_theme_font_size_override("font_size", 19)
 	badge.modulate = COLOR_RUNNER if is_runner else COLOR_HUNTER
 	h.add_child(name_label)
@@ -311,7 +313,7 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	var btn := Button.new()
 	btn.flat = true
 	btn.focus_mode = Control.FOCUS_NONE
-	btn.tooltip_text = "この人を逃げる役にする"
+	btn.tooltip_text = tr("この人を逃げる役にする")
 	btn.pressed.connect(func() -> void: GameManager.set_wanted_runner_to(id))
 	btn.mouse_entered.connect(func(): row.add_theme_stylebox_override("panel", _sb_row_hover))
 	btn.mouse_exited.connect(func(): row.add_theme_stylebox_override("panel", _sb_row))
@@ -336,7 +338,7 @@ func _kick_slot(id: int) -> Control:
 	kbtn.flat = true
 	kbtn.focus_mode = Control.FOCUS_NONE
 	kbtn.text = "✕"
-	kbtn.tooltip_text = "この人をロビーから退出させる"
+	kbtn.tooltip_text = tr("この人をロビーから退出させる")
 	kbtn.anchor_left = 1.0
 	kbtn.anchor_right = 1.0
 	kbtn.anchor_top = 0.5
@@ -394,16 +396,18 @@ func _roster_preview(id: int) -> Control:
 ## フォールバックとして残している
 func _display_name(id: int, me: int) -> String:
 	var nickname := GameManager.nickname_for(id)
-	var has_nickname := nickname != "プレイヤー %d" % id
+	# L-09: 以前は nickname_for() のフォールバック表記と文字列比較していたが、表記を tr() で
+	# 訳すようになったので、比較ではなく has_nickname() で判定する
+	var has_nickname := GameManager.has_nickname(id)
 	if id == me:
-		return "あなた（%s）" % nickname if has_nickname else "あなた"
+		return tr("あなた（%s）") % nickname if has_nickname else tr("あなた")
 	if has_nickname:
 		return nickname
 	if GameManager.peer_profiles.has(id):
 		var pname := String(GameManager.peer_profiles[id].get("name", ""))
 		if not pname.is_empty():
 			return pname
-	return "プレイヤー %d" % id
+	return tr("プレイヤー %d") % id
 
 
 func _roster_note(text: String) -> Control:

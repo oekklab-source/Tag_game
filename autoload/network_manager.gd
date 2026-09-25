@@ -125,9 +125,7 @@ func start_host(is_online: bool = false) -> bool:
 	var err := probe.listen(PORT)
 	probe.stop()
 	if err != OK:
-		last_error = ("ポート %d が既に使われています。
-"
-			+ "前に起動した Godot（ゲーム）が残っていないか確認して、閉じてから試してください。") % PORT
+		last_error = tr("ポート %d が既に使われています。\n前に起動した Godot（ゲーム）が残っていないか確認して、閉じてから試してください。") % PORT
 		return false
 	mode = Mode.HOST
 	session_kind = SessionKind.ONLINE if is_online else SessionKind.SOLO
@@ -214,11 +212,9 @@ func setup_peer() -> Error:
 		err = peer.create_client(resolve_url(join_address))
 	if err != OK:
 		if mode == Mode.HOST:
-			last_error = ("ポート %d で待ち受けられませんでした。
-"
-				+ "前に起動した Godot（ゲーム）が残っていないか確認してください。") % PORT
+			last_error = tr("ポート %d で待ち受けられませんでした。\n前に起動した Godot（ゲーム）が残っていないか確認してください。") % PORT
 		else:
-			last_error = "通信を開始できませんでした（エラー %d）" % err
+			last_error = tr("通信を開始できませんでした（エラー %d）") % err
 		# ここは world.tscn の _ready() の途中。その場でシーンを差し替えると
 		# 「Parent node is busy adding/removing children」で失敗し、
 		# タイトルにも戻れない半端な状態のまま残る
@@ -350,12 +346,12 @@ func leave() -> void:
 
 
 func _on_connection_failed() -> void:
-	last_error = "ホストに接続できませんでした"
+	last_error = tr("ホストに接続できませんでした")
 	leave()
 
 
 func _on_server_disconnected() -> void:
-	last_error = "ホストとの接続が切れました"
+	last_error = tr("ホストとの接続が切れました")
 	if not _should_attempt_migration():
 		leave()
 		return
@@ -363,7 +359,7 @@ func _on_server_disconnected() -> void:
 	# ローカルのレプリケート済み状態から確保しておく(GameManager.reset()で失われる前)
 	_pending_host_penalty = GameManager.snapshot_for_host_disconnect_penalty()
 	is_migrating = true
-	_show_migration_overlay("ホストとの接続が切れました。引き継ぎ先を確認しています…")
+	_show_migration_overlay(tr("ホストとの接続が切れました。引き継ぎ先を確認しています…"))
 	_start_migration_timeout(MIGRATION_OWNER_WAIT_SEC)
 
 
@@ -390,12 +386,12 @@ func _on_host_migrated(_new_owner_puid: String, i_am_new_host: bool) -> void:
 		elif await EosManager.handoff_if_incapable():
 			# Web版等ホストになれない端末が昇格した場合。can_host=1の別メンバーへ委譲済みで、
 			# 再度host_migratedが発火するのを待つ
-			_update_migration_status("別のプレイヤーへホストを引き継いでいます…")
+			_update_migration_status(tr("別のプレイヤーへホストを引き継いでいます…"))
 			_start_migration_timeout(MIGRATION_OWNER_WAIT_SEC)
 		else:
-			_migration_failed("ホストを引き継げるプレイヤーがいませんでした")
+			_migration_failed(tr("ホストを引き継げるプレイヤーがいませんでした"))
 	else:
-		_update_migration_status("新しいホストの準備を待っています…")
+		_update_migration_status(tr("新しいホストの準備を待っています…"))
 		# ⑨オーナー確定待ち(15秒)のタイムアウトがまだ有効なままだと、新ホストの
 		# トンネル確立を待っている最中(最大30秒)に誤って_migration_failed()してしまう。
 		# 世代カウンタを進めて古いタイムアウトを無効化してから再接続待ちに入る
@@ -404,7 +400,7 @@ func _on_host_migrated(_new_owner_puid: String, i_am_new_host: bool) -> void:
 
 
 func _promote_self_to_host() -> void:
-	_update_migration_status("あなたが新しいホストになりました。準備しています…")
+	_update_migration_status(tr("あなたが新しいホストになりました。準備しています…"))
 	_reset_for_migration()
 	mode = Mode.HOST
 	session_kind = SessionKind.ONLINE
@@ -423,7 +419,7 @@ func _reconnect_as_client() -> void:
 	if not is_migrating:
 		return  # 待っている間にタイムアウト等で既に処理済み
 	if addr.is_empty():
-		_migration_failed("新しいホストに接続できませんでした")
+		_migration_failed(tr("新しいホストに接続できませんでした"))
 		return
 	_reset_for_migration()
 	start_client(addr)
@@ -479,7 +475,7 @@ func _start_migration_timeout(seconds: float) -> void:
 	get_tree().create_timer(seconds).timeout.connect(
 		func() -> void:
 			if is_migrating and token == _migration_token:
-				_migration_failed("ホストの引き継ぎがタイムアウトしました")
+				_migration_failed(tr("ホストの引き継ぎがタイムアウトしました"))
 	)
 
 

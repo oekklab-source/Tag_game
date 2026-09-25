@@ -296,10 +296,15 @@ func _find_player(peer_id: int) -> Node:
 
 ## 表示名。sync_nickname が未到着/未設定ならフォールバックの仮表記を返す
 func nickname_for(peer_id: int) -> String:
+	if has_nickname(peer_id):
+		return _find_player(peer_id).sync_nickname
+	return tr("プレイヤー %d") % peer_id
+
+
+## sync_nickname が届いているか(nickname_for() がフォールバック表記を返さないか)
+func has_nickname(peer_id: int) -> bool:
 	var p := _find_player(peer_id)
-	if p and "sync_nickname" in p and not p.sync_nickname.is_empty():
-		return p.sync_nickname
-	return "プレイヤー %d" % peer_id
+	return p != null and "sync_nickname" in p and not p.sync_nickname.is_empty()
 
 
 ## --- ホスト側ロジック -------------------------------------------------
@@ -697,7 +702,7 @@ func report_profile(payload: Dictionary) -> void:
 	if tier_lock_enabled and id != 1:
 		var peer_rating := int(payload.get("rating", 1500))
 		if not RankingManager.is_rating_compatible(ProfileManager.rating, peer_rating, 0):
-			notify_host("レート帯が違う参加者の接続を許可しませんでした（このロビーは同じレート帯のみ）。")
+			notify_host(tr("レート帯が違う参加者の接続を許可しませんでした（このロビーは同じレート帯のみ）。"))
 			# ⑤disconnect_peer()の前に理由を伝える。何も伝えずに切ると、EOSロビー経由の
 			# 参加者側は_on_server_disconnected()がただの拒否をホストロスト扱いしてしまい、
 			# 実際には存在しないホストマイグレーション探索UIが誤って出る
@@ -712,9 +717,13 @@ func report_profile(payload: Dictionary) -> void:
 ## 受け取った参加者は自発的にleave()し、_on_server_disconnected()のホストマイグレーション
 ## 判定(_should_attempt_migration())を経由させない
 ## (autoload/game/version_gate.gdのcheck_versionと同じ狙い・同じパターン)
+##
+## L-09: reason はホストの言語に関係なく日本語の原文(固定文)で送り、受け取った側で訳す。
+## 送る側で訳すと相手にホストの言語が見えてしまう。RPC のシグネチャは変えていないので
+## PROTOCOL_VERSION は据え置き(旧ホストから届く理由も同じ原文なのでそのまま訳せる)
 @rpc("authority", "reliable")
 func notify_rejected(reason: String) -> void:
-	NetworkManager.last_error = reason
+	NetworkManager.last_error = tr(reason)
 	NetworkManager.leave()
 
 

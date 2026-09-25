@@ -209,6 +209,8 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	add_to_group("players")
+	# L-09: 頭上の名札はプレイヤー名(利用者の入力)なので自動翻訳させない
+	name_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	$TagArea.body_entered.connect(_on_tag_area_body_entered)
 	if is_multiplayer_authority():
 		sync_position = position
@@ -495,7 +497,7 @@ func _update_emote_label() -> void:
 	emote_label.visible = visible_to_me
 	if not visible_to_me:
 		return
-	emote_label.text = EMOTE_TEXT[sync_emote]
+	emote_label.text = tr(EMOTE_TEXT[sync_emote])
 	emote_label.modulate = EMOTE_COLOR[sync_emote]
 
 
@@ -840,7 +842,7 @@ func _update_role_visuals() -> void:
 		_current_color = color
 		role_label.modulate = color
 		# 準備中の立候補者は「逃げる役に立候補している」ことだけ示す
-		role_label.text = ROLE_TEXT["runner"] if is_runner else ROLE_TEXT["hunter"]
+		role_label.text = tr(ROLE_TEXT["runner"] if is_runner else ROLE_TEXT["hunter"])
 
 
 ## ②④ 他ピア（自分以外）のキャラ・コスチュームを GameManager.peer_profiles から反映する

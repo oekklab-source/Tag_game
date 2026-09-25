@@ -228,10 +228,10 @@ func _update_labels() -> void:
 			role_badge.visible = true
 			# H-08: lobby_panel.gd の役割バッジと同じ漢字1字の記号差分(応急処置、詳細は同ファイル参照)
 			if is_runner:
-				role_label.text = "[走] にげろ！"
+				role_label.text = tr("[走] にげろ！")
 				role_label.modulate = COLOR_RUNNER
 			else:
-				role_label.text = "[鬼] おに ― にげる人をつかまえろ！"
+				role_label.text = tr("[鬼] おに ― にげる人をつかまえろ！")
 				role_label.modulate = COLOR_HUNTER
 			if GameManager.head_start_left > 0.0:
 				timer_label.text = "%d" % ceili(GameManager.head_start_left)
@@ -250,20 +250,20 @@ func _update_labels() -> void:
 
 	var lines := PackedStringArray()
 	if GameManager.state == GameManager.State.WAITING:
-		lines.append("Esc: メニュー（マウスも離れる） / F: ナイス！")
+		lines.append(tr("Esc: メニュー（マウスも離れる） / F: ナイス！"))
 	else:
 		# 挑発は3種あって 1/2/3 で選ぶので、今どれが出るかをヒントに出す
 		var style := "前のめり"
 		var me := _get_local_player()
 		if me:
 			style = Player.TAUNT_NAME.get(me.taunt_style, style)
-		lines.append("クリック: 視点を操作 / Esc: メニュー / F: カモン！（1/2/3 で型: %s）"
-			% style)
+		lines.append(tr("クリック: 視点を操作 / Esc: メニュー / F: カモン！（1/2/3 で型: %s）")
+			% tr(style))
 		if GameManager.head_start_left > 0.0:
-			lines.append("にげる時間！ 今のうちに走れ" if is_runner
-				else "にげる時間 ― おには動けない")
+			lines.append(tr("にげる時間！ 今のうちに走れ") if is_runner
+				else tr("にげる時間 ― おには動けない"))
 	if GameManager.debug_cpu_runner:
-		lines.append("デバッグ: R バナナ / T ブロック / Y ロケット / E 使用 / Q メイン画面")
+		lines.append(tr("デバッグ: R バナナ / T ブロック / Y ロケット / E 使用 / Q メイン画面"))
 	info_label.text = "
 ".join(lines)
 
@@ -311,8 +311,8 @@ func _check_overlay_room_full(member_count: int, is_host: bool) -> void:
 
 func _show_room_full_popup() -> void:
 	var dlg := AcceptDialog.new()
-	dlg.dialog_text = "部屋の人数が揃いました。戻りますか？"
-	dlg.ok_button_text = "部屋に戻る"
+	dlg.dialog_text = tr("部屋の人数が揃いました。戻りますか？")
+	dlg.ok_button_text = tr("部屋に戻る")
 	add_child(dlg)
 	dlg.confirmed.connect(func() -> void:
 		_on_overlay_closed()
@@ -333,18 +333,18 @@ func _update_zone_chip(is_runner: bool) -> void:
 	if zone < 0:
 		var distance := _runner_distance(_get_local_player())
 		if _hunter_distance_delay_left <= 0.0 and distance >= 0.0:
-			zone_label.text = "逃走者との距離　%d m" % roundi(distance)
+			zone_label.text = tr("逃走者との距離　%d m") % roundi(distance)
 			zone_swatch.color = COLOR_RUNNER.darkened(0.2)
 		else:
-			zone_label.text = "手がかりなし"
+			zone_label.text = tr("手がかりなし")
 			zone_swatch.color = Color(0.32, 0.32, 0.38)
 		zone_chip.modulate.a = 1.0
 	elif GameManager.spotted:
-		zone_label.text = "発見！　%s" % WorldData.zone_name(zone)
+		zone_label.text = tr("発見！　%s") % WorldData.zone_name(zone)
 		zone_swatch.color = WorldData.zone_color(zone)
 		zone_chip.modulate.a = 0.75 + 0.25 * sin(Time.get_ticks_msec() * 0.012)
 	else:
-		zone_label.text = "さっき目撃　%s　あと%d秒" % [
+		zone_label.text = tr("さっき目撃　%s　あと%d秒") % [
 			WorldData.zone_name(zone), maxi(ceili(GameManager.intel_left), 0)]
 		zone_swatch.color = WorldData.zone_color(zone).darkened(0.35)
 		zone_chip.modulate.a = 1.0
@@ -387,26 +387,32 @@ func _update_result(is_runner: bool) -> void:
 		# レート変動表示（①CPU戦・離脱中断は非表示）
 		if _rating_shown:
 			var sign_str := "+" if _last_rating_delta >= 0 else ""
-			sub_text += "\nレート: %d Pt (%s%d)" % [ProfileManager.rating, sign_str, _last_rating_delta]
+			sub_text += "\n" + tr("レート: %d Pt (%s%d)") % [ProfileManager.rating, sign_str, _last_rating_delta]
 		else:
-			sub_text += "\n練習モード（レート変動なし）"
+			sub_text += "\n" + tr("練習モード（レート変動なし）")
 		result_sub.text = sub_text
 
 	result_detail.text = _result_detail_text()
-	result_next.text = "%d秒後になかま待ちにもどります" % maxi(ceili(GameManager.result_left), 0)
+	result_next.text = tr("%d秒後になかま待ちにもどります") % maxi(ceili(GameManager.result_left), 0)
 	result_next.modulate = COLOR_GOLD
 
 
+## static 関数では Object.tr() が使えないので TranslationServer.translate() で訳す(L-09)
 static func result_copy(is_runner: bool, runner_won: bool, reason: int) -> PackedStringArray:
+	var pair: Array[String]
 	if reason == GameManager.EndReason.RUNNER_LEFT:
-		return PackedStringArray(["ちゅうだん", "逃げる人が抜けました"])
-	if runner_won:
+		pair = ["ちゅうだん", "逃げる人が抜けました"]
+	elif runner_won:
 		if is_runner:
-			return PackedStringArray(["にげきった！", "最後まで逃げきった"])
-		return PackedStringArray(["にげきられた…", "逃げる人をつかまえられなかった"])
-	if is_runner:
-		return PackedStringArray(["つかまった…", "鬼につかまってしまった"])
-	return PackedStringArray(["つかまえた！", "逃げる人をつかまえた"])
+			pair = ["にげきった！", "最後まで逃げきった"]
+		else:
+			pair = ["にげきられた…", "逃げる人をつかまえられなかった"]
+	elif is_runner:
+		pair = ["つかまった…", "鬼につかまってしまった"]
+	else:
+		pair = ["つかまえた！", "逃げる人をつかまえた"]
+	return PackedStringArray([
+		TranslationServer.translate(pair[0]), TranslationServer.translate(pair[1])])
 
 
 ## H-03: 「何が起きたか」の事実行(生存時間/鬼人数/トドメ役)と、レート内訳
@@ -418,18 +424,18 @@ static func result_copy(is_runner: bool, runner_won: bool, reason: int) -> Packe
 func _result_detail_text() -> String:
 	var facts: Array[String] = []
 	var elapsed := GameManager.ROUND_TIME - GameManager.time_left
-	var time_label := "経過" if GameManager.result_reason == GameManager.EndReason.RUNNER_LEFT else "生存"
+	var time_label := tr("経過") if GameManager.result_reason == GameManager.EndReason.RUNNER_LEFT else tr("生存")
 	facts.append("%s %s" % [time_label, _mmss(elapsed)])
 	if GameManager.round_hunter_count > 0:
-		facts.append("鬼 %d人" % GameManager.round_hunter_count)
+		facts.append(tr("鬼 %d人") % GameManager.round_hunter_count)
 	var tagger := _tagger_display_name()
 	if not tagger.is_empty():
-		facts.append("トドメ: %s" % tagger)
+		facts.append(tr("トドメ: %s") % tagger)
 
-	var lines: Array[String] = ["　／　".join(facts)]
+	var lines: Array[String] = [tr("　／　").join(facts)]
 	# ボーナスが0(ダイヤ帯以上)のときは合計＝基礎なので内訳行そのものを出さない
 	if _rating_shown and _last_rating_bonus != 0:
-		lines.append("内訳: 基礎 %s ／ 低レート帯ボーナス %s"
+		lines.append(tr("内訳: 基礎 %s ／ 低レート帯ボーナス %s")
 			% [_signed(_last_rating_base), _signed(_last_rating_bonus)])
 	return "\n".join(lines)
 
@@ -441,7 +447,7 @@ func _tagger_display_name() -> String:
 	if GameManager.tagger_peer_id < 0:
 		return "CPU"
 	if GameManager.tagger_peer_id == multiplayer.get_unique_id():
-		return "あなた"
+		return tr("あなた")
 	return GameManager.nickname_for(GameManager.tagger_peer_id)
 
 
@@ -526,7 +532,7 @@ func _update_item(player: Player, delta: float) -> void:
 		_spinning = false
 		_confirm_item(player.item)
 	var info: Array = ITEM_INFO.get(player.item, ITEM_INFO[Player.Item.NONE])
-	item_label.text = info[0]
+	item_label.text = tr(info[0])
 	item_label.modulate = info[1]
 	_set_shown_icon(player.item, 1.0)
 
@@ -545,7 +551,7 @@ func _spin_item(player: Player, delta: float) -> void:
 		_punch_icon()  # コマが切り替わった瞬間だけ弾ませ、リールが1コマ進んだ手応えを出す
 	var info: Array = ITEM_INFO[ROULETTE_ORDER[_spin_index]]
 	var color: Color = info[1]
-	item_label.text = info[0]
+	item_label.text = tr(info[0])
 	item_label.modulate = Color(color, 0.7)  # 確定前は薄く出す
 	_set_shown_icon(ROULETTE_ORDER[_spin_index], 0.7)
 
@@ -555,7 +561,7 @@ func _confirm_item(held: int) -> void:
 	if held == Player.Item.NONE:
 		return  # ラウンド開始などで持ち物ごと消えた場合
 	var info: Array = ITEM_INFO.get(held, ITEM_INFO[Player.Item.NONE])
-	_toast("%s を手に入れた（E キー）" % info[0], info[1])
+	_toast(tr("%s を手に入れた（E キー）") % tr(info[0]), info[1])
 	_set_shown_icon(held, 1.0)
 	item_slot.pivot_offset = item_slot.size * 0.5
 	var tw := create_tween()
@@ -648,7 +654,7 @@ func _make_buff_chip(key: StringName) -> Control:
 	col.name = "Col"
 	col.add_theme_constant_override("separation", 4)
 	var label := Label.new()
-	label.text = info[0]
+	label.text = tr(info[0])
 	label.add_theme_font_size_override("font_size", 16)
 	label.modulate = info[2]
 	var fill := ColorRect.new()
@@ -781,12 +787,12 @@ func _pop_in(node: Control) -> void:
 
 
 func _on_effect_gained(effect: int) -> void:
-	_toast(TOAST_TEXT.get(effect, "!"), TOAST_COLOR.get(effect, Color.WHITE))
+	_toast(tr(TOAST_TEXT.get(effect, "!")), TOAST_COLOR.get(effect, Color.WHITE))
 
 
 ## H-02: 逃げる役の切断でCPUが代行を始めたことをその場で気づけるようにする
 func _on_runner_cpu_takeover(peer_name: String) -> void:
-	_toast("%s が切断 ― CPUが代わりに逃げます" % peer_name, Color(1.0, 0.75, 0.4))
+	_toast(tr("%s が切断 ― CPUが代わりに逃げます") % peer_name, Color(1.0, 0.75, 0.4))
 
 
 ## C-03 R-4: 試合中にサーバー補正RPCが届いた場合のトースト通知
@@ -794,10 +800,12 @@ func _on_server_rating_corrected(_old_rating: int, new_rating: int, delta: int) 
 	_toast(rating_sync_toast_text(delta, new_rating), COLOR_RATING_SYNC)
 
 
-## C-03 R-4: サーバー同期レート補正トーストの文言(純粋関数、tests/で直接検証)
+## C-03 R-4: サーバー同期レート補正トーストの文言(純粋関数、tests/で直接検証)。
+## static 関数なので TranslationServer.translate() で訳す(L-09)
 static func rating_sync_toast_text(delta: int, new_rating: int) -> String:
 	var sign_str := "+" if delta >= 0 else ""
-	return "レートがサーバーと同期され、%s%d Pt 補正されました（現在 %d Pt）" % [sign_str, delta, new_rating]
+	return TranslationServer.translate("レートがサーバーと同期され、%s%d Pt 補正されました（現在 %d Pt）") \
+		% [sign_str, delta, new_rating]
 
 
 func _toast(text: String, color: Color) -> void:

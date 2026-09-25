@@ -5,7 +5,7 @@ extends Node
 ##   pwsh tools/run_headless_test.ps1 res://tests/test_i18n.tscn
 ##
 ## 検証内容:
-##   [1] en.po の全エントリの msgstr が空でなく、%d / %s / %.1f 等の書式指定が
+##   [1] en.po の msgid に重複が無く、全エントリの msgstr が空でなく、%d / %s / %.1f 等の書式指定が
 ##       msgid と同じ種類・同じ順番で残っていること(英語版だけ書式エラーになる事故を防ぐ)
 ##   [2] .gd の tr("…") / TranslationServer.translate("…") のリテラルが en.po にあること
 ##   [3] .tscn の日本語の text / tooltip_text / placeholder_text / title / dialog_text が
@@ -28,16 +28,10 @@ const PENDING_FILES := [
 	"res://scenes/ranking_dialog.gd", "res://scenes/ranking_dialog.tscn",
 	"res://scenes/shop_screen.gd", "res://scenes/shop_screen.tscn",
 	"res://scenes/room_match_dialog.gd", "res://scenes/room_match_dialog.tscn",
-	"res://scenes/hud.gd", "res://scenes/hud.tscn",
-	"res://scenes/hud/lobby_panel.gd", "res://scenes/hud/touch_controls.tscn",
-	"res://scenes/hud/minimap.gd",
-	"res://scenes/player.gd", "res://scenes/humanoid.gd", "res://scenes/world_data.gd",
 	"res://autoload/ranking_manager.gd", "res://autoload/gift_manager.gd",
-	"res://autoload/game_manager.gd", "res://autoload/purchase_manager.gd",
+	"res://autoload/purchase_manager.gd", "res://autoload/eos_manager.gd",
 	"res://autoload/costume_catalog.gd", "res://autoload/hat_catalog.gd",
 	"res://autoload/currency_pack_catalog.gd", "res://autoload/profile_manager.gd",
-	"res://autoload/network_manager.gd", "res://autoload/eos_manager.gd",
-	"res://autoload/game/version_gate.gd",
 ]
 
 ## 訳さないことが正しい日本語リテラル。{ファイル: {リテラル: 理由}}。
@@ -58,6 +52,7 @@ const DEV_CALLS := ["print(", "printerr(", "print_debug(", "push_warning(", "pus
 var _fail := 0
 var _pass := 0
 var _po := {}  # msgid -> msgstr
+var _po_dups: Array[String] = []  # 2回以上出てきた msgid
 var _jp: RegEx
 var _fmt: RegEx
 
@@ -105,6 +100,9 @@ func _check_po_entries() -> void:
 	for b in bad:
 		printerr("    ", b)
 	_ok("[1] 全 msgstr が空でなく書式指定が一致する", bad.is_empty())
+	for d in _po_dups:
+		printerr("    重複: ", d)
+	_ok("[1] msgid の重複が無い", _po_dups.is_empty())
 
 
 func _formats(s: String) -> Array[String]:
@@ -251,6 +249,8 @@ func _parse_po(path: String) -> Dictionary:
 		var line := raw.strip_edges()
 		if line.is_empty() or line.begins_with("#"):
 			if in_entry and not cur_id.is_empty():
+				if out.has(cur_id):
+					_po_dups.append(cur_id)
 				out[cur_id] = cur_str
 			in_entry = false
 			cur_id = ""

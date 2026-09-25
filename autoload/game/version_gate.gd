@@ -28,10 +28,8 @@ func check_version(host_version: int) -> void:
 	ack_version.rpc_id(1, GameManager.PROTOCOL_VERSION)
 	if host_version == GameManager.PROTOCOL_VERSION:
 		return
-	NetworkManager.last_error = (
-		"ゲームのバージョンが違います（ホスト v%d / あなた v%d）。
-"
-		+ "ブラウザなら再読み込み（Ctrl+Shift+R）、PC なら最新版で起動しなおしてください。"
+	NetworkManager.last_error = tr(
+		"ゲームのバージョンが違います（ホスト v%d / あなた v%d）。\nブラウザなら再読み込み（Ctrl+Shift+R）、PC なら最新版で起動しなおしてください。"
 	) % [host_version, GameManager.PROTOCOL_VERSION]
 	NetworkManager.leave()
 
@@ -47,8 +45,7 @@ func ack_version(peer_version: int) -> void:
 		return
 	# 食い違いが確定した場合だけ切る。放っておくと「つながっているのに
 	# 状態が同期しない」まま延々と続き、原因が分からない
-	GameManager.notify_host("参加者のビルドが違います（あなた v%d / 相手 v%d）。
-Web 版を再デプロイして、ブラウザを再読み込みしてもらってください。"
+	GameManager.notify_host(tr("参加者のビルドが違います（あなた v%d / 相手 v%d）。\nWeb 版を再デプロイして、ブラウザを再読み込みしてもらってください。")
 		% [GameManager.PROTOCOL_VERSION, peer_version])
 	multiplayer.multiplayer_peer.disconnect_peer(id)
 
@@ -60,5 +57,4 @@ func _tick_version_checks(delta: float) -> void:
 		if _awaiting_version[id] < VERSION_ACK_TIMEOUT:
 			continue
 		_awaiting_version.erase(id)
-		GameManager.notify_host("参加者 %d から応答がありません。
-古いビルドで参加している可能性があります（Web 版の再デプロイと再読み込みを試してください）。" % id)
+		GameManager.notify_host(tr("参加者 %d から応答がありません。\n古いビルドで参加している可能性があります（Web 版の再デプロイと再読み込みを試してください）。") % id)

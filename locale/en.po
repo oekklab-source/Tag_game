@@ -146,3 +146,397 @@ msgstr "🔒 Trying On"
 
 msgid "言語 / Language"
 msgstr "Language"
+
+# --- ゲーム中の HUD (scenes/hud) ---
+msgid "まちかまえ中"
+msgstr "Lying in wait"
+
+msgid "げきちゃく地点"
+msgstr "Landing spot"
+
+msgid "見つかった！"
+msgstr "Spotted!"
+
+msgid "スタミナ"
+msgstr "Stamina"
+
+msgid "なかま待ち"
+msgstr "Waiting for Players"
+
+msgid "リンクをコピー"
+msgstr "Copy Link"
+
+msgid "コピーしました"
+msgstr "Copied!"
+
+msgid "逃げる役になる"
+msgstr "Be the Runner"
+
+msgid "おにに戻る"
+msgstr "Back to Chaser"
+
+msgid "着せ替え"
+msgstr "Wardrobe"
+
+msgid "デバッグ: CPU逃走者 OFF"
+msgstr "Debug: CPU Runner OFF"
+
+msgid "デバッグ: CPU逃走者 ON"
+msgstr "Debug: CPU Runner ON"
+
+msgid "デバッグ中: あなたは鬼"
+msgstr "Debug: You're the Chaser"
+
+msgid "ラウンド開始"
+msgstr "Start Round"
+
+msgid "定員"
+msgstr "Max Players"
+
+msgid "変更"
+msgstr "Change"
+
+msgid "たいきしてタイトルへ戻る"
+msgstr "Leave & Back to Title"
+
+msgid "WASD 移動　Shift ダッシュ　Space スライディング　E アイテム　F カモン(1/2/3で型)　R 役割切替　Tab 逃げる役を指名　Enter 開始　Esc メニュー"
+msgstr "WASD Move   Shift Dash   Space Slide   E Item   F Taunt (1/2/3: style)   R Switch Role   Tab Pick Runner   Enter Start   Esc Menu"
+
+msgid "けっか"
+msgstr "Results"
+
+msgid "もう1戦（なかま待ちへ）"
+msgstr "Play Again (Back to Lobby)"
+
+msgid "[走] にげろ！"
+msgstr "[R] Run!"
+
+msgid "[鬼] おに ― にげる人をつかまえろ！"
+msgstr "[C] Chaser — Catch the Runner!"
+
+msgid "Esc: メニュー（マウスも離れる） / F: ナイス！"
+msgstr "Esc: Menu (frees the mouse) / F: Nice!"
+
+msgid "クリック: 視点を操作 / Esc: メニュー / F: カモン！（1/2/3 で型: %s）"
+msgstr "Click: Camera / Esc: Menu / F: Come on! (1/2/3 style: %s)"
+
+msgid "にげる時間！ 今のうちに走れ"
+msgstr "Head start! Run while you can"
+
+msgid "にげる時間 ― おには動けない"
+msgstr "Head start — Chasers can't move yet"
+
+msgid "デバッグ: R バナナ / T ブロック / Y ロケット / E 使用 / Q メイン画面"
+msgstr "Debug: R Banana / T Block / Y Rocket / E Use / Q Main Screen"
+
+msgid "部屋の人数が揃いました。戻りますか？"
+msgstr "Your room is full. Go back?"
+
+msgid "部屋に戻る"
+msgstr "Back to Room"
+
+msgid "逃走者との距離　%d m"
+msgstr "Runner distance: %d m"
+
+msgid "手がかりなし"
+msgstr "No clues"
+
+msgid "発見！　%s"
+msgstr "Found!  %s"
+
+msgid "さっき目撃　%s　あと%d秒"
+msgstr "Last seen: %s  (%ds left)"
+
+msgid "レート: %d Pt (%s%d)"
+msgstr "Rating: %d pts (%s%d)"
+
+msgid "練習モード（レート変動なし）"
+msgstr "Practice mode (unrated)"
+
+msgid "%d秒後になかま待ちにもどります"
+msgstr "Back to the lobby in %d s"
+
+msgid "ちゅうだん"
+msgstr "Match Stopped"
+
+msgid "逃げる人が抜けました"
+msgstr "The Runner left"
+
+msgid "にげきった！"
+msgstr "You Escaped!"
+
+msgid "最後まで逃げきった"
+msgstr "You got away until the end"
+
+msgid "にげきられた…"
+msgstr "They Got Away…"
+
+msgid "逃げる人をつかまえられなかった"
+msgstr "The Runner wasn't caught"
+
+msgid "つかまった…"
+msgstr "Caught…"
+
+msgid "鬼につかまってしまった"
+msgstr "A Chaser caught you"
+
+msgid "つかまえた！"
+msgstr "Caught Them!"
+
+msgid "逃げる人をつかまえた"
+msgstr "The Runner was caught"
+
+msgid "経過"
+msgstr "Time"
+
+msgid "生存"
+msgstr "Survived"
+
+msgid "鬼 %d人"
+msgstr "Chasers: %d"
+
+msgid "トドメ: %s"
+msgstr "Caught by: %s"
+
+msgid "　／　"
+msgstr "  /  "
+
+msgid "内訳: 基礎 %s ／ 低レート帯ボーナス %s"
+msgstr "Breakdown: base %s / low-rating bonus %s"
+
+msgid "あなた"
+msgstr "You"
+
+msgid "%s を手に入れた（E キー）"
+msgstr "Got %s! (E key)"
+
+msgid "%s が切断 ― CPUが代わりに逃げます"
+msgstr "%s disconnected — a CPU will run instead"
+
+msgid "レートがサーバーと同期され、%s%d Pt 補正されました（現在 %d Pt）"
+msgstr "Your rating was synced with the server and adjusted by %s%d pts (now %d pts)"
+
+msgid "ブースト！"
+msgstr "Boost!"
+
+msgid "ワープ！"
+msgstr "Warp!"
+
+msgid "すべった！"
+msgstr "Slipped!"
+
+msgid "ロケット"
+msgstr "Rocket"
+
+msgid "バナナ"
+msgstr "Banana"
+
+msgid "ブロック"
+msgstr "Block"
+
+msgid "スピード"
+msgstr "Speed"
+
+msgid "ジャンプ"
+msgstr "Jump"
+
+# --- ロビー (scenes/hud/lobby_panel) ---
+msgid "参加者を退出させる"
+msgstr "Remove Player"
+
+msgid "退出させる"
+msgstr "Remove"
+
+msgid "キャンセル"
+msgstr "Cancel"
+
+msgid "%s をロビーから退出させますか？"
+msgstr "Remove %s from the lobby?"
+
+msgid "招待リンク: %s"
+msgstr "Invite link: %s"
+
+msgid "（うち CPU の鬼 %d人）"
+msgstr " (incl. %d CPU Chasers)"
+
+msgid "ホスト（あなた）"
+msgstr "Host (You)"
+
+msgid "参加中（ホストは別の人）"
+msgstr "Joined (someone else is hosting)"
+
+msgid "4人であそぶ: %d人が参加中%s"
+msgstr "4-player game: %d joined%s"
+
+msgid "この対戦は鬼がランダムで決まります（立候補不可）%s"
+msgstr "Chasers are chosen at random in this match (no volunteering)%s"
+
+msgid "　Enter キー: 開始"
+msgstr "   Enter: Start"
+
+msgid "　― ホストが始めるのを待っています"
+msgstr "   — Waiting for the host to start"
+
+msgid "デバッグ中: あなたが鬼、CPUが逃げる役です。Enter キー: 開始"
+msgstr "Debug: You're the Chaser and a CPU is the Runner. Enter: Start"
+
+msgid "R キー: 役割を切りかえ　― ホストが始めるのを待っています"
+msgstr "R: Switch role   — Waiting for the host to start"
+
+msgid "定員を%d人に変更しました"
+msgstr "Max players set to %d"
+
+msgid "定員の変更に失敗しました（現在: %d人）"
+msgstr "Couldn't change max players (currently %d)"
+
+msgid "だれもいません"
+msgstr "Nobody here yet"
+
+msgid "鬼は開始時にランダムで決まります（立候補不可）"
+msgstr "Chasers are chosen at random at the start (no volunteering)"
+
+msgid "逃げる役が未定です（開始時にランダムで決まります）"
+msgstr "No Runner yet (one will be chosen at random at the start)"
+
+msgid "[走] にげる"
+msgstr "[R] Runner"
+
+msgid "[鬼] おに"
+msgstr "[C] Chaser"
+
+msgid "この人を逃げる役にする"
+msgstr "Make this player the Runner"
+
+msgid "この人をロビーから退出させる"
+msgstr "Remove this player from the lobby"
+
+msgid "あなた（%s）"
+msgstr "You (%s)"
+
+msgid "プレイヤー %d"
+msgstr "Player %d"
+
+# --- タッチ操作 (scenes/hud/touch_controls) ---
+msgid "ダッシュ"
+msgstr "Dash"
+
+msgid "ダイブ"
+msgstr "Dive"
+
+msgid "アイテム"
+msgstr "Item"
+
+msgid "カモン"
+msgstr "Taunt"
+
+# --- プレイヤー頭上の表示 (scenes/player) ---
+msgid "ナイス！"
+msgstr "Nice!"
+
+msgid "カモン！"
+msgstr "Come on!"
+
+msgid "前のめり"
+msgstr "Lean In"
+
+msgid "腰ふり"
+msgstr "Wiggle"
+
+msgid "余裕"
+msgstr "Chill"
+
+msgid "にげ"
+msgstr "RUN"
+
+msgid "おに"
+msgstr "CHASE"
+
+# --- キャラクター (scenes/humanoid の SKINS) ---
+msgid "きょうりゅう"
+msgstr "Dino"
+
+msgid "しのび"
+msgstr "Ninja"
+
+msgid "バスケ08"
+msgstr "Hoops 08"
+
+# --- ゾーン名 (scenes/world_data) ---
+msgid "くもの展望台"
+msgstr "Cloud Lookout"
+
+msgid "どかんヤード"
+msgstr "Pipe Yard"
+
+msgid "ブロック広場"
+msgstr "Block Plaza"
+
+msgid "みどりの庭"
+msgstr "Green Garden"
+
+msgid "おしろ広場"
+msgstr "Castle Plaza"
+
+msgid "ブーストサーキット"
+msgstr "Boost Circuit"
+
+msgid "バネの谷"
+msgstr "Spring Valley"
+
+msgid "リフト港"
+msgstr "Lift Harbor"
+
+msgid "そらの階段"
+msgstr "Sky Stairs"
+
+# --- 接続・ホスト引き継ぎ (autoload/game_manager, network_manager, game/version_gate) ---
+msgid "ホストによって退出させられました。"
+msgstr "The host removed you from the room."
+
+msgid "このロビーは同じレート帯のみ参加できます（レート帯が一致しません）。"
+msgstr "Only players in the same rating tier can join this lobby (your tier doesn't match)."
+
+msgid "レート帯が違う参加者の接続を許可しませんでした（このロビーは同じレート帯のみ）。"
+msgstr "Blocked a player from a different rating tier (this lobby is same-tier only)."
+
+msgid "ポート %d が既に使われています。\n前に起動した Godot（ゲーム）が残っていないか確認して、閉じてから試してください。"
+msgstr "Port %d is already in use.\nCheck whether an earlier copy of the game (Godot) is still running, close it, and try again."
+
+msgid "ポート %d で待ち受けられませんでした。\n前に起動した Godot（ゲーム）が残っていないか確認してください。"
+msgstr "Couldn't listen on port %d.\nCheck whether an earlier copy of the game (Godot) is still running."
+
+msgid "通信を開始できませんでした（エラー %d）"
+msgstr "Couldn't start networking (error %d)"
+
+msgid "ホストに接続できませんでした"
+msgstr "Couldn't connect to the host"
+
+msgid "ホストとの接続が切れました"
+msgstr "Lost connection to the host"
+
+msgid "別のプレイヤーへホストを引き継いでいます…"
+msgstr "Handing the host role to another player…"
+
+msgid "ホストを引き継げるプレイヤーがいませんでした"
+msgstr "No player could take over as host"
+
+msgid "新しいホストの準備を待っています…"
+msgstr "Waiting for the new host to get ready…"
+
+msgid "あなたが新しいホストになりました。準備しています…"
+msgstr "You're the new host. Getting ready…"
+
+msgid "新しいホストに接続できませんでした"
+msgstr "Couldn't connect to the new host"
+
+msgid "ホストの引き継ぎがタイムアウトしました"
+msgstr "Host handover timed out"
+
+msgid "ゲームのバージョンが違います（ホスト v%d / あなた v%d）。\nブラウザなら再読み込み（Ctrl+Shift+R）、PC なら最新版で起動しなおしてください。"
+msgstr "Game versions don't match (host v%d / you v%d).\nIn a browser, reload the page (Ctrl+Shift+R). On PC, restart with the latest version."
+
+msgid "参加者のビルドが違います（あなた v%d / 相手 v%d）。\nWeb 版を再デプロイして、ブラウザを再読み込みしてもらってください。"
+msgstr "A player has a different build (you v%d / them v%d).\nRedeploy the web version and ask them to reload their browser."
+
+msgid "参加者 %d から応答がありません。\n古いビルドで参加している可能性があります（Web 版の再デプロイと再読み込みを試してください）。"
+msgstr "No response from player %d.\nThey may be on an old build (try redeploying the web version and reloading)."
