@@ -30,7 +30,10 @@ func _ready() -> void:
 	get_tree().current_scene = world
 
 	if not await _wait_for_peer():
-		print("FAIL: 相手がつながらなかった")
+		# 単独起動だと必ずここに来る。過去に「既存の不具合」と誤認された実績があるので、
+		# 2プロセス必要なことを失敗メッセージ自体で案内する（手順はヘッダ参照）
+		print("FAIL: 相手がつながらなかった（このテストはホストとクライアントの"
+			+ "2プロセスで起動する必要がある。ヘッダの手順を参照）")
 		get_tree().quit()
 		return
 	_client_id = multiplayer.get_peers()[0] if _is_host else multiplayer.get_unique_id()

@@ -24,13 +24,18 @@
          Phase 3 L-12)。そのためこのスクリプトは終了コードを信用せず、
          テストの標準出力に出る失敗マーカー([FAIL] / SOME TESTS FAILED /
          「N FAILED」/ FAIL=1以上)を走査して成否を判定する。
+         SCRIPT ERROR も失敗扱い(途中で中断したテストの偽PASSを防ぐため)。
 
     タイムアウトで強制終了した場合は、シーンロード失敗・awaitのハング等
     「何かがおかしい」サインとして exit code 124 を返す。
     テスト出力に失敗マーカーが見つかった場合は exit code 1 を返す。
 
 .PARAMETER ScenePath
-    実行する res://tests/<name>.tscn のパス（例: res://tests/net_roles.tscn）。
+    実行する res://tests/<name>.tscn のパス（例: res://tests/debug_controls.tscn）。
+    1プロセスで完結するテスト専用。net_roles / net_anim / net_live 等の
+    ホスト+クライアント2プロセスが要るテストは、このラッパー単体では
+    必ず「相手がつながらなかった」で失敗する（過去にこれを既存の不具合と誤認した）。
+    それらは各テストのヘッダにある手順で2つ起動すること。
 
 .PARAMETER GodotExe
     Godotエディタ実行ファイルのフルパス。既定値は $DefaultGodotExe。
@@ -46,7 +51,7 @@
 .EXAMPLE
     pwsh tools/run_headless_test.ps1 res://tests/test_phase5_persistence.tscn
 .EXAMPLE
-    pwsh tools/run_headless_test.ps1 res://tests/net_roles.tscn -TimeoutSec 60
+    pwsh tools/run_headless_test.ps1 res://tests/test_phase7_stability.tscn -TimeoutSec 180
 #>
 [CmdletBinding()]
 param(
@@ -115,11 +120,20 @@ try {
     #
     # -cmatch(大文字小文字を区別)である点が重要。エンジンが出す
     # "Failed to load script" 等の混在表記まで拾うと、無関係な警告で赤くなる。
-    # 同じ理由で SCRIPT ERROR も含めていない(tests/debug_controls.tscn に
-    # 既存の未修正エラーがあるため)。
+    #
+    # SCRIPT ERROR も失敗扱いにする。GDScript は実行時エラーでその関数を中断するので、
+    # テストが結果行(FAIL を含む)を出す前に止まると「FAIL が無い＝成功」と誤判定される。
+    # 実際 tests/debug_controls.tscn は消えた定数 NetworkManager.MAIN_SCENE を参照して
+    # 最終判定の手前で止まり、長期間偽PASSしていた。当初はこのエラーが既存の未修正
+    # 不具合だったために判定から外していたが、2026-09-25 に修正し、headless 対応の
+    # 全テストで SCRIPT ERROR が0件になったことを確認したうえで判定に加えた。
     $scan = ("$outText`n$errText") -replace 'FAIL=0', ''
     if ($scan -cmatch 'FAIL') {
         Write-Host "=> 出力に FAIL があるため exit 1 を返す" -ForegroundColor Red
+        exit 1
+    }
+    if ($scan -cmatch 'SCRIPT ERROR') {
+        Write-Host "=> 出力に SCRIPT ERROR があるため exit 1 を返す(テストが途中で中断した可能性)" -ForegroundColor Red
         exit 1
     }
 

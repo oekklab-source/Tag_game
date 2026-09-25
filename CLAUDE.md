@@ -46,6 +46,12 @@ godot --headless --path . res://tests/<name>.tscn --quit-after 600
   エンジンの `Failed to load script` 等は拾わない）。新しいテストを書くときは、
   失敗時に大文字 `FAIL` を必ず出力すること（`_assert()` ヘルパの踏襲が最も確実）。
   成功時の行に `FAIL` を含めてはいけない。
+  `SCRIPT ERROR` も失敗扱いにしている。実行時エラーでテスト関数が中断すると
+  結果行が出ないまま終わり、偽PASSになるため（`tests/debug_controls.tscn` が
+  消えた定数の参照で長期間そうなっていた。2026-09-25 修正）。
+- **`net_roles` / `net_anim` / `net_live` はホスト＋クライアントの2プロセスで起動する**
+  （手順は各テストのヘッダ）。単独起動すると必ず「相手がつながらなかった」で失敗する。
+  これは不具合ではない。
 
 ## RPC を変更するときの鉄則
 

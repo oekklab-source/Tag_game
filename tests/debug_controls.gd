@@ -63,7 +63,7 @@ func _ready() -> void:
 	for i in 5:
 		await get_tree().process_frame
 	_report("Qでメイン画面へ戻る", get_tree().current_scene != null
-		and get_tree().current_scene.scene_file_path == NetworkManager.MAIN_SCENE
+		and get_tree().current_scene.scene_file_path == NetworkManager.TITLE_SCENE
 		and NetworkManager.mode == NetworkManager.Mode.NONE,
 		"メイン画面へ遷移していない")
 	_report("復帰後はデバッグOFF", not GameManager.debug_cpu_runner,

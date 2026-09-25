@@ -46,9 +46,13 @@ const ITEM_INFO := {
 const ROULETTE_ORDER := [Player.Item.ROCKET, Player.Item.BANANA, Player.Item.BLOCK]
 const ROULETTE_FAST := 0.05
 const ROULETTE_SLOW := 0.22
+## speed バフの付与元はダッシュパネルだけなので、ゲージの満タン基準はその実効果時間を直接参照する。
+## 以前は 2.5 を手書きしていて、パネル側を 3.0 秒へ延ばした(8fcdd1e)ときに取り残され、
+## 踏んでから0.5秒間ゲージが満タンのまま減らなかった(tests/boost_gauge.tscn が検出)
+const BoostPanel := preload("res://scenes/gimmicks/boost_panel.gd")
 ## バフの表示名と、残量ゲージの基準になる持続時間
 const BUFF_INFO := {
-	&"speed": ["スピード", 2.5, Color(1.0, 0.85, 0.25)],
+	&"speed": ["スピード", BoostPanel.BOOST_TIME, Color(1.0, 0.85, 0.25)],
 	&"jump": ["ジャンプ", 8.0, Color(0.55, 0.8, 1.0)],
 }
 

@@ -19,8 +19,11 @@ func _ready() -> void:
 		"ブースト開始時はゲージ100%")
 
 	buffs.tick(1.0)
-	_check(is_equal_approx(_gauge_fraction(buffs, hud_duration), 0.6),
-		"1秒後は残り時間に応じて60%")
+	# 期待値は実効果時間から求める。0.6 を直書きしていた頃は BOOST_TIME=2.5 前提で、
+	# パネル側の調整のたびにテストまで書き換える必要があった
+	var expected := (duration - 1.0) / duration
+	_check(is_equal_approx(_gauge_fraction(buffs, hud_duration), expected),
+		"1秒後は残り時間に応じて%d%%" % roundi(expected * 100.0))
 
 	buffs.add(&"speed", BOOST_PANEL_SCRIPT.BOOST_MULT, duration)
 	_check(is_equal_approx(_gauge_fraction(buffs, hud_duration), 1.0),
