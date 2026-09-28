@@ -49,6 +49,9 @@ var _max_members_row_was_visible := false
 var _sb_row: StyleBoxFlat
 var _sb_row_hover: StyleBoxFlat
 var _public_address_confirmed := false
+## Cloudflare Tunnel を張れなかったときの注記（空ならトンネルは問題なし／確立待ち）。
+## 招待リンクの下に1行足して、LAN内の相手にしか届かないリンクであることを伝える
+var _tunnel_note := ""
 ## H-04: キック確認ダイアログは1つ使い回し、対象idだけ差し替える
 ## (friend_screen.gdの_remove_confirm_dialogと同じパターン)
 var _pending_kick_id := -1
@@ -79,6 +82,7 @@ func _ready() -> void:
 	# 既にpublic_addressが確定した後にこのパネルが読み込まれるケースは
 	# シグナルを取りこぼすため、下の即時チェックで補う
 	NetworkManager.public_address_ready.connect(_on_public_address_ready)
+	NetworkManager.tunnel_failed.connect(_on_tunnel_failed)
 	# この"v"は通信プロトコル版数(PROTOCOL_VERSION)。ストア版数(application/config/version)ではない
 	version_label.text = "v%d" % GameManager.PROTOCOL_VERSION
 	if not NetworkManager.public_address.is_empty():
@@ -112,9 +116,29 @@ func _on_kick_confirmed() -> void:
 
 ## 招待リンクの画面内表示(C-04)。ホスト開始/トンネル確定/ホストマイグレーション後の
 ## 再確定のいずれでもNetworkManager.public_address_readyから呼ばれる
-func _on_public_address_ready(_addr: String) -> void:
+func _on_public_address_ready(addr: String) -> void:
 	_public_address_confirmed = true
-	invite_label.text = tr("招待リンク: %s") % NetworkManager.join_link()
+	# IP ではなくホスト名が来た＝トンネルが（遅れてでも）確立したので、失敗の注記は外す
+	if not addr.is_valid_ip_address():
+		_tunnel_note = ""
+	_refresh_invite_label()
+
+
+## トンネルは窓を出さずに裏で張るので、張れなかったことはここでしか伝わらない
+## （以前は PowerShell の窓にエラーが出ていた）
+func _on_tunnel_failed(reason: String) -> void:
+	if reason == "not_found":
+		_tunnel_note = tr("※cloudflared が入っていないため、インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）")
+	else:
+		_tunnel_note = tr("※インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）")
+	_refresh_invite_label()
+
+
+func _refresh_invite_label() -> void:
+	var text := tr("招待リンク: %s") % NetworkManager.join_link()
+	if not _tunnel_note.is_empty():
+		text += "\n" + _tunnel_note
+	invite_label.text = text
 
 
 func _on_copy_link_pressed() -> void:

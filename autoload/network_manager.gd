@@ -24,6 +24,10 @@ const MIGRATION_RECONNECT_WAIT_SEC := 30.0
 ## create_process で撃ちっぱなしにした別プロセスの標準出力を直接は読めないため、
 ## ファイル経由でホスト名を受け渡す
 const TUNNEL_HOST_FILE := "user://tunnel_host.txt"
+## tools/serve.ps1 が cloudflared の PID を書き出す先。_stop_tunnel() が直接止めるのに使う
+const TUNNEL_PID_FILE := "user://tunnel_cloudflared.pid"
+## tools/serve.ps1 がトンネルを張れなかった理由を書き出す先（窓を出さないので、失敗はここでしか分からない）
+const TUNNEL_ERROR_FILE := "user://tunnel_error.txt"
 const TUNNEL_POLL_INTERVAL := 1.0
 const TUNNEL_POLL_TIMEOUT := 30.0
 ## 招待リンク配布用のページ(tools/serve.ps1が案内するURLと同じ)
@@ -54,6 +58,9 @@ var last_error: String = "":
 ## 上書きされることがある）。host_addr としてロビーデータに載せる
 var public_address := ""
 signal public_address_ready(addr: String)
+## Cloudflare Tunnel を張れなかった（インターネット越しの参加者はつながれない。LAN内なら可）。
+## reason は "not_found"（cloudflared未インストール）/ "exited"（途中で終了）/ "timeout"
+signal tunnel_failed(reason: String)
 ## URL の ?s= による自動参加は1回だけ。接続失敗時は leave() が title.tscn へ戻すので、
 ## ガードが無いと同じアドレスへ無限に再接続しに行く
 var auto_join_done := false
@@ -87,6 +94,13 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 	EosManager.host_migrated.connect(_on_host_migrated)
 	_apply_cmdline()
+
+
+## アプリの正常終了（終了メニュー・窓の×・quit()）はすべてここを通る。
+## 強制終了・クラッシュではここに来ないが、その場合は tools/serve.ps1 側がゲームの消滅を
+## 見張っていて自分で cloudflared を止める
+func _exit_tree() -> void:
+	_stop_tunnel()
 
 
 ## ロビー画面に表示する招待リンク。public_addressが未確定の間は空文字を返す
@@ -229,7 +243,16 @@ func setup_peer() -> Error:
 ## HOST 開始と同時に Cloudflare Tunnel を張って参加リンクを作る（tools/serve.ps1）。
 ## そのスクリプトは Get-NetTCPConnection / Set-Clipboard など Windows PowerShell 前提なので
 ## Windows デスクトップ版でのみ起動する。同一プロセス内で再ホストしても、前のトンネルが
-## まだ生きていれば張り直さない（cloudflare 側のサブドメインが変わって混乱するのを防ぐ）
+## まだ生きていれば張り直さない（cloudflare 側のサブドメインが変わって混乱するのを防ぐ）。
+##
+## 窓は出さない（open_console=false）。以前は PowerShell の窓がユーザーに見えていたうえ、
+## 誰も止めないので部屋を抜けてもゲームを閉じても cloudflared と公開トンネルが残り続けていた
+## （2日前のトンネルが生きているのを実際に見つけた）。今は二重に止める:
+##   - ゲーム側: leave() と _exit_tree() が _stop_tunnel() を呼ぶ
+##   - serve.ps1 側: -ParentPid でこのプロセスを見張り、消えたら（強制終了・クラッシュで
+##     GDScript が走らない場合）自分で cloudflared を止める
+## なお Godot 4.7.2 の create_process(open_console=false) は子に窓付きコンソールを作らない
+## ことを実測済み（子の GetConsoleWindow() が 0。open_console=true だと窓が作られる）
 func _launch_tunnel() -> void:
 	if OS.has_feature("web") or OS.get_name() != "Windows":
 		return
@@ -252,14 +275,59 @@ func _launch_tunnel() -> void:
 	# 前回の記録が残っていると、今回まだ確立していないのに古いホスト名を拾ってしまう
 	if FileAccess.file_exists(TUNNEL_HOST_FILE):
 		DirAccess.remove_absolute(host_file)
+	_remove_user_file(TUNNEL_ERROR_FILE)
+	# TUNNEL_PID_FILE はここでは消さない。前回の cloudflared が孤児として残っていた場合、
+	# serve.ps1 がこの記録を見て止める（PID の再利用に備えて名前も確かめる）
 	# create_process は PID をそのまま返す（失敗時 -1）。辞書ではない
 	# pwsh (PowerShell Core) が入っていない環境向けに、Windows PowerShell へフォールバックする
 	# (tools/serve.ps1 自体はどちらでも動く内容で書かれている)
-	var ps_args := ["-NoProfile", "-File", script_path, "-HostAddrFile", host_file]
-	_tunnel_pid = OS.create_process("pwsh", ps_args, true)
+	var ps_args := ["-NoProfile", "-File", script_path, "-HostAddrFile", host_file,
+		"-ParentPid", str(OS.get_process_id()),
+		"-PidFile", ProjectSettings.globalize_path(TUNNEL_PID_FILE),
+		"-ErrorFile", ProjectSettings.globalize_path(TUNNEL_ERROR_FILE)]
+	_tunnel_pid = OS.create_process("pwsh", ps_args, false)
 	if _tunnel_pid == -1:
-		_tunnel_pid = OS.create_process("powershell", ps_args, true)
+		_tunnel_pid = OS.create_process("powershell", ps_args, false)
 	_start_tunnel_poll()
+
+
+## トンネルを畳む（部屋を抜けた・アプリを終了する）。何も張っていなければ何もしない。
+## serve.ps1 の PowerShell と cloudflared を両方止める。Windows の OS.kill() は
+## TerminateProcess なので子プロセスは道連れにならず、PowerShell だけ止めると
+## cloudflared が孤児として残る（serve.ps1 の finally も TerminateProcess では走らない）
+func _stop_tunnel() -> void:
+	_stop_tunnel_poll()
+	if _tunnel_pid == -1:
+		return
+	if OS.is_process_running(_tunnel_pid):
+		OS.kill(_tunnel_pid)
+	_tunnel_pid = -1
+	var cf_pid := _read_user_file(TUNNEL_PID_FILE).to_int()
+	# serve.ps1 が終わるときは PID ファイルを消すので、残っているのは cloudflared が
+	# まだ生きている（か、止める直前だった）場合だけ。
+	# OS.is_process_running() で確かめてから止めてはいけない。Windows 版の実装は自分が
+	# create_process した子しか追跡せず、孫の cloudflared には常に false を返すため、
+	# 一度も止まらない（実測で踏んだ）。OS.kill() は任意の PID に効き、既に居なければ失敗するだけ
+	if cf_pid > 0:
+		OS.kill(cf_pid)
+	_remove_user_file(TUNNEL_PID_FILE)
+	_remove_user_file(TUNNEL_HOST_FILE)
+	_remove_user_file(TUNNEL_ERROR_FILE)
+
+
+## serve.ps1 が書くファイルを読む。Windows PowerShell 5.1 の -Encoding utf8 は BOM を付けるので取り除く
+func _read_user_file(path: String) -> String:
+	if not FileAccess.file_exists(path):
+		return ""
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return ""
+	return f.get_as_text().replace("﻿", "").strip_edges()
+
+
+func _remove_user_file(path: String) -> void:
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 
 ## res://tools/serve.ps1 は（embed_pck の書き出し版では）PCK内の仮想パスで、
@@ -305,15 +373,22 @@ func _start_tunnel_poll() -> void:
 
 func _on_tunnel_poll_tick() -> void:
 	_tunnel_poll_elapsed += TUNNEL_POLL_INTERVAL
-	if FileAccess.file_exists(TUNNEL_HOST_FILE):
-		var f := FileAccess.open(TUNNEL_HOST_FILE, FileAccess.READ)
-		var host := f.get_as_text().strip_edges() if f else ""
-		if not host.is_empty():
-			public_address = host
-			public_address_ready.emit(public_address)
-			_stop_tunnel_poll()
-			return
+	var host := _read_user_file(TUNNEL_HOST_FILE)
+	if not host.is_empty():
+		public_address = host
+		public_address_ready.emit(public_address)
+		_stop_tunnel_poll()
+		return
+	# 窓を出さなくなったので、cloudflared が無い・落ちた等はここで拾ってゲーム内に出すしかない
+	var err := _read_user_file(TUNNEL_ERROR_FILE)
+	if not err.is_empty():
+		var reason := err.get_slice("\n", 0).strip_edges()
+		push_warning("[NetworkManager] トンネルを張れませんでした: %s" % err)
+		tunnel_failed.emit(reason)
+		_stop_tunnel_poll()
+		return
 	if _tunnel_poll_elapsed >= TUNNEL_POLL_TIMEOUT:
+		tunnel_failed.emit("timeout")
 		_stop_tunnel_poll()
 
 
@@ -334,7 +409,8 @@ func leave() -> void:
 	session_kind = SessionKind.SOLO
 	public_address = ""
 	matched_via_eos_lobby = false
-	_stop_tunnel_poll()
+	# 部屋を抜けた・解散した時点で参加リンクは用済み。残すと公開トンネルが開いたままになる
+	_stop_tunnel()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	GameManager.reset()
 	# EOSロビー経由のセッションだった場合、ここで明示的に抜けておかないと

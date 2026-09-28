@@ -981,11 +981,14 @@ python -m http.server 8123 --directory export/web
 
 1. Godot でゲームを起動して **HOST**
    （[network_manager.gd](autoload/network_manager.gd) の `setup_peer()` が
-   listen 成功と同時に `tools/serve.ps1` を裏で自動起動し、別ウィンドウで
-   トンネルが張られる。手動で `pwsh tools/serve.ps1` を実行する必要は無い。
-   Windows デスクトップ版限定で、pwsh/cloudflared が無ければそのウィンドウに
-   エラーが出るだけでゲーム側は止まらない）
-2. 開いた PowerShell ウィンドウに表示された参加リンク（クリップボードにコピー済み）を友達に送る
+   listen 成功と同時に `tools/serve.ps1` を窓なしで裏に起動し、トンネルが張られる。
+   手動で `pwsh tools/serve.ps1` を実行する必要は無い。Windows デスクトップ版限定で、
+   cloudflared が無い・途中で落ちた等で張れなかったときは、ロビーパネルの招待リンクの下に
+   注記が出るだけでゲーム側は止まらない（LAN 内の相手はそのまま参加できる）。
+   トンネルは部屋を抜けた・アプリを閉じたときにゲーム側が止める。強制終了やクラッシュで
+   ゲームの後始末が走らなかった場合も、`serve.ps1` がゲームのプロセスを見張っていて
+   自分で cloudflared を止める）
+2. ロビーパネルに出る招待リンク（「リンクをコピー」でコピーできる）を友達に送る
 
    ```text
    https://<owner>.github.io/<repo>/?s=xxxx.trycloudflare.com
