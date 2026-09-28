@@ -1109,6 +1109,8 @@ GitHub Secrets に置く判断が別途必要なため、当面は手元での�
 > Steamworks から EOS への移行はコード上完了済み。決済・フレンド機能を含めて
 > 本番投入前に必要な人手作業（ポータル設定・デプロイ・実機確認）は
 > [docs/DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md) にまとめてある。
+> 法務文書・ストア登録・実機確認まで含めた人手作業の全体一覧と順番は
+> [docs/OWNER_TASKS.md](docs/OWNER_TASKS.md)。
 
 ```text
 [EOS ロビー]  … 見知らぬ相手を探す・レート帯でフィルタする（EOSが無料で提供）

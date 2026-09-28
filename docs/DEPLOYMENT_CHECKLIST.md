@@ -7,6 +7,9 @@ Steamworks → EOS 移行はコード上は全フェーズ完了しているが�
 上から順に進めることを推奨（依存が少ない順）。各項目の詳しい手順は既存の README にあるので、
 ここでは「次に何をするか」と「完了条件」だけをまとめる。
 
+> この文書はバックエンドと EOS の作業に限る。法務文書・ストア登録・実機確認まで含めた
+> 人手作業の全体一覧と順番は [OWNER_TASKS.md](OWNER_TASKS.md) を見ること。
+
 ## 1. EOS Developer Portal — リーダーボード定義（Phase 3）
 
 1. [Epic Developer Portal](https://dev.epicgames.com/portal) で Stat 定義 `PlayerRating` を作成する
