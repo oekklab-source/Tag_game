@@ -95,19 +95,21 @@ func test_skin_catalog_compatibility() -> void:
 	assert(Humanoid.SKINS[0]["path"] == "res://assets/character/fallguy.glb")
 	assert(Humanoid.SKINS[1]["path"] == "res://assets/character/ninja.glb")
 	assert(Humanoid.SKINS[2]["path"] == "res://assets/character/outfits/basketball_prototype.glb")
+	assert(Humanoid.SKINS[3]["path"] == "res://assets/character/outfits/overalls.glb")
+	assert(Humanoid.SKINS[4]["path"] == "res://assets/character/outfits/shadow_ninja.glb")
 	var required_anims := ["Idle", "Run", "Jump", "Dive", "Slip", "Nice", "Come",
 		"ComeHip", "ComeCool", "SlideEnter", "SlideSit", "SlideReverseFall",
 		"SlideProne", "SlideRecover", "RespawnDizzy"]
 	var humanoid: Node3D = load("res://scenes/humanoid.tscn").instantiate()
 	add_child(humanoid)
-	for skin_id in range(3):
+	for skin_id in range(Humanoid.SKINS.size()):
 		humanoid.set_skin(skin_id)
 		var player: AnimationPlayer = humanoid._anim
 		for anim_name in required_anims:
 			assert(player.has_animation(anim_name), "%s に %s がありません" % [Humanoid.SKINS[skin_id]["name"], anim_name])
 	humanoid.queue_free()
 	print("   => 既存skin番号を維持し、バスケ08が3番目にあることを確認 [OK]")
-	print("   => 3キャラクターに共通の15アニメが揃っていることを確認 [OK]")
+	print("   => 全キャラクターに共通の15アニメが揃っていることを確認 [OK]")
 
 
 ## しのびとバスケ08は固定デザインで、面構成が一致しても柄・カラーの
@@ -116,7 +118,7 @@ func test_fixed_skin_designs() -> void:
 	var humanoid: Node3D = load("res://scenes/humanoid.tscn").instantiate()
 	add_child(humanoid)
 	var colors := PackedColorArray([Color.RED, Color.BLUE])
-	for skin_id in [1, 2]:
+	for skin_id in range(1, Humanoid.SKINS.size()):
 		humanoid.set_skin(skin_id)
 		humanoid.apply_costume(&"neon", colors)
 		assert(humanoid._override_keys.is_empty())

@@ -775,10 +775,11 @@ func add_carry(v: Vector3) -> void:
 
 
 func apply_slide(dir: Vector3, accel: float, cap: float, pitch := 0.0,
-		near_bottom := false, source_id := 0) -> void:
+		distance_from_bottom := INF, distance_from_top := INF, source_id := 0) -> void:
 	if sync_respawn_left > 0.0 or stunned or warp_grace > 0.0 or bumper_bounce_left > 0.0:
 		return
-	slide_ride.contact(source_id, dir, pitch, accel, cap, near_bottom, velocity)
+	slide_ride.contact(source_id, dir, pitch, accel, cap, distance_from_bottom,
+		distance_from_top, velocity)
 
 
 func release_slide(source_id: int) -> void:

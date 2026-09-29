@@ -1,0 +1,25 @@
+{
+  "tail_component_vertices_preserved": 98,
+  "face_vertices_preserved": 1282,
+  "rest_bones_preserved": 16,
+  "animation_names_preserved": [
+    "Come",
+    "ComeCool",
+    "ComeHip",
+    "Dive",
+    "Idle",
+    "Jump",
+    "Nice",
+    "RespawnDizzy",
+    "Run",
+    "SlideEnter",
+    "SlideProne",
+    "SlideRecover",
+    "SlideReverseFall",
+    "SlideSit",
+    "Slip"
+  ],
+  "garment_weights_normalized": true,
+  "original_character_weights_preserved": true,
+  "complete_leg_faces_preserved": 288
+}

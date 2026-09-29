@@ -50,7 +50,8 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## v8: 「カモン」を挑発3種にして sync_emote が取る値に COME_HIP / COME_COOL が増えた。
 ## あわせて着せ替えのキャラ（Humanoid.SKINS）をプロフィールの "skin" に載せた
 ## v9: Player/CPU の滑走状態同期と、滑走中の設置ブロック破砕RPCを追加した
-const PROTOCOL_VERSION := 9
+## v11: 滑走接触した設置ブロックの5秒消滅RPCを追加した
+const PROTOCOL_VERSION := 11
 
 const ROUND_TIME := 180.0
 const RESULT_TIME := 5.0
