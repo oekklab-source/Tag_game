@@ -250,8 +250,9 @@ static func _respawn_point_is_clear(body: Node3D, candidate: Vector3) -> bool:
 	return true
 
 
+## 表示用(訳済み)のゾーン名。static なので TranslationServer.translate() で訳す(L-09)
 static func zone_name(idx: int) -> String:
-	return ZONE_NAMES[idx]
+	return TranslationServer.translate(ZONE_NAMES[idx])
 
 
 static func zone_color(idx: int) -> Color:

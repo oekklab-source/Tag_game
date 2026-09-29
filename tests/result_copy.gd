@@ -8,6 +8,8 @@ var _failures := 0
 
 
 func _ready() -> void:
+	# L-09: 日本語の原文を照合するので、OS の言語(英語環境なら en)に関係なく ja に固定する
+	TranslationServer.set_locale("ja")
 	_check_case(false, true, GameManager.EndReason.TIME_UP,
 		"にげきられた…", "逃げる人をつかまえられなかった", "鬼・逃げ切られた")
 	_check_case(false, false, GameManager.EndReason.TAGGED,
@@ -33,3 +35,18 @@ func _check_case(is_runner: bool, runner_won: bool, reason: int,
 	else:
 		_failures += 1
 		print("FAIL: %s -> %s" % [label, copy])
+
+# --- 実セーブ(user://profile.json / settings.json)とクラウドセーブの保護 ---
+# ラウンドを回さないテストでも、EOS にログインできる環境では起動時のクラウドセーブ同期が
+# 実セーブを書き換える(2026-09-25 に boost_panel の実行中に実測)。どのテストが
+# 踏むかを個別に見極めるより、全テストで一律に挟む。詳細は tests/save_guard.gd のヘッダ。
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
+
+
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
+
+
+func _exit_tree() -> void:
+	_SaveGuard.restore(_save_backup)

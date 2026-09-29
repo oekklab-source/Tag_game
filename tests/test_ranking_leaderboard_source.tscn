@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://test_ranking_leaderboard_source_uid"]
+
+[ext_resource type="Script" path="res://tests/test_ranking_leaderboard_source.gd" id="1_rankingsource"]
+
+[node name="TestRankingLeaderboardSource" type="Node"]
+script = ExtResource("1_rankingsource")

@@ -11,6 +11,8 @@ var _fail := 0
 
 
 func _ready() -> void:
+	# L-09: 日本語の原文を照合するので、OS の言語(英語環境なら en)に関係なく ja に固定する
+	TranslationServer.set_locale("ja")
 	print("=== 終了確認メニューの検証 ===")
 	var shots := ""
 	var args := OS.get_cmdline_user_args()
@@ -21,7 +23,7 @@ func _ready() -> void:
 	# _ready() の最中は root が子を追加中で add_child できない
 	await get_tree().process_frame
 
-	var title: Node = load("res://scenes/main.tscn").instantiate()
+	var title: Node = load("res://scenes/title.tscn").instantiate()
 	get_tree().root.add_child(title)
 	get_tree().current_scene = title
 	await get_tree().process_frame
@@ -35,6 +37,7 @@ func _ready() -> void:
 	_ok("既定のフォーカスは「いいえ」", QuitMenu.no_button.has_focus())
 	_ok("「はい」が終了処理につながっている",
 		QuitMenu.yes_button.pressed.is_connected(QuitMenu._on_yes_pressed))
+	_ok("試合中でないのでLeaveMatchButtonは非表示", not QuitMenu.leave_match_button.visible)
 	if not shots.is_empty():
 		await _shot(shots, "quit_menu")
 
@@ -79,3 +82,18 @@ func _shot(out: String, name: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png("%s/%s.png" % [out, name])
 	print("saved %s.png" % name)
+
+# --- 実セーブ(user://profile.json / settings.json)とクラウドセーブの保護 ---
+# ラウンドを回さないテストでも、EOS にログインできる環境では起動時のクラウドセーブ同期が
+# 実セーブを書き換える(2026-09-25 に boost_panel の実行中に実測)。どのテストが
+# 踏むかを個別に見極めるより、全テストで一律に挟む。詳細は tests/save_guard.gd のヘッダ。
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
+
+
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
+
+
+func _exit_tree() -> void:
+	_SaveGuard.restore(_save_backup)

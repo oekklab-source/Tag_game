@@ -159,7 +159,7 @@ var _stuck_kick_left := 0.0
 
 func _ready() -> void:
 	add_to_group("cpu_hunters")
-	role_label.text = Player.ROLE_TEXT["hunter"]
+	role_label.text = tr(Player.ROLE_TEXT["hunter"])
 	role_label.modulate = HUNTER_COLOR
 	name_label.text = name
 	if multiplayer.is_server():

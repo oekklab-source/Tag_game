@@ -10,11 +10,29 @@ extends Node
 ##   COMMERCE_API_BASE_URL -> autoload/stripe_purchase_provider.gd
 ##   USE_LIVE_PURCHASES    -> autoload/purchase_manager.gd
 ##   USE_LIVE_FRIEND_BACKEND -> autoload/friend_manager.gd
+##   RATING_API_BASE_URL   -> autoload/rating_backend_client.gd
+##   USE_LIVE_RATING_BACKEND -> autoload/game/rating_report.gd
 
 const FRIEND_API_BASE_URL := "https://tag-game-friend-api.oekklab.workers.dev/"
 const COMMERCE_API_BASE_URL := "https://tag-game-commerce-api.oekklab.workers.dev/"
+## C-03: レートのサーバー権威化(R-1/R-2実装済み)。ワーカー名"tag-game-rating-api"から
+## 他2サービスと同じ命名規則で類推した値。wrangler deploy実施後、実際の出力URLと
+## 一致するか必ず確認すること(食い違っていればここを直すだけでよい)
+const RATING_API_BASE_URL := "https://tag-game-rating-api.oekklab.workers.dev/"
 
 ## デプロイ・動作確認が済むまでfalseにするロールアウト規約
 ## (friend_manager.gd/purchase_manager.gdのコメント参照)
 const USE_LIVE_PURCHASES := true
 const USE_LIVE_FRIEND_BACKEND := true
+## R-2でエンドポイント実装済みだが、wrangler d1 create/wrangler deployが未実施
+## (service/rating-api/README.md参照)。デプロイ・動作確認が済むまでfalseにする。
+## trueにする前に必ず: ①wrangler d1 create ②schema.sql適用 ③wrangler deploy
+## ④実EOSトークンでの手動疎通確認、の順で行うこと。
+## **切替そのものの手順書は docs/DEPLOYMENT_CHECKLIST.md の「9. レートのサーバー権威化」
+## に集約してある(C-03 R-13)。** クライアント配布との順序・旧friend-apiの penalty:* キーの
+## 掃除・混在ビルドの扱いはそちらを見ること。
+## R-4: このフラグはconstのため、true側の分岐(merge_server_inventory()のPDSマージ除外・
+## RankingManager._reconcile_server_rating())はheadless自動テストでは検証できない。
+## ⑤ここを一時的にtrueへ書き換えてtests/test_phase5_persistence.tscnを再実行し、
+## 確認後に必ずfalseへ戻すこと(コミット前にこの一時変更が残っていないか確認する)
+const USE_LIVE_RATING_BACKEND := false

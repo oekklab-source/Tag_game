@@ -488,9 +488,14 @@ godot --headless --path . res://tests/emote.tscn -- client 127.0.0.1
 ```
 
 なお同期プロパティを1つ足したのでスポーン状態のペイロードが変わる。
-`GameManager.PROTOCOL_VERSION` は現在 **v9**。挑発3種と着せ替えキャラの
-プロフィール同期を追加したv8に、滑走中の設置ブロック破砕RPCを加えたため、
-古いビルドが混ざったら接続直後に弾かれる（`### 通信の版数` を参照）。
+`GameManager.PROTOCOL_VERSION` を **v3** に上げてあり、古いビルドが混ざったら
+接続直後に弾かれる（`### 通信の版数` を参照）。挑発3種を足した時点で
+`sync_emote` が取る値が増え、着せ替えのキャラをプロフィール同期に載せたので
+（main 側の v4〜v7 と合流して）**v8** に、滑走状態同期・設置ブロック破砕RPCを
+足した main 側の変更と合流して **v9** に上げてある
+（その後もRPCを追加するたびに上がっており、現在の値は
+[autoload/game_manager.gd](autoload/game_manager.gd) の `PROTOCOL_VERSION` を参照。
+このv3〜v9は当時の履歴であり現在値ではない）。
 
 ## 高い場所について
 
@@ -533,7 +538,7 @@ godot --headless --path . res://tests/emote.tscn -- client 127.0.0.1
 
 ### 着せ替えと、役割の見せかた
 
-タイトルの「きせかえ」（`scenes/costume_screen.tscn`）でニックネームと**キャラ**を選ぶ。キャラは
+きせかえ画面（`scenes/costume_screen.tscn`）でニックネームと**キャラ**を選ぶ。キャラは
 `Humanoid.SKINS` の一覧（きょうりゅう / しのび / バスケ08）で、`ProfileManager.skin` に保存され、
 `GameManager` のプロフィール同期（`peer_profiles` の `"skin"`）で全ピアへ配られる。
 `humanoid.gd` の `set_skin()` が `Model` ノードを丸ごと差し替えるだけで済むのは、
@@ -556,10 +561,49 @@ godot --headless --path . res://tests/emote.tscn -- client 127.0.0.1
 
 ### UI
 
-表示は日本語。Godot の既定フォントは日本語のグリフを持たず、そのままだと
+表示は日本語と英語。Godot の既定フォントは日本語のグリフを持たず、そのままだと
 UI が全部豆腐（□）になるので **`ui/fonts/` に丸ゴシックを同梱している**
 （M PLUS Rounded 1c、OFL。JIS 第一水準にサブセット済みで 1.6 MB）。
 テーマ `ui/pop_theme.tres` の `default_font` から全 Control に効く。
+
+### 表示言語（日本語 / 英語）
+
+翻訳は `locale/en.po` の1枚だけで、**msgid は日本語の原文そのもの**。日本語で表示するときは
+翻訳を通らず原文がそのまま出る。言語は設定画面で「自動 / 日本語 / English」から選び、
+「自動」は OS（Web 版ならブラウザ）の言語が日本語なら日本語、それ以外は英語になる
+（`SettingsManager.resolve_locale()`）。
+
+- **新しい UI 文言は `tr("…")` で書き、`locale/en.po` に英訳を足す。** `.tscn` の
+  `text` などは Control の自動翻訳で訳されるので、コード側の変更は要らない（en.po には足す）。
+  static 関数では `tr()` が使えないので `TranslationServer.translate()` を使う。
+  カタログ名・ティア名などの定数は原文のまま持ち、表示する時点で `tr()` する。
+- **`locale/fallback` は `"ja"` にしてある。** `"en"` にすると、Godot はロケール ja の
+  訳が無い文字列を fallback で訳すため、日本語環境でも全部英語になる。
+- **ネットワークや保存に流す文字列は送る側で訳さない。** 例: `notify_rejected` の理由は
+  日本語の原文のまま送り、受け取った側で `tr()` する（RPC は変えていない）。
+- **プレイヤー名など利用者の入力を出す Label は `auto_translate_mode` を切る。**
+  名前が msgid と一致すると（「設定」など）勝手に英訳されるため。
+- 同梱フォントは JIS 第一水準のサブセットなので、訳文に em dash（—）などの欧文記号を
+  使うと英語版だけ豆腐になる。
+- 以上の抜け（未登録の msgid・訳し忘れ・書式指定の不一致・フォントに無い文字）は
+  `tests/test_i18n.tscn` が機械的に検出する。見た目のはみ出しは
+  `tests/uishot.tscn` を `-- --shots <出力先> --locale en` で撮って確認する。
+
+### 文字サイズ（標準 / 大 / 特大）
+
+設定画面の「文字サイズ」は、文字だけでなく **UI 全体を拡大する**。ルート Window の
+`content_scale_factor` を 1.0 / 1.15 / 1.3 にする方式で（`SettingsManager.TEXT_SIZE_SCALES`）、
+HUD やタッチ操作のボタンも一緒に大きくなる（3D の描画は変わらない）。
+
+- 文字だけを拡大しないのは、各画面の文字サイズが `.tscn` / `.gd` の約 80 か所に
+  個別の固定値で書かれていて、テーマの既定サイズを変えても効かないため。全部を倍率付きに
+  書き換えても、レイアウトが据え置きのまま文字だけ大きくなり、はみ出しが起きやすい。
+- 特大では使える画面が 1080/1.3 ≒ 831 相当の高さになる。縦に長い画面はそこに収まる
+  必要がある。設定・ショップはスクロールするので問題ない。なかま待ちのパネルは
+  はみ出すときだけ自分で縮む（`lobby_panel.gd` の `_fit_to_screen()`）。
+- 画面を足したり大きくしたりしたら、`tests/uishot.tscn` を
+  `-- --shots <出力先> --text-size xlarge`（英語なら `--locale en` も付ける）で撮って、
+  はみ出しを確認する。
 
 待機中は画面中央にロビーのパネルを出し、マウスを解放する。
 `hud.gd` の `_ignore_mouse()` は「HUD に操作できるウィジェットは一つも無い」
@@ -568,15 +612,18 @@ UI が全部豆腐（□）になるので **`ui/fonts/` に丸ゴシックを�
 
 ### 通信の版数
 
-挑発3種と、着せ替えのキャラをプロフィール同期に載せたので **v8** に上げてある。
-`GameManager.PROTOCOL_VERSION` を接続直後に突き合わせ、食い違ったら
+[autoload/game_manager.gd](autoload/game_manager.gd) の `PROTOCOL_VERSION`
+（現在の値と改版履歴は同ファイルのコメントを参照）を接続直後に突き合わせ、食い違ったら
 はっきりエラーを出して切断する。**RPC の引数を足す/減らす/並べ替えたら必ず上げること。**
+（これはネットワークプロトコルの版数であり、ストア配布用の製品版数
+`application/config/version` とは別物。「Windows 版のビルドと itch.io への配布」の
+「版数の運用」を参照）
 
 Godot の RPC はメソッド名と引数の個数が両ピアで一致している前提で、食い違うと
 `Method expected N argument(s), but called with M` で黙って落ちる。
 症状は「つながってはいるのに状態が同期しない・ラウンドが始まらない」で原因が非常に
 分かりにくい。**Web 版はブラウザが古いビルドをキャッシュするため特に起きやすい**ので、
-片方だけ更新した心当たりがあるときはまず版数（タイトル画面の右下・ロビーの見出し）を見る。
+片方だけ更新した心当たりがあるときはまず版数（ロビー画面の操作説明行の右端）を見る。
 
 接続直後に突き合わせて、食い違えば**参加側は理由を出してタイトルへ戻り、
 ホスト側はロビーに警告を出してその参加者を切断する**。
@@ -934,17 +981,20 @@ python -m http.server 8123 --directory export/web
 
 1. Godot でゲームを起動して **HOST**
    （[network_manager.gd](autoload/network_manager.gd) の `setup_peer()` が
-   listen 成功と同時に `tools/serve.ps1` を裏で自動起動し、別ウィンドウで
-   トンネルが張られる。手動で `pwsh tools/serve.ps1` を実行する必要は無い。
-   Windows デスクトップ版限定で、pwsh/cloudflared が無ければそのウィンドウに
-   エラーが出るだけでゲーム側は止まらない）
-2. 開いた PowerShell ウィンドウに表示された参加リンク（クリップボードにコピー済み）を友達に送る
+   listen 成功と同時に `tools/serve.ps1` を窓なしで裏に起動し、トンネルが張られる。
+   手動で `pwsh tools/serve.ps1` を実行する必要は無い。Windows デスクトップ版限定で、
+   cloudflared が無い・途中で落ちた等で張れなかったときは、ロビーパネルの招待リンクの下に
+   注記が出るだけでゲーム側は止まらない（LAN 内の相手はそのまま参加できる）。
+   トンネルは部屋を抜けた・アプリを閉じたときにゲーム側が止める。強制終了やクラッシュで
+   ゲームの後始末が走らなかった場合も、`serve.ps1` がゲームのプロセスを見張っていて
+   自分で cloudflared を止める）
+2. ロビーパネルに出る招待リンク（「リンクをコピー」でコピーできる）を友達に送る
 
    ```text
    https://<owner>.github.io/<repo>/?s=xxxx.trycloudflare.com
    ```
 
-3. 友達はリンクを開くだけで自動的に参加する（`?s=` を [scenes/main.gd](scenes/main.gd) が読む）
+3. 友達はリンクを開くだけで自動的に参加する（`?s=` を [scenes/title.gd](scenes/title.gd) が読む）
 4. 全員揃ったらホスト画面で Enter
 
 `?s=` が無ければ従来どおりロビーが出る。入力欄は IP でもホスト名でも受け付け、
@@ -961,6 +1011,90 @@ python -m http.server 8123 --directory export/web
   身内で遊ぶ前提の設計
 - ホストPCを落とすとゲームも終わる（専用サーバではない）
 
+## Windows 版のビルドと itch.io への配布
+
+### 事前に必要なもの
+
+- Godot 4.7.2 と Windows Desktop 用の export テンプレート
+- [butler](https://itch.io/docs/butler/installing.html)（itch.io公式のアップロードツール。
+  配布元は公式サイトのみで、winget 等のパッケージマネージャ経路は無い）
+- `eos_credentials.cfg`（リポジトリには無い。`.gitignore` 対象で、
+  [eos_credentials.cfg.example](eos_credentials.cfg.example) をコピーして作る）。
+  **これが無いままビルドすると、クラッシュせずに黙って EOS がオフライン/フォールバック
+  モードのまま出荷される**（[autoload/eos_manager.gd](autoload/eos_manager.gd) の
+  `"eos_credentials.cfg not configured yet. Running in Offline / Fallback mode."`
+  の分岐に落ちるだけなので気付きにくい）。下記の `tools/export_windows.ps1` で書き出せば
+  機械的に止まる。`encryption_key` が空・64桁の16進でない場合も同様に止める
+  （空のまま出荷するとクラウドセーブだけが黙って常に失敗するため）
+- Client Secret を平文で exe に同梱するのは**意図どおり**。GameClient 型ポリシーの認証情報は
+  クライアントに埋め込む前提の設計（Epic 公式 dev-portal/client-credentials）で、
+  権限の確認は [docs/DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md) の「6.」で済ませてある
+
+### ビルドコマンド
+
+```powershell
+pwsh tools/export_windows.ps1
+```
+
+中身は `godot --headless --export-release "Windows Desktop" export/windows/TagGame.exe` だが、
+**素の godot コマンドを直接叩かないこと**。
+[addons/tag_game_export_guard/](addons/tag_game_export_guard/export_guard.gd) が
+`eos_credentials.cfg` の不備を検出すると、`[TagGameExportGuard] BLOCKED` を出力する。
+ところが Godot 4.7.2 ではプラグインから書き出しを中断できず、そのまま exe ができて
+終了コードも 0 になる（実測済み）。ラッパーはこの目印を拾い、exe を削除して exit 1 で止める。
+エディタから書き出す場合も、書き出しダイアログの `tag_game/require_eos_credentials` の下に
+赤字の警告が、結果一覧にエラーが出るだけで、書き出し自体は通ってしまう。
+意図的に EOS なしの版を作るときは、プリセットの `tag_game/require_eos_credentials` を
+false にする（判断が `export_presets.cfg` の差分に残る）。Web 版は認証情報を同梱しないので、
+このガードの対象外。
+
+`export/` は `.gitignore` 対象なので追加設定は不要。出力される配布物一式（実測済み）:
+
+- `TagGame.exe`（`binary_format/embed_pck=true` のため `.pck` は分離されない）
+- `EOSSDK-Win64-Shipping.dll`
+- `libeosg.windows.template_release.x86_64.dll`
+- `xaudio2_9redist.dll`
+
+いずれも `TagGame.exe` と同じフォルダに並ぶ（サブフォルダは作られない）。
+`eos_credentials.cfg` と `tools/serve.ps1` はこのフォルダには出てこない
+（`export_presets.cfg` の `include_filter` で `.pck` 内の `res://` パスへ同梱され、
+実行時に読まれる設計。特に `tools/serve.ps1` は起動のたびに
+[network_manager.gd](autoload/network_manager.gd) の `_prepare_tunnel_script()` が
+`user://serve.ps1` へ実ファイルとして書き出してから起動するため、配布物として
+別途置く必要は無い）。
+
+### butler でのアップロード
+
+```sh
+butler login
+butler push export/windows <ユーザー名>/<プロジェクト>:windows --userversion 0.1.0
+butler status <ユーザー名>/<プロジェクト>:windows
+```
+
+- チャンネル名に `win`/`windows` を含めると、itch.io 側で自動的に Windows 実行ファイルと
+  して認識される
+- フォルダをそのまま渡す（zip化不要。butler が差分アップロードするので2回目以降が速い）
+- `--userversion` には `project.godot` の `config/version` と同じ値を渡す
+  （省略すると itch.io が連番を振るだけになり、手元の版数と突き合わせられなくなる）
+
+### 版数の運用
+
+このプロジェクトには独立した2つの「版数」がある。**混同しないこと**:
+
+| 版数 | 実体 | 上げるタイミング |
+|---|---|---|
+| `PROTOCOL_VERSION` | [autoload/game_manager.gd](autoload/game_manager.gd) の定数（現在11）。ロビー画面の `v11` 表示 | RPC の名前・引数・ノードパスを変えたときだけ（`### 通信の版数` 参照） |
+| `application/config/version` | `project.godot`（現在 `0.1.0`）。exe のファイルプロパティ、`butler --userversion` | itch.io へ新しいビルドを上げるたびに（見た目だけの修正でも上げる） |
+
+見た目の修正だけをリリースしても `PROTOCOL_VERSION` は変える必要が無く、
+逆に RPC を変えていないのにストア更新のたびに `PROTOCOL_VERSION` を上げる必要も無い。
+
+### CI で自動化しない理由
+
+[.github/workflows/web-build.yml](.github/workflows/web-build.yml) は Web 版のみを対象にしている。
+Windows 版を CI に載せるには `eos_credentials.cfg`（Client Secret を含み `.gitignore` 対象）を
+GitHub Secrets に置く判断が別途必要なため、当面は手元での手動ビルドとする。
+
 ## EOS ロビーによる自動マッチメイキング（見知らぬ相手と）
 
 上の「インターネット越しに遊ぶ」は**リンクを知り合いに手動で送る**方式。
@@ -975,6 +1109,8 @@ python -m http.server 8123 --directory export/web
 > Steamworks から EOS への移行はコード上完了済み。決済・フレンド機能を含めて
 > 本番投入前に必要な人手作業（ポータル設定・デプロイ・実機確認）は
 > [docs/DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md) にまとめてある。
+> 法務文書・ストア登録・実機確認まで含めた人手作業の全体一覧と順番は
+> [docs/OWNER_TASKS.md](docs/OWNER_TASKS.md)。
 
 ```text
 [EOS ロビー]  … 見知らぬ相手を探す・レート帯でフィルタする（EOSが無料で提供）
@@ -1120,6 +1256,7 @@ CPU 逃走者も取る。置き物が出る**自分の背後＝追ってくる�
 - **非対称 Kファクター**: 鬼の人数 $N$ に応じて $K_R = 16 \times \sqrt{N}$、$K_H = 16 / \sqrt{N}$ とスケーリングし、レートのインフレ・デフレを防止。
 - **トドメ貢献度ボーナス**: 鬼陣営が勝利してレートを獲得した際、協力者から 30% の獲得分をトドメ役（実際にタッチした人）に再分配。
 - **人数補正**: 4人を基準とし、鬼が多いほど鬼陣営の期待勝率を自動引き上げ。
+- **サーバー権威化 (C-03)**: ランクマッチの結果はホストが `rating-api`（Cloudflare Workers+D1）へ報告し、確定値をRPCで各クライアントへ補正配布する。詳細は下記「マルチプレイの権威モデル」節を参照。
 
 ## 構成
 
@@ -1130,10 +1267,24 @@ autoload/game_manager.gd      役割抽選・速度補正・タイマー・タ�
 autoload/game/sight_system.gd    GameManagerの子ノード。視界判定（距離/視野角/情報の寿命）と共有状態
 autoload/game/version_gate.gd    GameManagerの子ノード。接続直後のプロトコル版数照合
 autoload/game/host_migration.gd  GameManagerの子ノード。切断時のCPU代行判定とレーティング・ペナルティ報告
-autoload/ranking_manager.gd   非対称 Elo レーティング計算・ランキング管理
+autoload/game/rating_report.gd   GameManagerの子ノード。ホスト単独でrating-apiの/report-matchへ
+                              試合結果を報告し、_apply_rating_correction RPCで確定値を全ピアへ配布
+autoload/ranking_manager.gd   非対称 Elo レーティング計算・ランキング管理（サーバー確定前の楽観表示）
+autoload/rating_backend_client.gd rating-api（/report-match /report-disconnect-penalty
+                              /claim-initial-rating /rating /leaderboard-top）のHTTPクライアント
 autoload/profile_manager.gd   プレイヤー名・カスタムカラー・戦績・レートのローカル/EOS管理
-autoload/backend_config.gd    friend-api/commerce-api の URL と USE_LIVE_* フラグを一元管理
-scenes/main.tscn(.gd)         ロビー（HOST / JOIN）
+autoload/backend_config.gd    friend-api/commerce-api/rating-api の URL と USE_LIVE_* フラグを一元管理
+autoload/eos_credentials_check.gd eos_credentials.cfg の検証（実行時の起動可否と出荷可否）。
+                              EosManager と書き出しガードで共有
+addons/tag_game_export_guard/ Windows 書き出し時に eos_credentials.cfg の不備を知らせる
+                              エクスポートプラグイン（止めるのは tools/export_windows.ps1）
+tools/export_windows.ps1      Windows 版の書き出し。認証情報の不備を検出したら exe を消して失敗させる
+autoload/music_manager.gd     タイトル/ロビー系画面のBGMを保持するAutoload。change_scene_to_file()を
+                              またいで鳴り続けさせる（NetworkManagerの対戦開始/終了と連動して停止/再生）
+scenes/title.tscn(.gd)        タイトル画面（エントリーシーン）。メインメニュー・プロフィールバッジ・
+                              ルームマッチ/ランキングダイアログの起動・?s=経由の自動参加を統括
+scenes/ranking_dialog.gd      ランキング画面。USE_LIVE_RATING_BACKEND=true かつEOS接続時は
+                              rating-apiの/leaderboard-topを、それ以外はEOS Leaderboardsを表示
 scenes/world.tscn(.gd)        シーンの骨組み（空・光・ナビ領域・スポーン管理）
 scenes/world_data.gd          マップとギミック配置の唯一の定義（定数テーブル）
 scenes/world_builder.gd       テーブルからの地形・ギミック・装飾の生成
@@ -1160,6 +1311,9 @@ scenes/hud.tscn(.gd)          役割バッジ・円形タイマー・バフ・�
 scenes/hud/minimap.gd         hud.tscnの$MapPanel。9ゾーンミニマップとコンパス回転・距離表示
 scenes/hud/lobby_panel.gd     hud.tscnの$Lobby。ロビー名簿・定員変更・役割選択ボタン
 ui/pop_theme.tres             全体に適用される POP テーマ
+locale/en.po                  英語の翻訳（msgid は日本語の原文。書き方は「表示言語」節）
+autoload/settings_manager.gd  マウス感度・音量・タッチ操作・表示言語・文字サイズの設定（user://settings.json）
+scenes/settings_screen.tscn(.gd) 設定画面
 tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
 tools/blender/character_common.py 着せ替えで共通の骨格・リグ・アニメ・書き出し。
                               服が増えてもここは触らない
@@ -1204,10 +1358,12 @@ tests/manhole.tscn            マンホールの出口に水平速度が乗る�
 tests/separation.tscn         キャラが重なっても必ずほどけるか（空中静止の回帰）
 tests/net_roles.tscn          2ピアで役割選択と湧き位置の分散を検証
 tests/net_live.tscn           実際の起動経路と実キー入力で通信対戦が始まるかの検証
-tests/uishot.tscn             UI（タイトル/ロビー/対戦中/リザルト）を PNG 書き出し（--headless 不可）
+tests/uishot.tscn             UI（タイトル/ロビー/対戦中/リザルト/各画面）を PNG 書き出し（--headless 不可、--locale en で英語）
 tests/quit_menu.tscn          Esc の終了確認メニューの開閉・既定フォーカス・キーリピートの検証
+tests/test_i18n.tscn          翻訳の整合性（未登録 msgid・訳し忘れ・書式指定・フォントの字形・言語設定）の検証
 tests/host_conflict.tscn      ポートが埋まっているときホストを弾いて理由を出すかの検証
 tests/costume_model.tscn      ④コスチューム・⑤帽子のデータモデル（所持・移行・整合性）を検証
+tests/test_eos_credentials_check.tscn eos_credentials.cfg の検証ロジック（起動可否と出荷可否の境界）
 tests/hat_placement.gd        ⑤帽子の装着位置（Chestボーン基準オフセット）を目視調整するスクリプト
                               （godot --path . --script res://tests/hat_placement.gd -- <出力先>）
 tests/hunter_squad.tscn       鬼3人の定員と連携（分担探索・挟み込み）の検証
@@ -1257,6 +1413,20 @@ export_presets.cfg            Web エクスポート設定（CI が使うので�
   `NetworkManager._on_server_disconnected()` がただの拒否をホストロストと区別できず、
   実際には存在しないホストマイグレーション探索UIを誤って出してしまう
   （v6→v7はこのRPC追加が理由）
+- 滑走中の見た目を全ピアで揃えるため `sync_slide`（Vector4）をプレイヤー/CPUの
+  `MultiplayerSynchronizer` へ追加し、滑走で設置ブロックが砕ける瞬間を全ピアで一致させる
+  `start_shatter` RPC（`scenes/gimmicks/placed_block.gd`）を追加した
+  （v8→v9はこの変更が理由）
+- 結果画面の「スキップ」ボタンは、`toggle_my_role()` / `request_runner` と同じ
+  「自分がホストなら直接、そうでなければ `request_skip_result` でサーバーへ依頼する」形。
+  サーバー側は `_back_to_waiting` RPCの発行元を1箇所（`GameManager`）に保つため、
+  `_schedule_next_round()` の自動タイムアウトと同じ経路をそのまま使う
+  （v9→v10はこのRPC追加が理由）
+- ランクマッチ(`round_is_ranked`)の結果は、ホストが`autoload/game/rating_report.gd`
+  経由で`rating-api`の`/report-match`へ報告し(逃走者離脱(`RUNNER_LEFT`)は対象外、
+  既存の切断ペナルティ経路のまま)、成功時は`_apply_rating_correction` RPCで
+  各ピアの`ProfileManager.rating`をサーバー確定値へ黙って補正する
+  （v10→v11はこのRPC追加が理由）
 - **視界判定はホストが一元的に行う**。CPU 側で個別にレイを飛ばさない
   （`GameManager.hunter_sees_runner()` に問い合わせる）
 - 視線の向きは**カメラではなくボディの -Z**。`player.tscn` が同期するのは

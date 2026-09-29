@@ -1,0 +1,1132 @@
+# 3D Chase Game - 英語訳 (L-09)
+#
+# msgid は日本語の原文そのもの。日本語ロケールではこのファイルは使われず、tr() は原文を返す。
+# ja 以外のロケールは project.godot の locale/fallback="en" によりこのファイルで表示される。
+#
+# 書き方の規則(tests/test_i18n.tscn が機械的に検査する):
+# - msgstr を空にしない。
+# - %d / %s / %.1f 等の書式指定は、msgid と同じ種類を同じ順番で残す。
+# - 新しい UI 文言を足したら、コード側を tr("…") にしてここにも追加する。
+#
+# 用語集(訳を揃えるため、ここに無い訳語を新しく作る前に確認すること):
+#   鬼 / おに = Chaser        にげる人 / 逃走者 = Runner
+#   ジェム = Gems             レート = Rating         Pt = Pt(数値ラベルは訳さず "1500 Pt" のまま出るので揃える)
+#   きせかえ = Wardrobe       ショップ = Shop         フレンド = Friends
+#   ランキング = Rankings     部屋 = Room             ホスト = Host
+#   ソロ練習 = Solo Practice  オンラインプレイ = Online Play
+# 口調: 原文はひらがな中心の子ども向けなので、短く平易な英語にする。
+# 記号: 同梱フォントは JIS 第一水準のサブセットなので、em dash(—)等の欧文記号は無い。
+#       訳文で新しく使う文字がフォントにあるかは tests/test_i18n の [6] が検査する。
+msgid ""
+msgstr ""
+"Project-Id-Version: 3D Chase Game\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+
+# --- 設定画面 (scenes/settings_screen) ---
+msgid "設定"
+msgstr "Settings"
+
+msgid "マウス感度"
+msgstr "Mouse Sensitivity"
+
+msgid "マスター音量"
+msgstr "Master Volume"
+
+msgid "※まだBGM・効果音がありません"
+msgstr "* No music or sound effects yet"
+
+msgid "タッチ操作"
+msgstr "Touch Controls"
+
+msgid "自動"
+msgstr "Auto"
+
+msgid "常に表示"
+msgstr "Always Show"
+
+msgid "常に非表示"
+msgstr "Always Hide"
+
+msgid "文字サイズ"
+msgstr "Text Size"
+
+msgid "標準"
+msgstr "Normal"
+
+msgid "大"
+msgstr "Large"
+
+msgid "特大"
+msgstr "Extra Large"
+
+msgid "既定に戻す"
+msgstr "Reset"
+
+msgid "保存してもどる"
+msgstr "Save & Back"
+
+# --- タイトル画面 (scenes/title) ---
+msgid "- オンライン鬼ごっこバトル -"
+msgstr "- Online Tag Battle -"
+
+msgid "オンラインプレイ (EOS P2P)"
+msgstr "Online Play (EOS P2P)"
+
+msgid "参加する（リンク/アドレス指定）"
+msgstr "Join (Link / Address)"
+
+msgid "オンラインプレイ（部屋を探す・作る）"
+msgstr "Online Play (Find or Create a Room)"
+
+msgid "ソロ練習 (VS CPU・レート変動なし)"
+msgstr "Solo Practice (VS CPU, Unrated)"
+
+msgid "きせかえ"
+msgstr "Wardrobe"
+
+msgid "ショップ"
+msgstr "Shop"
+
+msgid "フレンド"
+msgstr "Friends"
+
+msgid "ランキング"
+msgstr "Rankings"
+
+msgid "ゲーム終了"
+msgstr "Quit Game"
+
+msgid "別の部屋をさがす"
+msgstr "Find Another Room"
+
+msgid "接続エラーの履歴"
+msgstr "Connection Error History"
+
+msgid "エラー履歴はありません。"
+msgstr "No errors so far."
+
+msgid "この名前で参加します"
+msgstr "You'll join with this name"
+
+msgid "名前がまだ設定されていません。変更をおすすめします"
+msgstr "You haven't set a name yet. We recommend changing it."
+
+msgid "やめる"
+msgstr "Cancel"
+
+msgid "この名前で参加"
+msgstr "Join with This Name"
+
+msgid "参加リンクからの自動参加をやめました。メニューから参加できます。"
+msgstr "Stopped auto-joining from the link. You can join from the menu."
+
+msgid "参加リンクからホストへ接続中..."
+msgstr "Connecting to the host from the link..."
+
+msgid "レートの同期について"
+msgstr "About Rating Sync"
+
+msgid "前回の対戦時には確定していなかったレートがサーバーと同期され、%s%d Pt 補正されました（現在 %d Pt）。"
+msgstr "Your rating from your last match, which wasn't finalized yet, has been synced with the server and adjusted by %s%d Pt (now %d Pt)."
+
+msgid "閉じる"
+msgstr "Close"
+
+# --- 終了確認メニュー (autoload/quit_menu) ---
+msgid "ゲームを終わりますか？"
+msgstr "Quit the game?"
+
+msgid "タイトルにもどりますか？"
+msgstr "Go back to the title screen?"
+
+msgid "はい"
+msgstr "Yes"
+
+msgid "いいえ"
+msgstr "No"
+
+msgid "試合を退出してタイトルへ"
+msgstr "Leave Match & Go to Title"
+
+# --- オーバーレイ類 ---
+msgid "ホストとの接続が切れました。引き継ぎ先を確認しています…"
+msgstr "Lost connection to the host. Looking for a new host…"
+
+msgid "🔒 試着中"
+msgstr "🔒 Trying On"
+
+msgid "言語 / Language"
+msgstr "Language"
+
+# --- ゲーム中の HUD (scenes/hud) ---
+msgid "まちかまえ中"
+msgstr "Lying in wait"
+
+msgid "げきちゃく地点"
+msgstr "Landing spot"
+
+msgid "見つかった！"
+msgstr "Spotted!"
+
+msgid "スタミナ"
+msgstr "Stamina"
+
+msgid "なかま待ち"
+msgstr "Waiting for Players"
+
+msgid "リンクをコピー"
+msgstr "Copy Link"
+
+msgid "コピーしました"
+msgstr "Copied!"
+
+msgid "逃げる役になる"
+msgstr "Be the Runner"
+
+msgid "おにに戻る"
+msgstr "Back to Chaser"
+
+msgid "着せ替え"
+msgstr "Wardrobe"
+
+msgid "デバッグ: CPU逃走者 OFF"
+msgstr "Debug: CPU Runner OFF"
+
+msgid "デバッグ: CPU逃走者 ON"
+msgstr "Debug: CPU Runner ON"
+
+msgid "デバッグ中: あなたは鬼"
+msgstr "Debug: You're the Chaser"
+
+msgid "ラウンド開始"
+msgstr "Start Round"
+
+msgid "定員"
+msgstr "Max Players"
+
+msgid "変更"
+msgstr "Change"
+
+msgid "たいきしてタイトルへ戻る"
+msgstr "Leave & Back to Title"
+
+msgid "WASD 移動　Shift ダッシュ　Space スライディング　E アイテム　F カモン(1/2/3で型)　R 役割切替　Tab 逃げる役を指名　Enter 開始　Esc メニュー"
+msgstr "WASD Move   Shift Dash   Space Slide   E Item   F Taunt (1/2/3: style)   R Switch Role   Tab Pick Runner   Enter Start   Esc Menu"
+
+msgid "けっか"
+msgstr "Results"
+
+msgid "もう1戦（なかま待ちへ）"
+msgstr "Play Again (Back to Lobby)"
+
+msgid "[走] にげろ！"
+msgstr "[R] Run!"
+
+msgid "[鬼] おに ― にげる人をつかまえろ！"
+msgstr "[C] Chaser - Catch the Runner!"
+
+msgid "Esc: メニュー（マウスも離れる） / F: ナイス！"
+msgstr "Esc: Menu (frees the mouse) / F: Nice!"
+
+msgid "クリック: 視点を操作 / Esc: メニュー / F: カモン！（1/2/3 で型: %s）"
+msgstr "Click: Camera / Esc: Menu / F: Come on! (1/2/3 style: %s)"
+
+msgid "にげる時間！ 今のうちに走れ"
+msgstr "Head start! Run while you can"
+
+msgid "にげる時間 ― おには動けない"
+msgstr "Head start - Chasers can't move yet"
+
+msgid "デバッグ: R バナナ / T ブロック / Y ロケット / E 使用 / Q メイン画面"
+msgstr "Debug: R Banana / T Block / Y Rocket / E Use / Q Main Screen"
+
+msgid "部屋の人数が揃いました。戻りますか？"
+msgstr "Your room is full. Go back?"
+
+msgid "部屋に戻る"
+msgstr "Back to Room"
+
+msgid "逃走者との距離　%d m"
+msgstr "Runner distance: %d m"
+
+msgid "手がかりなし"
+msgstr "No clues"
+
+msgid "発見！　%s"
+msgstr "Found!  %s"
+
+msgid "さっき目撃　%s　あと%d秒"
+msgstr "Last seen: %s  (%ds left)"
+
+msgid "レート: %d Pt (%s%d)"
+msgstr "Rating: %d Pt (%s%d)"
+
+msgid "練習モード（レート変動なし）"
+msgstr "Practice mode (unrated)"
+
+msgid "%d秒後になかま待ちにもどります"
+msgstr "Back to the lobby in %d s"
+
+msgid "ちゅうだん"
+msgstr "Match Stopped"
+
+msgid "逃げる人が抜けました"
+msgstr "The Runner left"
+
+msgid "にげきった！"
+msgstr "You Escaped!"
+
+msgid "最後まで逃げきった"
+msgstr "You got away until the end"
+
+msgid "にげきられた…"
+msgstr "They Got Away…"
+
+msgid "逃げる人をつかまえられなかった"
+msgstr "The Runner wasn't caught"
+
+msgid "つかまった…"
+msgstr "Caught…"
+
+msgid "鬼につかまってしまった"
+msgstr "A Chaser caught you"
+
+msgid "つかまえた！"
+msgstr "Caught Them!"
+
+msgid "逃げる人をつかまえた"
+msgstr "The Runner was caught"
+
+msgid "経過"
+msgstr "Time"
+
+msgid "生存"
+msgstr "Survived"
+
+msgid "鬼 %d人"
+msgstr "Chasers: %d"
+
+msgid "トドメ: %s"
+msgstr "Caught by: %s"
+
+msgid "　／　"
+msgstr "  /  "
+
+msgid "内訳: 基礎 %s ／ 低レート帯ボーナス %s"
+msgstr "Breakdown: base %s / low-rating bonus %s"
+
+msgid "あなた"
+msgstr "You"
+
+msgid "%s を手に入れた（E キー）"
+msgstr "Got %s! (E key)"
+
+msgid "%s が切断 ― CPUが代わりに逃げます"
+msgstr "%s disconnected - a CPU will run instead"
+
+msgid "レートがサーバーと同期され、%s%d Pt 補正されました（現在 %d Pt）"
+msgstr "Your rating was synced with the server and adjusted by %s%d Pt (now %d Pt)"
+
+msgid "ブースト！"
+msgstr "Boost!"
+
+msgid "ワープ！"
+msgstr "Warp!"
+
+msgid "すべった！"
+msgstr "Slipped!"
+
+msgid "ロケット"
+msgstr "Rocket"
+
+msgid "バナナ"
+msgstr "Banana"
+
+msgid "ブロック"
+msgstr "Block"
+
+msgid "スピード"
+msgstr "Speed"
+
+msgid "ジャンプ"
+msgstr "Jump"
+
+# --- ロビー (scenes/hud/lobby_panel) ---
+msgid "参加者を退出させる"
+msgstr "Remove Player"
+
+msgid "退出させる"
+msgstr "Remove"
+
+msgid "キャンセル"
+msgstr "Cancel"
+
+msgid "%s をロビーから退出させますか？"
+msgstr "Remove %s from the lobby?"
+
+msgid "招待リンク: %s"
+msgstr "Invite link: %s"
+
+msgid "※cloudflared が入っていないため、インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）"
+msgstr "* cloudflared is not installed, so an internet invite link could not be created (only players on the same LAN can join)."
+
+msgid "※インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）"
+msgstr "* Could not create an internet invite link (only players on the same LAN can join)."
+
+msgid "（うち CPU の鬼 %d人）"
+msgstr " (incl. CPU Chasers: %d)"
+
+msgid "ホスト（あなた）"
+msgstr "Host (You)"
+
+msgid "参加中（ホストは別の人）"
+msgstr "Joined (someone else is hosting)"
+
+msgid "4人であそぶ: %d人が参加中%s"
+msgstr "4-player game: %d joined%s"
+
+msgid "この対戦は鬼がランダムで決まります（立候補不可）%s"
+msgstr "Chasers are chosen at random in this match (no volunteering)%s"
+
+msgid "　Enter キー: 開始"
+msgstr "   Enter: Start"
+
+msgid "　― ホストが始めるのを待っています"
+msgstr "   - Waiting for the host to start"
+
+msgid "デバッグ中: あなたが鬼、CPUが逃げる役です。Enter キー: 開始"
+msgstr "Debug: You're the Chaser and a CPU is the Runner. Enter: Start"
+
+msgid "R キー: 役割を切りかえ　― ホストが始めるのを待っています"
+msgstr "R: Switch role   - Waiting for the host to start"
+
+msgid "定員を%d人に変更しました"
+msgstr "Max players set to %d"
+
+msgid "定員の変更に失敗しました（現在: %d人）"
+msgstr "Couldn't change max players (currently %d)"
+
+msgid "だれもいません"
+msgstr "Nobody here yet"
+
+msgid "鬼は開始時にランダムで決まります（立候補不可）"
+msgstr "Chasers are chosen at random at the start (no volunteering)"
+
+msgid "逃げる役が未定です（開始時にランダムで決まります）"
+msgstr "No Runner yet (one will be chosen at random at the start)"
+
+msgid "[走] にげる"
+msgstr "[R] Runner"
+
+msgid "[鬼] おに"
+msgstr "[C] Chaser"
+
+msgid "この人を逃げる役にする"
+msgstr "Make this player the Runner"
+
+msgid "この人をロビーから退出させる"
+msgstr "Remove this player from the lobby"
+
+msgid "あなた（%s）"
+msgstr "You (%s)"
+
+msgid "プレイヤー %d"
+msgstr "Player %d"
+
+# --- タッチ操作 (scenes/hud/touch_controls) ---
+msgid "ダッシュ"
+msgstr "Dash"
+
+msgid "ダイブ"
+msgstr "Dive"
+
+msgid "アイテム"
+msgstr "Item"
+
+msgid "カモン"
+msgstr "Taunt"
+
+# --- プレイヤー頭上の表示 (scenes/player) ---
+msgid "ナイス！"
+msgstr "Nice!"
+
+msgid "カモン！"
+msgstr "Come on!"
+
+msgid "前のめり"
+msgstr "Lean In"
+
+msgid "腰ふり"
+msgstr "Wiggle"
+
+msgid "余裕"
+msgstr "Chill"
+
+msgid "にげ"
+msgstr "RUN"
+
+msgid "おに"
+msgstr "CHASE"
+
+# --- キャラクター (scenes/humanoid の SKINS) ---
+msgid "きょうりゅう"
+msgstr "Dino"
+
+msgid "しのび"
+msgstr "Ninja"
+
+msgid "バスケ08"
+msgstr "Hoops 08"
+
+# --- ゾーン名 (scenes/world_data) ---
+msgid "くもの展望台"
+msgstr "Cloud Lookout"
+
+msgid "どかんヤード"
+msgstr "Pipe Yard"
+
+msgid "ブロック広場"
+msgstr "Block Plaza"
+
+msgid "みどりの庭"
+msgstr "Green Garden"
+
+msgid "おしろ広場"
+msgstr "Castle Plaza"
+
+msgid "ブーストサーキット"
+msgstr "Boost Circuit"
+
+msgid "バネの谷"
+msgstr "Spring Valley"
+
+msgid "リフト港"
+msgstr "Lift Harbor"
+
+msgid "そらの階段"
+msgstr "Sky Stairs"
+
+# --- 接続・ホスト引き継ぎ (autoload/game_manager, network_manager, game/version_gate) ---
+msgid "ホストによって退出させられました。"
+msgstr "The host removed you from the room."
+
+msgid "このロビーは同じレート帯のみ参加できます（レート帯が一致しません）。"
+msgstr "Only players in the same rating tier can join this lobby (your tier doesn't match)."
+
+msgid "レート帯が違う参加者の接続を許可しませんでした（このロビーは同じレート帯のみ）。"
+msgstr "Blocked a player from a different rating tier (this lobby is same-tier only)."
+
+msgid "ポート %d が既に使われています。\n前に起動した Godot（ゲーム）が残っていないか確認して、閉じてから試してください。"
+msgstr "Port %d is already in use.\nCheck whether an earlier copy of the game (Godot) is still running, close it, and try again."
+
+msgid "ポート %d で待ち受けられませんでした。\n前に起動した Godot（ゲーム）が残っていないか確認してください。"
+msgstr "Couldn't listen on port %d.\nCheck whether an earlier copy of the game (Godot) is still running."
+
+msgid "通信を開始できませんでした（エラー %d）"
+msgstr "Couldn't start networking (error %d)"
+
+msgid "ホストに接続できませんでした"
+msgstr "Couldn't connect to the host"
+
+msgid "ホストとの接続が切れました"
+msgstr "Lost connection to the host"
+
+msgid "別のプレイヤーへホストを引き継いでいます…"
+msgstr "Handing the host role to another player…"
+
+msgid "ホストを引き継げるプレイヤーがいませんでした"
+msgstr "No player could take over as host"
+
+msgid "新しいホストの準備を待っています…"
+msgstr "Waiting for the new host to get ready…"
+
+msgid "あなたが新しいホストになりました。準備しています…"
+msgstr "You're the new host. Getting ready…"
+
+msgid "新しいホストに接続できませんでした"
+msgstr "Couldn't connect to the new host"
+
+msgid "ホストの引き継ぎがタイムアウトしました"
+msgstr "Host handover timed out"
+
+msgid "ゲームのバージョンが違います（ホスト v%d / あなた v%d）。\nブラウザなら再読み込み（Ctrl+Shift+R）、PC なら最新版で起動しなおしてください。"
+msgstr "Game versions don't match (host v%d / you v%d).\nIn a browser, reload the page (Ctrl+Shift+R). On PC, restart with the latest version."
+
+msgid "参加者のビルドが違います（あなた v%d / 相手 v%d）。\nWeb 版を再デプロイして、ブラウザを再読み込みしてもらってください。"
+msgstr "A player has a different build (you v%d / them v%d).\nRedeploy the web version and ask them to reload their browser."
+
+msgid "参加者 %d から応答がありません。\n古いビルドで参加している可能性があります（Web 版の再デプロイと再読み込みを試してください）。"
+msgstr "No response from player %d.\nThey may be on an old build (try redeploying the web version and reloading)."
+
+# --- ティア名 (autoload/ranking_manager) ---
+msgid "ブロンズ"
+msgstr "Bronze"
+
+msgid "シルバー"
+msgstr "Silver"
+
+msgid "ゴールド"
+msgstr "Gold"
+
+msgid "プラチナ"
+msgstr "Platinum"
+
+msgid "ダイヤ"
+msgstr "Diamond"
+
+msgid "マスター"
+msgstr "Master"
+
+# --- カタログ (autoload/*_catalog) ---
+msgid "きほん"
+msgstr "Basic"
+
+msgid "ネオン"
+msgstr "Neon"
+
+msgid "モノトーン"
+msgstr "Monotone"
+
+msgid "キャンディ"
+msgstr "Candy"
+
+msgid "めいさい"
+msgstr "Camo"
+
+msgid "さくら"
+msgstr "Sakura"
+
+msgid "シャドウ"
+msgstr "Shadow"
+
+msgid "なし"
+msgstr "None"
+
+msgid "パーティハット"
+msgstr "Party Hat"
+
+msgid "キャップ"
+msgstr "Cap"
+
+msgid "プロペラ帽"
+msgstr "Propeller Cap"
+
+msgid "まほうつかいの帽子"
+msgstr "Wizard Hat"
+
+msgid "王冠"
+msgstr "Crown"
+
+msgid "ネコミミビーニー"
+msgstr "Cat-Ear Beanie"
+
+msgid "ジェム 300個"
+msgstr "300 Gems"
+
+msgid "ジェム 800個"
+msgstr "800 Gems"
+
+msgid "ジェム 2000個"
+msgstr "2000 Gems"
+
+# --- ショップ (scenes/shop_screen) ---
+msgid "← タイトルへ"
+msgstr "← Title"
+
+msgid "ジェムを購入"
+msgstr "Buy Gems"
+
+msgid "限定コスチューム・帽子"
+msgstr "Limited Outfits & Hats"
+
+msgid "贈る相手を選択"
+msgstr "Choose a Friend"
+
+msgid "購入する"
+msgstr "Buy"
+
+msgid "不明な通貨パックです"
+msgstr "Unknown gem pack"
+
+msgid "通信エラーが発生しました。時間をおいて再度お試しください"
+msgstr "A network error occurred. Please try again later"
+
+msgid "購入がキャンセルされました"
+msgstr "Purchase canceled"
+
+msgid "決済の確認がタイムアウトしました。次回起動時に自動的に再確認されます。"
+msgstr "Payment confirmation timed out. It will be checked again automatically the next time you start the game."
+
+msgid "不明なアイテムです"
+msgstr "Unknown item"
+
+msgid "すでに所持しています"
+msgstr "You already own this"
+
+msgid "ジェムが足りません"
+msgstr "Not enough Gems"
+
+msgid "『%s』を%sで購入します。よろしいですか？"
+msgstr "Buy \"%s\" for %s?"
+
+msgid "処理中...(キャンセル)"
+msgstr "Processing... (Cancel)"
+
+msgid "開かない場合はこちら"
+msgstr "Click here if it doesn't open"
+
+msgid "💎%d を獲得しました！"
+msgstr "You got 💎%d!"
+
+msgid "所持済み"
+msgstr "Owned"
+
+msgid "🎁 プレゼントする"
+msgstr "🎁 Gift"
+
+msgid "Web版ではプレゼント機能は利用できません（EOSのP2P接続が必要なため）"
+msgstr "Gifting isn't available in the web version (it needs an EOS P2P connection)"
+
+msgid "『%s』を💎%dで購入します。（購入後の残高: 💎%d）"
+msgstr "Buy \"%s\" for 💎%d? (Balance after: 💎%d)"
+
+msgid "「%s」を購入しました！"
+msgstr "You bought \"%s\"!"
+
+msgid "「%s」を贈る相手を選択"
+msgstr "Who should get \"%s\"?"
+
+msgid "フレンドがいません。プレゼントを贈るにはまずフレンド登録してください。"
+msgstr "You have no friends yet. Add a friend first to send a gift."
+
+msgid "フレンドを追加する"
+msgstr "Add a Friend"
+
+msgid "贈る"
+msgstr "Send"
+
+msgid "%s さんの所持状況を確認中..."
+msgstr "Checking what %s already owns..."
+
+msgid "%s さんに届けられませんでした（相手が起動していないか接続できませんでした）。"
+msgstr "Couldn't deliver to %s (they're offline or couldn't be reached)."
+
+msgid "%s さんは既にこのアイテムを持っています。"
+msgstr "%s already has this item."
+
+msgid "%s さんに送信中..."
+msgstr "Sending to %s..."
+
+msgid "%s さんにプレゼントを贈りました！"
+msgstr "You sent a gift to %s!"
+
+msgid "%s さんに届けられませんでした（相手が起動していないか接続できませんでした）。ジェムは返金されました。"
+msgstr "Couldn't deliver to %s (they're offline or couldn't be reached). Your Gems were refunded."
+
+msgid "%s さんから「%s」をプレゼントされました！"
+msgstr "%s sent you \"%s\"!"
+
+# --- きせかえ (scenes/costume_screen) ---
+msgid "ショップへ"
+msgstr "To Shop"
+
+msgid "プレイヤー名:"
+msgstr "Player Name:"
+
+msgid "名前を入力"
+msgstr "Enter a name"
+
+msgid "キャラクター"
+msgstr "Character"
+
+msgid "スキン柄"
+msgstr "Skin Pattern"
+
+msgid "カラー"
+msgstr "Colors"
+
+msgid "帽子"
+msgstr "Hat"
+
+msgid "現在のレート:"
+msgstr "Current Rating:"
+
+msgid "総対戦回数:"
+msgstr "Total Matches:"
+
+msgid "総勝率:"
+msgstr "Win Rate:"
+
+msgid "保存してタイトルへ"
+msgstr "Save & Back to Title"
+
+msgid "破棄して戻る"
+msgstr "Discard & Go Back"
+
+msgid "%.1f%% (%d勝)"
+msgstr "%.1f%% (%d wins)"
+
+msgid "使用できます"
+msgstr "Available"
+
+msgid "このキャラクターは固定デザインです"
+msgstr "This character has a fixed design"
+
+msgid "🔒 未所持"
+msgstr "🔒 Not owned"
+
+msgid "色 %d:"
+msgstr "Color %d:"
+
+msgid "「%s」は未所持です（試着のみ・保存では反映されません。ショップで購入できます）"
+msgstr "You don't own \"%s\" (try-on only - it won't be saved. You can buy it in the Shop)"
+
+msgid "%sは固定デザインです。帽子は変更できます"
+msgstr "%s has a fixed design. You can still change the hat"
+
+msgid "保存していない変更があります。破棄して戻りますか？"
+msgstr "You have unsaved changes. Discard them and go back?"
+
+msgid "使用できない言葉が含まれています"
+msgstr "That name contains a word you can't use"
+
+# --- フレンド (scenes/friend_screen, autoload/gift_manager) ---
+msgid "更新"
+msgstr "Refresh"
+
+msgid "🎁 ショップでプレゼント"
+msgstr "🎁 Gift from the Shop"
+
+msgid "オンライン"
+msgstr "Online"
+
+msgid "オフライン"
+msgstr "Offline"
+
+msgid "オンラインのフレンドはいません"
+msgstr "No friends online"
+
+msgid "オフラインのフレンドはいません"
+msgstr "No friends offline"
+
+msgid "EOSに接続されていないため、フレンド一覧はサンプル表示です。"
+msgstr "Not connected to EOS, so this friend list is only a sample."
+
+msgid "マイフレンドコード:"
+msgstr "My Friend Code:"
+
+msgid "コピー"
+msgstr "Copy"
+
+msgid "フレンドコードを入力"
+msgstr "Friend code"
+
+msgid "フレンドを追加"
+msgstr "Add Friend"
+
+msgid "フレンドを検索"
+msgstr "Find Friends"
+
+msgid "名前で検索"
+msgstr "Search by Name"
+
+msgid "コードで検索"
+msgstr "Search by Code"
+
+msgid "名前 or コードを入力(完全一致)"
+msgstr "Name or code (exact)"
+
+msgid "検索"
+msgstr "Search"
+
+msgid "検索回数の上限に達しました。しばらくしてから試してください。"
+msgstr "You've hit the search limit. Please try again in a while."
+
+msgid "見つかりませんでした。"
+msgstr "No one found."
+
+msgid "%s（コード: %s）"
+msgstr "%s (Code: %s)"
+
+msgid "追加"
+msgstr "Add"
+
+msgid "%s さんにリクエストを送りました。"
+msgstr "Sent a request to %s."
+
+msgid "送信済み"
+msgstr "Sent"
+
+msgid "リクエストの送信に失敗しました。"
+msgstr "Couldn't send the request."
+
+msgid "取得失敗"
+msgstr "Couldn't load"
+
+msgid "届いているリクエスト"
+msgstr "Friend Requests"
+
+msgid "フレンド削除の確認"
+msgstr "Remove Friend?"
+
+msgid "削除する"
+msgstr "Remove"
+
+msgid "フレンド情報"
+msgstr "Friend Info"
+
+msgid "フレンド情報の取得に失敗しました。"
+msgstr "Couldn't load friend info."
+
+msgid "レート: [%s] %d Pt"
+msgstr "Rating: [%s] %d Pt"
+
+msgid "戦績: %d戦（にげる勝ち %d / おに勝ち %d）"
+msgstr "Record: %d matches (Runner wins %d / Chaser wins %d)"
+
+msgid "戦績データがまだありません。"
+msgstr "No match record yet."
+
+msgid "最終ログイン: 不明"
+msgstr "Last online: unknown"
+
+msgid "最終ログイン: たった今"
+msgstr "Last online: just now"
+
+msgid "最終ログイン: %d分前"
+msgstr "Last online: %d min ago"
+
+msgid "最終ログイン: %d時間前"
+msgstr "Last online: %d h ago"
+
+msgid "最終ログイン: %d日前"
+msgstr "Last online: %d days ago"
+
+msgid "届いているリクエストはありません"
+msgstr "No friend requests"
+
+msgid "承諾"
+msgstr "Accept"
+
+msgid "拒否"
+msgstr "Decline"
+
+msgid "ロビーに招待"
+msgstr "Invite to Lobby"
+
+msgid "詳細"
+msgstr "Details"
+
+msgid "削除"
+msgstr "Remove"
+
+msgid "接続先をコピーしました。%s さんにDirectConnectタブへ貼り付けてもらってください。"
+msgstr "Copied the address. Ask %s to paste it into the DirectConnect tab."
+
+msgid "招待に失敗しました(ロビーに参加していないか、接続先アドレスがまだ準備できていません)。"
+msgstr "Couldn't invite (you're not in a lobby, or the address isn't ready yet)."
+
+msgid "%s さんをフレンドから削除しますか？"
+msgstr "Remove %s from your friends?"
+
+msgid "%s さんをフレンドから削除しました。"
+msgstr "Removed %s from your friends."
+
+msgid "%s さんの削除に失敗しました。"
+msgstr "Couldn't remove %s."
+
+msgid "リクエストの送信に失敗しました(コードが正しいか確認してください)。"
+msgstr "Couldn't send the request (check that the code is correct)."
+
+msgid "フレンドコードをコピーしました。"
+msgstr "Copied your friend code."
+
+# --- ランキング (scenes/ranking_dialog) ---
+msgid "グローバルランキング"
+msgstr "Global Rankings"
+
+msgid "あなたの順位:"
+msgstr "Your Rank:"
+
+msgid "ランキングを取得中..."
+msgstr "Loading rankings..."
+
+msgid "ランキングの取得に失敗しました。時間をおいて再度更新してください。"
+msgstr "Couldn't load rankings. Please refresh again later."
+
+msgid "最新ランキングを取得しました"
+msgstr "Rankings updated"
+
+msgid "EOSに接続されていないため、ランキングはサンプル表示です。"
+msgstr "Not connected to EOS, so these rankings are only a sample."
+
+msgid "ランキングデータがまだありません。"
+msgstr "No ranking data yet."
+
+msgid "更新する"
+msgstr "Refresh"
+
+msgid "圏外"
+msgstr "Unranked"
+
+# --- ルームマッチ (scenes/room_match_dialog) ---
+msgid "ルームマッチ (EOS P2P)"
+msgstr "Room Match (EOS P2P)"
+
+msgid "表示するレート帯を絞り込みます"
+msgstr "Filter rooms by rating tier"
+
+msgid "おまかせマッチ"
+msgstr "Quick Match"
+
+msgid "中断"
+msgstr "Stop"
+
+msgid "おまかせマッチの検索を中断します"
+msgstr "Stop searching for a Quick Match"
+
+msgid "+ 部屋を作成"
+msgstr "+ Create Room"
+
+msgid "部屋名:"
+msgstr "Room Name:"
+
+msgid "最大人数:"
+msgstr "Max Players:"
+
+msgid "あなたのレート帯:"
+msgstr "Your Tier:"
+
+msgid "同じレート帯のみ参加可にする"
+msgstr "Same tier only"
+
+msgid "この設定で作成"
+msgstr "Create Room"
+
+msgid "接続アドレス:"
+msgstr "Address:"
+
+msgid "アドレス指定で参加"
+msgstr "Join by Address"
+
+msgid "直結ホスト開始"
+msgstr "Host Direct"
+
+msgid "自分のレート帯のみ"
+msgstr "My tier only"
+
+msgid "近いレート帯まで(±1)"
+msgstr "Nearby tiers (±1)"
+
+msgid "すべて表示"
+msgstr "Show all"
+
+msgid "部屋をさがす"
+msgstr "Find a Room"
+
+msgid "部屋をつくる"
+msgstr "Create a Room"
+
+msgid "リンクで参加"
+msgstr "Join by Link"
+
+msgid "Web版ではオンラインマッチメイキングは利用できません。「DirectConnect」タブをご利用ください。"
+msgstr "Online matchmaking isn't available in the web version. Please use the \"DirectConnect\" tab."
+
+msgid "%sの部屋"
+msgstr "%s's Room"
+
+msgid "あなたのレート帯: %s"
+msgstr "Your tier: %s"
+
+msgid "ロビーを検索中..."
+msgstr "Searching for lobbies..."
+
+msgid "ロビー一覧を更新しました (%d件)"
+msgstr "Lobby list updated (%d)"
+
+msgid "EOSに接続されていないため、ロビー一覧はサンプル表示です。"
+msgstr "Not connected to EOS, so this lobby list is only a sample."
+
+msgid "条件に合うロビーがありません。フィルタを緩めるか「部屋を作成」してください。"
+msgstr "No lobbies match. Loosen the filter or \"Create Room\"."
+
+msgid "部屋を作成する"
+msgstr "Create a Room"
+
+msgid "%d / %d人"
+msgstr "%d / %d players"
+
+msgid "レート差 %+d"
+msgstr "Rating gap %+d"
+
+msgid " 🔒同帯限定"
+msgstr " 🔒Same tier"
+
+msgid "🔒同帯限定"
+msgstr "🔒Same tier"
+
+msgid "参加"
+msgstr "Join"
+
+msgid "このロビーは同じレート帯のみ参加できます"
+msgstr "Only players in the same tier can join this lobby"
+
+msgid "ロビーに参加中..."
+msgstr "Joining lobby..."
+
+msgid "マッチング中… 空いている部屋を探しています"
+msgstr "Matching… looking for an open room"
+
+msgid "近いレート帯の部屋に参加中..."
+msgstr "Joining a room in a nearby tier..."
+
+msgid "空いている部屋が無いので新規作成します..."
+msgstr "No open rooms, so creating a new one..."
+
+msgid "%sの部屋(%s)"
+msgstr "%s's Room (%s)"
+
+msgid "おまかせマッチを中断しました"
+msgstr "Quick Match stopped"
+
+msgid "ロビーを作成中..."
+msgstr "Creating lobby..."
+
+msgid "ロビーを作成しました！ゲームを開始します。"
+msgstr "Lobby created! Starting the game."
+
+msgid "ロビーの作成に失敗しました。"
+msgstr "Couldn't create the lobby."
+
+msgid "ロビーへの参加に失敗しました。"
+msgstr "Couldn't join the lobby."
+
+msgid "ロビーに参加しました！ゲームへ接続中..."
+msgstr "Joined the lobby! Connecting to the game..."
+
+msgid "ホストの準備が完了していません。少し待ってから再度お試しください。"
+msgstr "The host isn't ready yet. Please wait a moment and try again."
+
+msgid "アドレスを入力してください"
+msgstr "Please enter an address"
+
+# --- サンプル表示のロビー名 (autoload/eos_manager、EOS 未接続時のみ) ---
+msgid "初心者歓迎！タグゲーム"
+msgstr "Beginners Welcome! Tag Game"
+
+msgid "ガチ勢レート戦部屋"
+msgstr "Serious Ranked Room"
+
+msgid "まったり部屋"
+msgstr "Chill Room"
+
+# --- 多重起動の警告 (autoload/profile_manager) ---
+msgid "Tag_Game はすでに別のウィンドウで起動しています。\n\n同時に起動したままだと、セーブデータ（プレゼントの受け取りなど）が正しく保存されないことがあるため、このウィンドウはこのまま終了します。\n\n先に起動しているウィンドウを閉じてから、もう一度起動しなおしてください。"
+msgstr "Tag_Game is already running in another window.\n\nRunning two copies at once can keep save data (like received gifts) from being saved correctly, so this window will now close.\n\nClose the other window first, then start the game again."
+
+msgid "多重起動のため、このウィンドウは終了します"
+msgstr "Already running - this window will close"

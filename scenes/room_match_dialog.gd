@@ -10,8 +10,10 @@ signal closed
 @onready var refresh_btn: Button = $Panel/VBox/TabContainer/LobbyList/TopRow/RefreshButton
 @onready var tier_filter: OptionButton = $Panel/VBox/TabContainer/LobbyList/TopRow/TierFilter
 @onready var quick_match_btn: Button = $Panel/VBox/TabContainer/LobbyList/TopRow/QuickMatchButton
+@onready var quick_match_cancel_btn: Button = $Panel/VBox/TabContainer/LobbyList/TopRow/QuickMatchCancelButton
 @onready var create_open_btn: Button = $Panel/VBox/TabContainer/LobbyList/TopRow/CreateOpenButton
-@onready var status_label: Label = $Panel/VBox/StatusLabel
+@onready var status_label: Label = $Panel/VBox/StatusRow/StatusLabel
+@onready var spinner := $Panel/VBox/StatusRow/Spinner
 
 # ルーム作成タブ
 @onready var room_name_edit: LineEdit = $Panel/VBox/TabContainer/CreateRoom/NameRow/RoomNameEdit
@@ -31,21 +33,40 @@ signal closed
 ## TierFilter の選択肢。0=自分の帯のみ, 1=自分の帯±1, 2=すべて
 const FILTER_LABELS := ["自分のレート帯のみ", "近いレート帯まで(±1)", "すべて表示"]
 
+## H-05: おまかせマッチの検索間隔・タイムアウト
+const QUICK_MATCH_RETRY_INTERVAL := 3.0
+const QUICK_MATCH_TIMEOUT := 20.0
+
 var _all_lobbies: Array = []
+
+## H-05: おまかせマッチの進行状態。_quick_match_tokenは実行中ループの世代識別子で、
+## 中断/クローズ/多重起動のたびにインクリメントし、古いループがチェックポイントで
+## 気づいて静かに終了できるようにする
+var _quick_match_active := false
+var _quick_match_token := 0
 
 
 func _ready() -> void:
+	# タブ名を行動ベースの日本語にする(H-09)。ノード名(LobbyList/CreateRoom/DirectConnect)や
+	# @onreadyパス、tabs.current_tab = ... の代入は変更しない
+	tabs.set_tab_title(0, tr("部屋をさがす"))
+	tabs.set_tab_title(1, tr("部屋をつくる"))
+	tabs.set_tab_title(2, tr("リンクで参加"))
 	refresh_btn.pressed.connect(_on_refresh_pressed)
-	create_open_btn.pressed.connect(func(): tabs.current_tab = 1)
+	create_open_btn.pressed.connect(_on_create_open_pressed)
 	do_create_btn.pressed.connect(_on_do_create_pressed)
 	direct_join_btn.pressed.connect(_on_direct_join_pressed)
 	direct_host_btn.pressed.connect(_on_direct_host_pressed)
 	close_btn.pressed.connect(_on_close_pressed)
 	quick_match_btn.pressed.connect(_on_quick_match_pressed)
+	quick_match_cancel_btn.pressed.connect(_on_quick_match_cancel_pressed)
+	# H-05: 中断ボタン・_on_close_pressed()のhide()・その他のhide()経路すべてを、
+	# visible変化を監視する単一のキャンセル処理に統一する
+	visibility_changed.connect(_on_visibility_changed)
 	tier_filter.item_selected.connect(func(_i): _render_lobbies())
 
 	for label in FILTER_LABELS:
-		tier_filter.add_item(label)
+		tier_filter.add_item(tr(label))
 
 	EosManager.lobby_match_list.connect(_on_lobbies_received)
 	EosManager.lobby_created.connect(_on_lobby_created)
@@ -58,30 +79,47 @@ func _ready() -> void:
 		quick_match_btn.disabled = true
 		refresh_btn.disabled = true
 		create_open_btn.disabled = true
-		status_label.text = "Web版ではオンラインマッチメイキングは利用できません。「DirectConnect」タブをご利用ください。"
+		status_label.text = tr("Web版ではオンラインマッチメイキングは利用できません。「DirectConnect」タブをご利用ください。")
 		tabs.current_tab = 2
 
 
 func open() -> void:
 	show()
-	room_name_edit.text = "%sの部屋" % ProfileManager.player_name
-	my_tier_label.text = "あなたのレート帯: %s" % RankingManager.tier_name(ProfileManager.rating)
+	room_name_edit.text = tr("%sの部屋") % ProfileManager.player_name
+	my_tier_label.text = tr("あなたのレート帯: %s") % tr(RankingManager.tier_name(ProfileManager.rating))
 	tier_lock_check.button_pressed = false
 	if not OS.has_feature("web"):
 		_on_refresh_pressed()
 
 
+func _on_create_open_pressed() -> void:
+	tabs.current_tab = 1
+
+
 func _on_refresh_pressed() -> void:
 	if EosManager._is_searching_lobbies:
 		return
-	status_label.text = "ロビーを検索中..."
+	spinner.set_active(true)
+	status_label.text = tr("ロビーを検索中...")
 	refresh_btn.disabled = true
 	EosManager.request_lobby_list()
 
 
 func _on_lobbies_received(lobbies: Array) -> void:
-	refresh_btn.disabled = false
-	status_label.text = "ロビー一覧を更新しました (%d件)" % lobbies.size()
+	# H-05: おまかせマッチのリトライループが能動的にrequest_lobby_list()を呼んでいる間は、
+	# このハンドラの通常時の文言/色/refresh_btn再有効化で進行表示を上書きしないようにする
+	# (_all_lobbies更新とリスト再描画は検索の副産物として毎回行ってよい)
+	if not _quick_match_active:
+		spinner.set_active(false)
+		refresh_btn.disabled = false
+		status_label.text = tr("ロビー一覧を更新しました (%d件)") % lobbies.size()
+		# EOS未接続時はrequest_lobby_list()がモックデータを返すため、本物と誤認しないよう明示する
+		# (受信のたびに再チェックしないと、リスト到着時にこの注記が上の行で上書きされて消える)
+		if not EosManager.is_eos_available:
+			status_label.text = tr("EOSに接続されていないため、ロビー一覧はサンプル表示です。")
+			status_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
+		else:
+			status_label.remove_theme_color_override("font_color")
 	_all_lobbies = lobbies
 	_render_lobbies()
 
@@ -106,9 +144,15 @@ func _render_lobbies() -> void:
 
 	if visible_lobbies.is_empty():
 		var empty_lbl := Label.new()
-		empty_lbl.text = "条件に合うロビーがありません。フィルタを緩めるか「部屋を作成」してください。"
+		empty_lbl.text = tr("条件に合うロビーがありません。フィルタを緩めるか「部屋を作成」してください。")
 		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		room_list_container.add_child(empty_lbl)
+
+		var empty_create_btn := Button.new()
+		empty_create_btn.text = tr("部屋を作成する")
+		empty_create_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		empty_create_btn.pressed.connect(_on_create_open_pressed)
+		room_list_container.add_child(empty_create_btn)
 		return
 
 	for lobby in visible_lobbies:
@@ -117,7 +161,7 @@ func _render_lobbies() -> void:
 
 func _build_lobby_row(lobby: Dictionary, my_rating: int) -> Control:
 	var host_rating := int(lobby.get("host_rating", 1500))
-	var tier_name := RankingManager.tier_name(host_rating)
+	var tier_name := tr(RankingManager.tier_name(host_rating))
 	var tier_color := RankingManager.tier_color(host_rating)
 
 	var row := HBoxContainer.new()
@@ -130,29 +174,31 @@ func _build_lobby_row(lobby: Dictionary, my_rating: int) -> Control:
 
 	var name_lbl := Label.new()
 	name_lbl.text = str(lobby.get("name", "Room"))
+	name_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED  # 部屋名は利用者の入力(L-09)
 	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var count_lbl := Label.new()
-	count_lbl.text = "%d / %d人" % [lobby.get("members", 1), lobby.get("max_members", 8)]
+	count_lbl.text = tr("%d / %d人") % [lobby.get("members", 1), lobby.get("max_members", 8)]
 
 	var gap_lbl := Label.new()
 	var gap := host_rating - my_rating
 	if absi(gap) >= 50:
-		gap_lbl.text = "レート差 %+d" % gap
+		gap_lbl.text = tr("レート差 %+d") % gap
 		gap_lbl.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
 	if lobby.get("tier_lock", false):
-		gap_lbl.text += " 🔒同帯限定" if not gap_lbl.text.is_empty() else "🔒同帯限定"
+		gap_lbl.text += tr(" 🔒同帯限定") if not gap_lbl.text.is_empty() else tr("🔒同帯限定")
 
 	var join_btn := Button.new()
-	join_btn.text = "参加"
+	join_btn.text = tr("参加")
 	var lobby_id := String(lobby.get("id", ""))
 	# ②tier_lock部屋はホスト側でもレート帯不一致を拒否するが、参加してから弾かれるより
 	# ここで先に止めた方が体験がよい(拒否RPCは「フィルタをすり抜けた場合の保険」として残る)
 	if lobby.get("tier_lock", false) and not RankingManager.is_rating_compatible(host_rating, my_rating, 0):
 		join_btn.disabled = true
-		join_btn.tooltip_text = "このロビーは同じレート帯のみ参加できます"
+		join_btn.tooltip_text = tr("このロビーは同じレート帯のみ参加できます")
 	join_btn.pressed.connect(func():
-		status_label.text = "ロビーに参加中..."
+		spinner.set_active(true)
+		status_label.text = tr("ロビーに参加中...")
 		EosManager.join_lobby(lobby_id)
 	)
 
@@ -164,12 +210,71 @@ func _build_lobby_row(lobby: Dictionary, my_rating: int) -> Control:
 	return row
 
 
-## ②近いレート帯・空きのある部屋へ自動参加する。無ければ自分の帯で新規作成する
+## H-05: request_lobby_list()を能動的に呼び出し、その結果(lobby_match_list)を待つ。
+## モック分岐(EOS未接続)はrequest_lobby_list()の呼び出し中に同期的にemitするため、
+## 素朴に「呼んでからawait」すると登録がemitより後になり永久に待ってしまう
+## (tests/test_eos_lobby_mock.gdの_test_request_lobby_list()と同じ理由でCONNECT_ONE_SHOTを
+## 先に張ってから呼ぶ)。実EOS分岐は内部で非同期に待ってから戻るため、
+## 戻ってきた時点で既に結果が届いていれば素直にそれを返す
+func _await_lobby_list() -> Array:
+	var captured := {}
+	var cb := func(lobbies: Array) -> void:
+		captured["lobbies"] = lobbies
+	EosManager.lobby_match_list.connect(cb, CONNECT_ONE_SHOT)
+	EosManager.request_lobby_list()
+	if captured.has("lobbies"):
+		return captured["lobbies"]
+	return await EosManager.lobby_match_list
+
+
+## H-05: 能動的にロビー一覧を検索し続け、空きあり・レート帯適合の部屋が見つかれば参加、
+## QUICK_MATCH_TIMEOUT秒見つからなければ新規作成にフォールバックする
 func _on_quick_match_pressed() -> void:
+	if _quick_match_active:
+		return
+	_quick_match_active = true
+	_quick_match_token += 1
+	var token := _quick_match_token
+	_set_quick_match_ui_busy(true)
+	spinner.set_active(true)
+	_show_quick_match_status(tr("マッチング中… 空いている部屋を探しています"))
+
+	var start_ms := Time.get_ticks_msec()
+	while true:
+		var lobbies: Array = await _await_lobby_list()
+		if token != _quick_match_token:
+			return  # 中断/クローズ済み。UIは_cancel_quick_match()側が既に戻している
+		var best = _find_best_quick_match_lobby(lobbies)
+		if best != null:
+			_show_quick_match_status(tr("近いレート帯の部屋に参加中..."))
+			EosManager.join_lobby(String(best.get("id", "")))
+			_finish_quick_match(token)
+			return
+		if (Time.get_ticks_msec() - start_ms) / 1000.0 >= QUICK_MATCH_TIMEOUT:
+			break
+		_show_quick_match_status(tr("マッチング中… 空いている部屋を探しています"))
+		var waited := 0.0
+		while waited < QUICK_MATCH_RETRY_INTERVAL:
+			await get_tree().create_timer(0.5).timeout
+			if token != _quick_match_token:
+				return
+			waited += 0.5
+
+	if token != _quick_match_token:
+		return
+	_show_quick_match_status(tr("空いている部屋が無いので新規作成します..."))
+	GameManager.tier_lock_enabled = false
+	EosManager.create_lobby(2, 8, tr("%sの部屋(%s)") % [ProfileManager.player_name, tr(RankingManager.tier_name(ProfileManager.rating))])
+	_finish_quick_match(token)
+
+
+## ②近いレート帯・空きのある部屋を選ぶ(旧・同期版おまかせマッチと同じ選定基準)。
+## 見つからなければnullを返す
+func _find_best_quick_match_lobby(lobbies: Array) -> Variant:
 	var my_rating := ProfileManager.rating
 	var best = null
 	var best_gap := 999999
-	for lobby in _all_lobbies:
+	for lobby in lobbies:
 		if int(lobby.get("members", 1)) >= int(lobby.get("max_members", 8)):
 			continue
 		var host_rating := int(lobby.get("host_rating", 1500))
@@ -179,31 +284,71 @@ func _on_quick_match_pressed() -> void:
 		if gap < best_gap:
 			best_gap = gap
 			best = lobby
-	if best != null:
-		status_label.text = "近いレート帯の部屋に参加中..."
-		EosManager.join_lobby(String(best.get("id", "")))
-	else:
-		status_label.text = "空いている部屋が無いので新規作成します..."
-		GameManager.tier_lock_enabled = false
-		EosManager.create_lobby(2, 8, "%sの部屋(%s)" % [ProfileManager.player_name, RankingManager.tier_name(my_rating)])
+	return best
+
+
+func _finish_quick_match(token: int) -> void:
+	if token != _quick_match_token:
+		return
+	_quick_match_active = false
+	_set_quick_match_ui_busy(false)
+
+
+## リトライ中はRefreshButton/TierFilter/CreateOpenButton/QuickMatchButton自体をdisabledにし、
+## 手動Refreshとの二重request_lobby_list()呼び出しリスクを回避する
+func _set_quick_match_ui_busy(busy: bool) -> void:
+	quick_match_btn.disabled = busy
+	quick_match_cancel_btn.visible = busy
+	refresh_btn.disabled = busy
+	tier_filter.disabled = busy
+	create_open_btn.disabled = busy
+
+
+## C-01のオレンジ色オーバーライド(EOS未接続時、_on_lobbies_received参照)が検索の合間に
+## 再適用されている可能性があるため、進行表示テキストでは必ず解除する
+func _show_quick_match_status(text: String) -> void:
+	status_label.text = text
+	status_label.remove_theme_color_override("font_color")
+
+
+func _on_quick_match_cancel_pressed() -> void:
+	_cancel_quick_match()
+
+
+func _on_visibility_changed() -> void:
+	if not visible:
+		_cancel_quick_match()
+
+
+func _cancel_quick_match() -> void:
+	if not _quick_match_active:
+		return
+	_quick_match_token += 1
+	_quick_match_active = false
+	_set_quick_match_ui_busy(false)
+	spinner.set_active(false)
+	if visible:
+		_show_quick_match_status(tr("おまかせマッチを中断しました"))
 
 
 func _on_do_create_pressed() -> void:
 	var r_name := room_name_edit.text.strip_edges()
 	var max_m := int(max_members_spin.value)
-	status_label.text = "ロビーを作成中..."
+	spinner.set_active(true)
+	status_label.text = tr("ロビーを作成中...")
 	GameManager.tier_lock_enabled = tier_lock_check.button_pressed
 	EosManager.create_lobby(2, max_m, r_name) # lobby_typeはEOS版では無視される(常にPublicAdvertised)
 
 
 func _on_lobby_created(connect_status: int, _lobby_id: String) -> void:
+	spinner.set_active(false)
 	if connect_status == 1:
-		status_label.text = "ロビーを作成しました！ゲームを開始します。"
+		status_label.text = tr("ロビーを作成しました！ゲームを開始します。")
 		# ②EOSロビー経由=見知らぬ相手とのレーティング戦。鬼のランダム化・レート適用の判定に使う
 		NetworkManager.matched_via_eos_lobby = true
 		NetworkManager.start_host(true)
 	else:
-		status_label.text = "ロビーの作成に失敗しました。"
+		status_label.text = tr("ロビーの作成に失敗しました。")
 
 
 func _on_lobby_joined(lobby_id: String, _permissions: int, _locked: bool, response: int) -> void:
@@ -211,15 +356,17 @@ func _on_lobby_joined(lobby_id: String, _permissions: int, _locked: bool, respon
 	if EosManager.is_host:
 		return
 	if response != 1:
-		status_label.text = "ロビーへの参加に失敗しました。"
+		spinner.set_active(false)
+		status_label.text = tr("ロビーへの参加に失敗しました。")
 		return
-	status_label.text = "ロビーに参加しました！ゲームへ接続中..."
+	status_label.text = tr("ロビーに参加しました！ゲームへ接続中...")
 	# ②EOSロビー経由=見知らぬ相手とのレーティング戦。鬼のランダム化・レート適用の判定に使う
 	NetworkManager.matched_via_eos_lobby = true
 	if EosManager.is_eos_available:
 		var addr := await EosManager.await_host_addr(lobby_id)
 		if addr.is_empty():
-			status_label.text = "ホストの準備が完了していません。少し待ってから再度お試しください。"
+			spinner.set_active(false)
+			status_label.text = tr("ホストの準備が完了していません。少し待ってから再度お試しください。")
 			return
 		NetworkManager.start_client(addr)
 	else:
@@ -231,7 +378,7 @@ func _on_lobby_joined(lobby_id: String, _permissions: int, _locked: bool, respon
 func _on_direct_join_pressed() -> void:
 	var addr = direct_addr_edit.text.strip_edges()
 	if addr.is_empty():
-		status_label.text = "アドレスを入力してください"
+		status_label.text = tr("アドレスを入力してください")
 		return
 	# ②DirectConnect=フレンドのみのプライベート対戦(レーティング無し、鬼は立候補制)
 	NetworkManager.matched_via_eos_lobby = false

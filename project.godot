@@ -14,6 +14,7 @@ config/name="3D Chase Game"
 run/main_scene="res://scenes/title.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
+config/version="0.1.0"
 
 [autoload]
 
@@ -38,6 +39,8 @@ HSessions="*res://addons/epic-online-services-godot/heos/hsessions.gd"
 HPlayerDataStorage="*res://addons/epic-online-services-godot/heos/hplayerdatastorage.gd"
 EosManager="*res://autoload/eos_manager.gd"
 QuitMenu="*res://autoload/quit_menu.tscn"
+SettingsManager="*res://autoload/settings_manager.gd"
+MusicManager="*res://autoload/music_manager.gd"
 
 [display]
 
@@ -47,6 +50,10 @@ window/size/window_width_override=1600
 window/size/window_height_override=900
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/epic-online-services-godot/plugin.cfg", "res://addons/tag_game_export_guard/plugin.cfg")
 
 [gui]
 
@@ -146,9 +153,10 @@ taunt_3={
 ]
 }
 
-[editor_plugins]
+[internationalization]
 
-enabled=PackedStringArray("res://addons/epic-online-services-godot/plugin.cfg")
+locale/translations=PackedStringArray("res://locale/en.po")
+locale/fallback="ja"
 
 [layer_names]
 

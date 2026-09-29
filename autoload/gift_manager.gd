@@ -178,7 +178,7 @@ func _handle_packet(sender_pid: int, data: PackedByteArray) -> void:
 func _on_gift_packet(sender_pid: int, payload: Dictionary) -> void:
 	var kind := StringName(str(payload.get("kind", "")))
 	var id := StringName(str(payload.get("id", "")))
-	var from_name := String(payload.get("from_name", "フレンド"))
+	var from_name := String(payload.get("from_name", tr("フレンド")))
 
 	var valid := false
 	match kind:

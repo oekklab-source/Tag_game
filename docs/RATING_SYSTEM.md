@@ -110,11 +110,17 @@ $N=4, K_R=32.0, K_H=8.0, E_R=0.5, E_H=0.5$
 
 ### 低レート帯ボーナスの効果（`apply_bonus=true`、2分捕獲・N=4のケースで比較）
 
+> [!NOTE]
+> このセクションの数値は、C-03(レートのサーバー権威化)設計時にTypeScript移植版の
+> ゴールデンテストとして実装(`autoload/ranking_manager.gd`)と突き合わせた際、
+> 旧版の表に計算誤りがあることが判明したため修正済み（2026-09-22）。$w(R)$列の値は
+> 元々正しかった。実装を正としてこの表を書き換えている。
+
 | 全員のレート | ティア | $w(R)$ | Runner 変動（ボーナス込み） | 陣営合計（Net） |
 | :--- | :--- | :--- | :--- | :--- |
-| 1300 | シルバー | 1.00 | -5.33 → **-0.44** | **+7.34**（純増） |
-| 1500 | ゴールド | 0.75 | -5.33 → **+0.73** | **+5.51**（純増） |
-| 1700 | プラチナ | 0.25 | -5.33 → **-3.75** | **+1.84**（純増） |
+| 1300 | シルバー | 1.00 | -5.33 → **+2.67** | **+15.00**（純増） |
+| 1500 | ゴールド | 0.75 | -5.33 → **+0.67** | **+11.25**（純増） |
+| 1700 | プラチナ | 0.25 | -5.33 → **-3.33** | **+3.75**（純増） |
 | 2000 | マスター | 0.00 | -5.33 → **-5.33**（不変） | **±0.00**（Zero-Sum） |
 
 ---
@@ -137,7 +143,10 @@ $N=4, K_R=32.0, K_H=8.0, E_R=0.5, E_H=0.5$
 ## 6. 適用範囲・既知の制約
 
 - **VS CPU戦には適用しない**: `GameManager.round_is_ranked` が真（オンライン対戦かつ人間の対戦相手が1人以上）のときのみ `RankingManager.apply_match_end()` を呼ぶ。ソロ練習（CPU戦）ではレート・戦績とも変動しない。
-- **レートはクライアント側の自己申告**: `user://profile.json` にローカル保存されるのみで、サーバー側の検証は無い。書き換えによる詐称（低ティアに居座って低レート帯ボーナスを稼ぐ等）は現状の実装では防げない。将来サーバー権威化する場合は `ProfileManager.merge_server_inventory()` 相当の仕組みで上書きできるようにする。
+- **ランクマッチのCPU鬼は「平均レートのプレースホルダ」として $N$ に数える（C-03 R-11）**: 人間の鬼が `MAX_HUNTERS`(=3) 未満のランクマッチは残り枠をCPU鬼が埋める。この人数はクライアント側の楽観計算では `GameManager.round_hunter_count`（CPU込み）として使われるため、サーバーへも `cpu_hunter_count` として送り、`buildHunterRatings()` が**人間の鬼の平均レート**を持つプレースホルダを $N$ に足して揃える。平均を使うので 2.3節の $R_H^*$（鬼レートの平均 + $O(N)$）は人間だけの場合と変わらず、Runner側の期待勝率は厳密に一致する。**CPU鬼ぶんの増減は捨てる**ので、その分だけ2.4節のゼロサムは漏れる（例: 人間の鬼1人 + CPU2体なら、鬼陣営が本来受け取る増減の 2/3 が消える）。これはクライアント側の既存挙動と同じで、「クライアントとサーバーが同じ値を出すこと」を優先した結果。
+  - **CPU鬼がトドメを刺した試合**（`tagger_id == -1`）は `toucher_puid = null` で報告する。サーバーは toucher が null なら2.5節のトドメ再分配を行わないため、「誰も30%の上乗せを受け取らない捕獲試合」として処理される。C-03 R-3時点ではこの試合を報告自体スキップしていたが、小規模ランクマッチでは普通に起こり「負けてもレートが動かない試合」が発生していたため R-11 で解消した。
+- **レートはサーバー権威化済み（C-03）**: ランクマッチ(`round_is_ranked`)の結果は、ホストが `autoload/game/rating_report.gd` 経由で `service/rating-api` の `/report-match` へ報告する（対戦相手の切断時は `autoload/game/host_migration.gd` 経由で `/report-disconnect-penalty`）。クライアント側の `calculate_rating_delta()` によるローカル計算はもはや最終値ではなく、D1側の確定計算が完了するまでの**楽観表示**に過ぎない。サーバーの確定値は `_apply_rating_correction` RPC で全ピアの `ProfileManager.rating` へ黙って上書き配布される（詳細は7節）。残存リスク（ホスト単独報告は複数アカウントの結託によるねつ造を防げない構造的限界）は `docs/SECURITY_NOTES.md` の項目7を参照。
+- **鬼側の楽観表示はサーバー確定値と一致しないことがある**: `calculate_rating_delta()` の鬼側は「味方の鬼は全員自分と同レート」と仮定して $N$ 個複製する（Runner側は `opponent_avg_rating` を複製する）。そのため**人間の鬼が2人以上いてレートがばらついている試合は、$N$ を揃えても原理的に数Pt食い違う**。最終値はサーバーが `_apply_rating_correction` RPC で配るので実害は「補正トーストが出る」ことだけだが、`autoload/ranking_manager.gd` の `server_rating_corrected` のコメントが言う「通常は一致する」はこの条件付きである点に注意（R-11でコメントを実態に合わせて書き直した）。
 - **各クライアントが自分の取り分だけを独立計算する**: レート変動値はRPCで同期されず、Runner/Hunterそれぞれが `calculate_rating_delta()` を自分の端末でローカルに呼ぶ。そのため、同一の試合結果（例: 逃げ切り）に対してRunner側とHunter側で異なる `survival_time` を渡すと評価が食い違う恐れがある。`calculate_rating_delta()` は `is_runner == is_winner`（逃げ切り）の場合に `survival_time` を必ず `MAX_TIME` へ正規化することで、Runner視点・Hunter視点のどちらで計算しても同じ `sr=1.0 / sh=0.0` になることを担保している（回帰テスト: `tests/rating_model.gd` の `test_clean_escape_symmetric_across_clients()`）。
 
 ---
@@ -150,3 +159,14 @@ $N=4, K_R=32.0, K_H=8.0, E_R=0.5, E_H=0.5$
   - `apply_match_end(...)`: 試合終了時に ProfileManager / EosManager へ自動反映
   - `tier_index(...)` / `tier_id(...)` / `tier_name(...)` / `tier_color(...)` / `is_rating_compatible(...)`: レート帯（ティア）判定
 - **検証テスト**: [tests/rating_model.gd](file:///c:/sandbox/Tag_Game/tests/rating_model.gd)
+
+### サーバー権威化レイヤー (C-03)
+
+上記のコア計算は「サーバー確定前の楽観表示」を作るためにクライアント側で使われ続けているが、
+最終的な確定値は以下の経路でサーバー(Cloudflare Workers + D1)から配布される。
+
+- **ホスト側の報告**: [autoload/game/rating_report.gd](file:///c:/sandbox/Tag_Game/autoload/game/rating_report.gd) — `GameManager._end_round()` からホストのみが `report_match_result()` を fire-and-forget で呼び、`service/rating-api` の `/report-match` へ送る。成功時は `@rpc("authority","call_local","reliable") _apply_rating_correction()` で確定値を全ピアへ配布し、`ProfileManager`/`RankingManager` の専用補正関数（`apply_server_rating_correction()`）が上書きする。
+- **切断ペナルティの報告**: [autoload/game/host_migration.gd](file:///c:/sandbox/Tag_Game/autoload/game/host_migration.gd) — 対戦相手の切断時は `/report-disconnect-penalty` へ、`match_id` はクライアントから送らせず、サーバーが対象PUID・役割・時間バケツ(5分)から決定的に導出する（C-03 R-10のv2形式。詳細は `docs/SECURITY_NOTES.md` 項目3）。
+- **HTTPクライアント**: [autoload/rating_backend_client.gd](file:///c:/sandbox/Tag_Game/autoload/rating_backend_client.gd) — `service/rating-api` の全エンドポイント（`/report-match` `/report-disconnect-penalty` `/claim-initial-rating` `/rating` `/leaderboard-top`）を呼ぶ薄いクライアント。
+- **サーバー実装**: [service/rating-api/](file:///c:/sandbox/Tag_Game/service/rating-api/) — このファイルの§2〜§5と同じ計算式のTypeScript移植版（`src/rating_model.ts`）をゴールデンテストとして持つ。まだ実運用デプロイはされておらず、`autoload/backend_config.gd` の `USE_LIVE_RATING_BACKEND` フラグ（現状 `false`）でクライアント側の参照先を切り替える。
+- **補正UX**: `scenes/title.gd` の `RatingSyncDialog`（起動時の未反映補正の通知）、`scenes/hud.gd` の対戦中トースト（`_apply_rating_correction` RPC受信時）、`scenes/ranking_dialog.gd`（`USE_LIVE_RATING_BACKEND` かつEOS接続時は `/leaderboard-top` を、それ以外はEOS Leaderboardsを表示）。

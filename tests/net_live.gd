@@ -1,6 +1,6 @@
 extends Node
 
-## 実際の起動経路（main.tscn -> NetworkManager -> world.tscn）と
+## 実際の起動経路（title.tscn -> NetworkManager -> world.tscn）と
 ## 本物のキー入力で、通信対戦がちゃんと始まるかを確かめる。
 ##
 ##   ホスト:     godot --headless --path . res://tests/net_live.tscn -- host
@@ -41,7 +41,7 @@ func _run() -> void:
 	# いつまでも進まない。理由が表示されてタイトルへ戻ることだけを見る
 	if not is_host and OS.get_cmdline_user_args().has("badver"):
 		await _sleep(6.0)
-		# last_error は main.gd がラベルへ移した時点で消えるので、画面から読む
+		# last_error は title.gd がラベルへ移した時点で消えるので、画面から読む
 		var scene := get_tree().current_scene
 		var label := scene.find_child("StatusLabel", true, false) as Label if scene else null
 		print("[CLIENT] 戻り先=%s" % (scene.name if scene else "<null>"))
@@ -144,3 +144,18 @@ func _dump(title: String, is_host: bool) -> void:
 
 func _sleep(sec: float) -> void:
 	await get_tree().create_timer(sec).timeout
+
+# --- 実セーブ(user://profile.json / settings.json)とクラウドセーブの保護 ---
+# ラウンドを回さないテストでも、EOS にログインできる環境では起動時のクラウドセーブ同期が
+# 実セーブを書き換える(2026-09-25 に boost_panel の実行中に実測)。どのテストが
+# 踏むかを個別に見極めるより、全テストで一律に挟む。詳細は tests/save_guard.gd のヘッダ。
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
+
+
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
+
+
+func _exit_tree() -> void:
+	_SaveGuard.restore(_save_backup)

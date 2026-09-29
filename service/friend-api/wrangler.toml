@@ -16,9 +16,7 @@ compatibility_date = "2024-11-01"
 #                                                                          ―書き込みを1呼び出しあたり2件→1件に削減)
 #   stats:<puid>         -> {rating, matches_played, runner_wins, hunter_wins,
 #                             highest_rating, costume_id, costume_colors, hat_id, updated_at}  (/syncが更新)
-#   penalty:<puid>       -> {rating_delta, reason, created_at}            (/report-penalty, /consume-penalty)
 #   rl:<ip>:<date>       -> カウント文字列(TTL2日)                        (/send-requestのレート制限)
-#   rlpenalty:<puid>:<date>    -> カウント文字列(TTL2日)                  (/report-penaltyのレート制限、報告者PUID単位)
 #   rlsync:<puid>:<date>       -> カウント文字列(TTL2日)                  (/syncのレート制限)
 #   rlsearch:<puid>:<date>     -> カウント文字列(TTL2日)                  (/search-userのレート制限)
 #   jwks_cache           -> Epic JWKSの生JSON(TTL1時間)                  (verifyIdToken()のキャッシュ)

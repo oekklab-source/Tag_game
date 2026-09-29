@@ -25,10 +25,17 @@ signal leaderboard_loaded(entries: Array)
 signal leaderboard_score_uploaded(success: bool, score: int)
 
 const CREDENTIALS_PATH := "res://eos_credentials.cfg"
+const _CredentialsCheck := preload("res://autoload/eos_credentials_check.gd")
 const SYNC_PROFILE_TIMEOUT_SEC := 8.0
 const LOBBY_SEARCH_TIMEOUT_SEC := 10.0
 
 var is_eos_available: bool = false
+## テスト専用のスイッチ。true の間は起動時のクラウドセーブ同期(sync_profile_with_cloud)を
+## 何もせずに抜ける。tests/save_guard.gd の backup() が立てる。
+## 同期はテスト本体と並行して走るため、テストがメモリ上で書き換えた値(rating=9999 等)が
+## 実アカウントの PDS に上がり、highest_rating の ratchet で開発機へ戻り続けていた
+## (2026-09-25 に highest_rating=10004 を実測、クラウド側を手で直した)
+var cloud_sync_blocked_for_tests: bool = false
 var product_user_id: String = ""
 var current_lobby_id: String = ""
 var is_host: bool = false
@@ -163,23 +170,18 @@ func _load_credentials() -> HCredentials:
 	if cfg.load(CREDENTIALS_PATH) != OK:
 		return null
 
-	var product_id: String = cfg.get_value("eos", "product_id", "")
-	var sandbox_id: String = cfg.get_value("eos", "sandbox_id", "")
-	var deployment_id: String = cfg.get_value("eos", "deployment_id", "")
-	var client_id: String = cfg.get_value("eos", "client_id", "")
-	var client_secret: String = cfg.get_value("eos", "client_secret", "")
-	if product_id.is_empty() or sandbox_id.is_empty() or deployment_id.is_empty() \
-			or client_id.is_empty() or client_secret.is_empty():
+	# 必須項目の判定は書き出しガード(addons/tag_game_export_guard/)と共通化してある
+	if not _CredentialsCheck.is_runtime_usable(cfg):
 		return null
 
 	var credentials := HCredentials.new()
 	credentials.product_name = cfg.get_value("eos", "product_name", "Tag_Game")
 	credentials.product_version = cfg.get_value("eos", "product_version", "1.0")
-	credentials.product_id = product_id
-	credentials.sandbox_id = sandbox_id
-	credentials.deployment_id = deployment_id
-	credentials.client_id = client_id
-	credentials.client_secret = client_secret
+	credentials.product_id = cfg.get_value("eos", "product_id", "")
+	credentials.sandbox_id = cfg.get_value("eos", "sandbox_id", "")
+	credentials.deployment_id = cfg.get_value("eos", "deployment_id", "")
+	credentials.client_id = cfg.get_value("eos", "client_id", "")
+	credentials.client_secret = cfg.get_value("eos", "client_secret", "")
 	credentials.encryption_key = cfg.get_value("eos", "encryption_key", "")
 	return credentials
 
@@ -272,11 +274,11 @@ func request_lobby_list() -> void:
 			# ここでは待たない)。_is_searching_lobbiesはワーカー側が責任を持って解除する
 	else:
 		var mock_lobbies = [
-			{"id": "mock-1001", "name": "初心者歓迎！タグゲーム", "members": 2, "max_members": 6,
+			{"id": "mock-1001", "name": tr("初心者歓迎！タグゲーム"), "members": 2, "max_members": 6,
 				"host_rating": 1250, "tier": "silver", "tier_lock": false},
-			{"id": "mock-1002", "name": "ガチ勢レート戦部屋", "members": 4, "max_members": 8,
+			{"id": "mock-1002", "name": tr("ガチ勢レート戦部屋"), "members": 4, "max_members": 8,
 				"host_rating": 1950, "tier": "diamond", "tier_lock": true},
-			{"id": "mock-1003", "name": "まったり部屋", "members": 1, "max_members": 8,
+			{"id": "mock-1003", "name": tr("まったり部屋"), "members": 1, "max_members": 8,
 				"host_rating": 1500, "tier": "gold", "tier_lock": false},
 		]
 		lobby_match_list.emit(mock_lobbies)
@@ -516,6 +518,10 @@ const LEADERBOARD_QUERY_TIMEOUT_SEC := 10.0
 
 var _leaderboard_id_cache: String = ""
 
+## L-05付随修正: EOS接続済みでもタイムアウト/エラーで空配列が返るケースを、
+## 未接続時のモック分岐や「本当に0件」のケースと区別できるようにする(空文字=正常/未発生)
+var last_leaderboard_error: String = ""
+
 
 ## stat_nameからLeaderboard IDを動的に解決する(ポータルのIDをコードに転記しない方針)。
 ## 見つからない場合は空文字(Developer PortalでStat/Leaderboard定義が未作成、または取得失敗)
@@ -539,6 +545,7 @@ func _resolve_leaderboard_id() -> String:
 ## 遅れて本来のデータが届けばleaderboard_loadedが再度発火しUIも更新される)。
 func request_leaderboard(_start_rank: int = 1, _end_rank: int = 20) -> void:
 	if is_eos_available:
+		last_leaderboard_error = ""
 		var state := {"done": false}
 		var watchdog_pid := _arm_watchdog("request_leaderboard", LEADERBOARD_QUERY_TIMEOUT_SEC + 5.0)
 		_request_leaderboard_worker(state, watchdog_pid)
@@ -548,6 +555,7 @@ func request_leaderboard(_start_rank: int = 1, _end_rank: int = 20) -> void:
 			elapsed += 0.5
 		if not state["done"]:
 			print("[EosManager] request_leaderboard() timed out after %.1fs (Leaderboardsクエリが無応答の可能性あり)。" % LEADERBOARD_QUERY_TIMEOUT_SEC)
+			last_leaderboard_error = "timeout"
 			leaderboard_loaded.emit([])
 	else:
 		var mock_entries = [
@@ -569,14 +577,17 @@ func _request_leaderboard_worker(state: Dictionary, watchdog_pid: int) -> void:
 		print("[EosManager] Leaderboard定義が見つかりません(stat_name=%s)。Developer Portal側の設定を確認してください。" % LEADERBOARD_STAT_NAME)
 		state["done"] = true
 		_disarm_watchdog(watchdog_pid)
+		last_leaderboard_error = "no_definition"
 		leaderboard_loaded.emit([])
 		return
 	var records = await HLeaderboards.get_leaderboard_records_async(leaderboard_id)
 	state["done"] = true
 	_disarm_watchdog(watchdog_pid)
 	if records == null:
+		last_leaderboard_error = "query_failed"
 		leaderboard_loaded.emit([])
 		return
+	last_leaderboard_error = ""  # タイムアウト後に遅れて本物のデータが届いた場合の再クリア
 	var entries: Array = []
 	for r in records:
 		var name_val: String = r.get("user_display_name", "")
@@ -657,7 +668,7 @@ func _sync_profile_with_cloud_bounded() -> void:
 ## - クラウド側の存在有無自体が確認できない場合(一時的な通信障害/PDS不調など):
 ##   「未保存」と誤認して上書きしてしまうデータ消失を避けるため、同期処理を中断する
 func sync_profile_with_cloud() -> void:
-	if not is_eos_available:
+	if not is_eos_available or cloud_sync_blocked_for_tests:
 		return
 	var status: HPlayerDataStorage.FileQueryStatus = \
 		await HPlayerDataStorage.query_file_status_async(CLOUD_PROFILE_FILENAME)

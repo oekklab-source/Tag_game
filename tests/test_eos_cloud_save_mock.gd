@@ -58,3 +58,18 @@ func _test_cloud_sync_fallback() -> void:
 	# EOS無効時は何もせず安全に抜けること(クラッシュしないこと)を確認
 	await EosManager.sync_profile_with_cloud()
 	_assert(true, "EOS無効時 sync_profile_with_cloud() がクラッシュせず即座に抜ける")
+
+# --- 実セーブ(user://profile.json / settings.json)とクラウドセーブの保護 ---
+# ラウンドを回さないテストでも、EOS にログインできる環境では起動時のクラウドセーブ同期が
+# 実セーブを書き換える(2026-09-25 に boost_panel の実行中に実測)。どのテストが
+# 踏むかを個別に見極めるより、全テストで一律に挟む。詳細は tests/save_guard.gd のヘッダ。
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
+
+
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
+
+
+func _exit_tree() -> void:
+	_SaveGuard.restore(_save_backup)

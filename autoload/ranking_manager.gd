@@ -4,6 +4,34 @@ extends Node
 ## 1人 (Runner) vs 多人数 (Hunter) の非対称対戦に合わせたレート変動を算出する。
 
 signal rating_changed(old_rating: int, new_rating: int, delta: int)
+## C-03 R-4: サーバーが黙って補正したレートを、実際にユーザーへ知らせるべき瞬間にだけ発火する。
+## 通常の試合終了時にも発火するrating_changedとは別に用意する(二重通知を防ぐため)。
+## delta==0(見た目上変化なし)の場合は発火しない。試合中の即時補正
+## (apply_server_rating_correction)と起動時reconciliation(_reconcile_server_rating)の
+## 両方から発火しうる。
+##
+## **「クライアントとサーバーは同じElo計算式を使うので常に一致する」わけではない**
+## (R-4時点のコメントはそう書いていたが誤り。C-03 R-11で実態に合わせて書き直した)。
+## 一致するのは次の条件がそろったときだけで、それ以外は数Ptのズレが出る:
+##  - 人数Nが一致すること。CPU鬼が枠を埋める試合は R-11 で cpu_hunter_count を
+##    送るようにしたので揃う。
+##  - 鬼側の楽観計算は下の calculate_rating_delta() が「味方の鬼は全員自分と同レート」
+##    と仮定する(自分のレートをN個複製する)ため、**人間の鬼が2人以上いて、かつ
+##    レートがばらついている試合では原理的に一致しない**。ここは意図的な簡略化で、
+##    最終的にはサーバー確定値がこのシグナル経由で上書きする。
+## つまり補正トーストは「例外的に出るもの」だが「絶対に出ないもの」ではない。
+signal server_rating_corrected(old_rating: int, new_rating: int, delta: int)
+
+## rating_report.gdと同じ理由(headless単体実行でclass_nameのグローバル登録が
+## 更新されていないケースへの対処)でpreloadを使う
+const _RatingBackendClientScript := preload("res://autoload/rating_backend_client.gd")
+
+## H-03: 結果画面がレート内訳を表示するための退避場所（calculate_rating_delta() の
+## 直近の呼び出し結果）。既存の戻り値(int)とそれに依存するテスト(tests/rating_model.gd)を
+## 変えないため、戻り値をDictionary化せずここへ退避する方式にした。
+## base + bonus は必ず total と一致する（個別にround()すると1Pt合わないことがあるため、
+## bonus をroundしてから base = total - bonus で求めている）
+var last_delta_breakdown := {"total": 0, "base": 0, "bonus": 0}
 
 ## ⑦RankingManagerはEosManagerよりも先にautoload初期化されるため、ここで
 ## eos_initializedへ接続してもシグナルの発火を取りこぼす心配は無い(project.godotの
@@ -12,22 +40,46 @@ func _ready() -> void:
 	EosManager.eos_initialized.connect(_on_eos_initialized)
 
 
-## ⑦レーティング戦で逃げる役として切断し、CPUに代行された場合の敗北精算(暫定実装)。
-## 本人はその場にいないため反映できず、サーバー側(friend-api)に記録されたものを
-## 起動時に一度だけ取りに行く。StripePurchaseProvider.reconcile_pending()と同じ
-## 「起動時一回だけの確認・適用・クリア」パターン
+## ⑦EOS初期化成功時に起動時reconciliationを実行する。C-03 R-5で旧・切断ペナルティ
+## 経路(friend-apiの/report-penalty・/consume-penalty)を廃止したため、以前ここにあった
+## _consume_pending_penalty()は不要になった――対戦中の切断ペナルティはrating-apiの
+## ratingsテーブルへ直接反映されるため、_reconcile_server_rating()の通常のサーバー照合が
+## そのまま拾う
 func _on_eos_initialized(success: bool) -> void:
 	if not success:
 		return
-	var res := await FriendManager.consume_pending_penalty()
-	if not res.get("pending", false):
+	_reconcile_server_rating()
+
+
+## C-03 R-4: 起動時、サーバー権威のレートとローカル値を同期する。USE_LIVE_RATING_BACKENDが
+## falseの間、またはEOS未接続の間は既存の他ガード(rating_report.gd等)と同じ規約で
+## 即return(現状ゼロ挙動変化)
+func _reconcile_server_rating() -> void:
+	if not (BackendConfig.USE_LIVE_RATING_BACKEND and EosManager.is_eos_available):
 		return
-	var delta := int(res.get("rating_delta", 0))
+	var res := await _RatingBackendClientScript.get_rating(self)
+	if not res.get("api_ok", false) or not res.get("ok", false):
+		return  # 通信エラー・rate_limited等。次回起動時に再試行するだけで諦める
+
+	if not res.get("claimed", false):
+		if ProfileManager.initial_rating_claimed:
+			# サーバー側の行消失等の極めて稀な矛盾ケース。再claimするとサーバー側の
+			# matches_played/winsをローカルratingだけの新規行で0から作り直してしまうため、
+			# 安全側に倒して何もしない
+			return
+		var claim_res := await _RatingBackendClientScript.claim_initial_rating(self, ProfileManager.rating)
+		if claim_res.get("api_ok", false) and claim_res.get("ok", false):
+			ProfileManager.mark_initial_rating_claimed()
+		return  # 初回claimは「補正」ではないのでUI通知はしない(差分が無いため)
+
 	var old_r := ProfileManager.rating
-	ProfileManager.apply_match_result(delta, false, true)
+	ProfileManager.apply_server_rating_snapshot(
+		int(res.get("rating", old_r)), int(res.get("highest_rating", ProfileManager.highest_rating)))
 	var new_r := ProfileManager.rating
-	EosManager.upload_rating(new_r)
-	rating_changed.emit(old_r, new_r, delta)
+	if new_r != old_r:
+		EosManager.upload_rating(new_r)
+		rating_changed.emit(old_r, new_r, new_r - old_r)
+		server_rating_corrected.emit(old_r, new_r, new_r - old_r)
 
 # --- 基本設定定数 ---
 const K_BASE: float = 16.0
@@ -279,17 +331,29 @@ func calculate_rating_delta(
 		for i in range(hunter_count):
 			hunter_ratings.append(float(opponent_avg_rating))
 		var res := calculate_all_rating_changes(float(my_rating), hunter_ratings, survival_time, toucher_idx)
-		return int(round(res["runner_delta"]))
+		var total := int(round(res["runner_delta"]))
+		_store_breakdown(total, int(round(res["bonus_runner"])))
+		return total
 	else:
 		var hunter_ratings: Array[float] = []
 		for i in range(hunter_count):
 			hunter_ratings.append(float(my_rating))
 		var res := calculate_all_rating_changes(float(opponent_avg_rating), hunter_ratings, survival_time, toucher_idx)
 		var h_deltas: Array = res["hunter_deltas"]
+		var h_bonus: Array = res["bonus_hunters"]
 		var target_idx := 0 if is_tagger else mini(1, hunter_count - 1)
-		if target_idx < h_deltas.size():
-			return int(round(h_deltas[target_idx]))
-		return int(round(h_deltas[0]))
+		if target_idx >= h_deltas.size():
+			target_idx = 0
+		var total := int(round(h_deltas[target_idx]))
+		var bonus := int(round(h_bonus[target_idx])) if target_idx < h_bonus.size() else 0
+		_store_breakdown(total, bonus)
+		return total
+
+
+## H-03: last_delta_breakdown の更新のみを行うヘルパー。base はここで
+## total - bonus として求め、内訳を足し合わせた時に必ず合計と一致するようにする
+func _store_breakdown(total: int, bonus: int) -> void:
+	last_delta_breakdown = {"total": total, "base": total - bonus, "bonus": bonus}
 
 
 ## 試合終了時に呼び出し、ProfileManager および EosManager に反映する
@@ -308,6 +372,7 @@ func apply_match_end(
 	if not GameManager.round_is_ranked:
 		var r := ProfileManager.rating
 		rating_changed.emit(r, r, 0)
+		_store_breakdown(0, 0)
 		return 0
 	var old_r := ProfileManager.rating
 	var delta := calculate_rating_delta(
@@ -322,9 +387,24 @@ func apply_match_end(
 	
 	ProfileManager.apply_match_result(delta, is_winner, is_runner)
 	var new_r := ProfileManager.rating
-	
+
 	# EOS Leaderboard にも更新を送信
 	EosManager.upload_rating(new_r)
-	
+
 	rating_changed.emit(old_r, new_r, delta)
 	return delta
+
+
+## C-03 R-3: rating_report.gdのRPCで届いた確定レートで、apply_match_end()が既に
+## ローカル計算・反映した値を黙って補正する。ProfileManager反映・EOS Leaderboard
+## 再アップロード・シグナルemitを行う。R-4: 見た目上の変化(delta != 0)がある場合のみ
+## server_rating_corrected を追加発火し、hud.gd(試合中トースト)/title.gd(起動時ダイアログ)
+## がそれを購読して実際にユーザーへ知らせる
+func apply_server_rating_correction(new_rating: int) -> void:
+	var old_r := ProfileManager.rating
+	ProfileManager.apply_server_rating_correction(new_rating)
+	var new_r := ProfileManager.rating
+	EosManager.upload_rating(new_r)
+	rating_changed.emit(old_r, new_r, new_r - old_r)
+	if new_r != old_r:
+		server_rating_corrected.emit(old_r, new_r, new_r - old_r)

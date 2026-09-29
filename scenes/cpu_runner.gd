@@ -206,7 +206,7 @@ var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	add_to_group("cpu_runners")
-	role_label.text = Player.ROLE_TEXT["runner"]
+	role_label.text = tr(Player.ROLE_TEXT["runner"])
 	role_label.modulate = RUNNER_COLOR
 	if multiplayer.is_server():
 		sync_position = position

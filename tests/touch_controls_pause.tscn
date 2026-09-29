@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://touch_controls_pause_uid"]
+
+[ext_resource type="Script" path="res://tests/touch_controls_pause.gd" id="1_touch_controls_pause"]
+
+[node name="TouchControlsPause" type="Node"]
+script = ExtResource("1_touch_controls_pause")

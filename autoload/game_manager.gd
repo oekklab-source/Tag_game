@@ -15,6 +15,8 @@ signal roles_changed
 ## ②④ peer_profiles（他ピアのレート/ティア/コスチューム）が更新された
 signal profiles_changed
 signal debug_mode_changed(enabled: bool)
+## H-02: 逃げる役の切断でCPU代行に切り替わったことをHUDのトースト表示に伝える
+signal runner_cpu_takeover(peer_name: String)
 
 enum State { WAITING, PLAYING, RESULT }
 
@@ -50,7 +52,14 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## v8: 「カモン」を挑発3種にして sync_emote が取る値に COME_HIP / COME_COOL が増えた。
 ## あわせて着せ替えのキャラ（Humanoid.SKINS）をプロフィールの "skin" に載せた
 ## v9: Player/CPU の滑走状態同期と、滑走中の設置ブロック破砕RPCを追加した
-const PROTOCOL_VERSION := 9
+## v10: 結果画面の「スキップ」操作用に request_skip_result RPCを追加したため(M-14)
+## v11: ホストの試合結果報告(rating-api /report-match)とレート補正RPC
+## (rating_report.gd の _apply_rating_correction)を追加したため(C-03 R-3)
+##
+## ストア向けの製品版数は project.godot の application/config/version(現在0.1.0)。
+## これとは別物であり、連動させない(RPCを変えていないのにストア更新のたびに
+## PROTOCOL_VERSIONを上げる、といった事故を防ぐため)。
+const PROTOCOL_VERSION := 11
 
 const ROUND_TIME := 180.0
 const RESULT_TIME := 5.0
@@ -87,6 +96,7 @@ const HUNTER_SPAWN_HEIGHT := 3.0
 const _SightSystemScript := preload("res://autoload/game/sight_system.gd")
 const _VersionGateScript := preload("res://autoload/game/version_gate.gd")
 const _HostMigrationScript := preload("res://autoload/game/host_migration.gd")
+const _RatingReportScript := preload("res://autoload/game/rating_report.gd")
 
 const INTEL_TIME := _SightSystemScript.INTEL_TIME
 
@@ -158,6 +168,7 @@ var _seer_ids: Dictionary:
 var _sight := _SightSystemScript.new()
 var _version_gate := _VersionGateScript.new()
 var _host_migration := _HostMigrationScript.new()
+var _rating_report := _RatingReportScript.new()
 
 ## 鬼の連携（分担探索・張り込み・挟み込み）の共有状態。ホスト専用。
 ## CPU 鬼はここへ「自分の担当」を問い合わせるだけで、互いを直接見に行かない
@@ -174,6 +185,8 @@ func _ready() -> void:
 	add_child(_version_gate)
 	_host_migration.name = "HostMigration"
 	add_child(_host_migration)
+	_rating_report.name = "RatingReport"
+	add_child(_rating_report)
 	# ロビー中にプロフィール設定（④コスチューム変更等）が変わったら、繋がっている
 	# 相手にも即座に反映する
 	ProfileManager.profile_updated.connect(_on_profile_updated)
@@ -283,10 +296,15 @@ func _find_player(peer_id: int) -> Node:
 
 ## 表示名。sync_nickname が未到着/未設定ならフォールバックの仮表記を返す
 func nickname_for(peer_id: int) -> String:
+	if has_nickname(peer_id):
+		return _find_player(peer_id).sync_nickname
+	return tr("プレイヤー %d") % peer_id
+
+
+## sync_nickname が届いているか(nickname_for() がフォールバック表記を返さないか)
+func has_nickname(peer_id: int) -> bool:
 	var p := _find_player(peer_id)
-	if p and "sync_nickname" in p and not p.sync_nickname.is_empty():
-		return p.sync_nickname
-	return "プレイヤー %d" % peer_id
+	return p != null and "sync_nickname" in p and not p.sync_nickname.is_empty()
 
 
 ## --- ホスト側ロジック -------------------------------------------------
@@ -348,6 +366,22 @@ func set_wanted_runner_to(peer_id: int) -> void:
 	var next := -1 if wanted_runner == peer_id else peer_id
 	if next != wanted_runner:
 		_set_wanted_runner.rpc(next)
+
+
+## ホスト専用。H-04: 参加者をロビーから退出させる(最小実装)。
+## notify_rejected RPC → disconnect_peer() は report_profile() のtier_lock拒否と
+## 全く同じ手順(既存のプロトコル・PROTOCOL_VERSION変更なしで動く実証済みの経路)。
+## EOSロビー経由(レーティング戦)はキック不可(切断=敗北扱いのレートペナルティ誤爆防止)。
+## lobby_panel.gd側も同じ条件でボタン自体を出していないが、サーバー側でも独立に弾く
+func kick_peer(peer_id: int) -> void:
+	if not multiplayer.is_server() or state != State.WAITING:
+		return
+	if NetworkManager.matched_via_eos_lobby:
+		return
+	if peer_id == multiplayer.get_unique_id() or peer_id not in multiplayer.get_peers():
+		return
+	notify_rejected.rpc_id(peer_id, "ホストによって退出させられました。")
+	multiplayer.multiplayer_peer.disconnect_peer(peer_id)
 
 
 ## ホスト専用。プレイヤーを順送りして逃走者を指名する（準備中の入れ替え）。
@@ -668,7 +702,7 @@ func report_profile(payload: Dictionary) -> void:
 	if tier_lock_enabled and id != 1:
 		var peer_rating := int(payload.get("rating", 1500))
 		if not RankingManager.is_rating_compatible(ProfileManager.rating, peer_rating, 0):
-			notify_host("レート帯が違う参加者の接続を許可しませんでした（このロビーは同じレート帯のみ）。")
+			notify_host(tr("レート帯が違う参加者の接続を許可しませんでした（このロビーは同じレート帯のみ）。"))
 			# ⑤disconnect_peer()の前に理由を伝える。何も伝えずに切ると、EOSロビー経由の
 			# 参加者側は_on_server_disconnected()がただの拒否をホストロスト扱いしてしまい、
 			# 実際には存在しないホストマイグレーション探索UIが誤って出る
@@ -683,9 +717,13 @@ func report_profile(payload: Dictionary) -> void:
 ## 受け取った参加者は自発的にleave()し、_on_server_disconnected()のホストマイグレーション
 ## 判定(_should_attempt_migration())を経由させない
 ## (autoload/game/version_gate.gdのcheck_versionと同じ狙い・同じパターン)
+##
+## L-09: reason はホストの言語に関係なく日本語の原文(固定文)で送り、受け取った側で訳す。
+## 送る側で訳すと相手にホストの言語が見えてしまう。RPC のシグネチャは変えていないので
+## PROTOCOL_VERSION は据え置き(旧ホストから届く理由も同じ原文なのでそのまま訳せる)
 @rpc("authority", "reliable")
 func notify_rejected(reason: String) -> void:
-	NetworkManager.last_error = reason
+	NetworkManager.last_error = tr(reason)
 	NetworkManager.leave()
 
 
@@ -716,6 +754,10 @@ func on_player_left(peer_id: int, cpu_took_over: bool = false) -> void:
 		_host_migration._report_participant_disconnect_penalty(peer_id, true)
 	elif round_is_ranked and state == State.PLAYING and peer_id != runner_id:
 		_host_migration._report_participant_disconnect_penalty(peer_id, false)
+	# H-02: CPU代行RPCも、_set_runner_cpu()内で切断者の表示名をpeer_profilesから引くため、
+	# 上と同じ理由(プロフィール消去より前)でここに置く
+	if cpu_took_over:
+		_host_migration._set_runner_cpu.rpc()
 	_version_gate._awaiting_version.erase(peer_id)
 	if peer_profiles.has(peer_id):
 		peer_profiles.erase(peer_id)
@@ -723,9 +765,7 @@ func on_player_left(peer_id: int, cpu_took_over: bool = false) -> void:
 	# 抜けた人が指名されたままだと、次のラウンドで誰も逃走者にならない
 	if wanted_runner == peer_id:
 		_set_wanted_runner.rpc(-1)
-	if cpu_took_over:
-		_host_migration._set_runner_cpu.rpc()
-	elif state == State.PLAYING and peer_id == runner_id:
+	if not cpu_took_over and state == State.PLAYING and peer_id == runner_id:
 		_end_round.rpc(false, EndReason.RUNNER_LEFT)
 
 
@@ -796,6 +836,7 @@ func _end_round(runner_won: bool, reason: int, tagger_id: int = -1) -> void:
 	_clear_intel()
 	state_changed.emit(state)
 	if multiplayer.is_server():
+		_rating_report.report_match_result(runner_won, reason, tagger_id)  # C-03 R-3: fire-and-forget、_schedule_next_round()をブロックしない
 		_schedule_next_round()
 
 
@@ -828,6 +869,25 @@ func _back_to_waiting() -> void:
 	state_changed.emit(state)
 	if multiplayer.is_server():
 		_clear_cpu_characters()
+
+
+## M-14対策: 結果画面の「スキップ」ボタン用。全ピアが押せる
+## (toggle_my_role() / request_runner と同じ「自分がホストなら直接、
+## そうでなければサーバーへリクエストする」形)
+func skip_result() -> void:
+	if state != State.RESULT:
+		return
+	if multiplayer.is_server():
+		_back_to_waiting.rpc()
+	else:
+		request_skip_result.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func request_skip_result() -> void:
+	if not multiplayer.is_server() or state != State.RESULT:
+		return
+	_back_to_waiting.rpc()
 
 
 @rpc("authority", "call_remote", "reliable")

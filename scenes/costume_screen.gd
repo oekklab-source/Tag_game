@@ -35,6 +35,10 @@ signal closed
 @onready var save_btn: Button = $ContentMargin/ContentRow/RightPane/ButtonRow/SaveButton
 @onready var back_btn: Button = $TopBar/BackButton
 @onready var shop_btn: Button = $TopBar/ShopButton
+@onready var confirm_overlay: Control = $ConfirmOverlay
+@onready var confirm_message_label: Label = $ConfirmOverlay/Panel/VBox/MessageLabel
+@onready var confirm_cancel_btn: Button = $ConfirmOverlay/Panel/VBox/Buttons/CancelButton
+@onready var confirm_discard_btn: Button = $ConfirmOverlay/Panel/VBox/Buttons/DiscardButton
 
 # 色スロット編集用のプリセットパレット（コスチュームの色スロット共通）
 const PALETTE_COLORS: Array[Color] = [
@@ -67,6 +71,12 @@ var _selected_costume_id: StringName = CostumeCatalog.DEFAULT_ID
 var _selected_colors: PackedColorArray = PackedColorArray()
 var _selected_hat_id: StringName = HatCatalog.DEFAULT_ID
 
+# M-10: 「戻る」時の未保存判定の基準値(refresh()で保存済みの値を捕捉する)
+var _initial_name: String
+var _initial_costume_id: StringName
+var _initial_colors: PackedColorArray
+var _initial_hat_id: StringName
+
 
 func _ready() -> void:
 	save_btn.pressed.connect(_on_save_pressed)
@@ -81,6 +91,9 @@ func _ready() -> void:
 	category_color_btn.pressed.connect(_on_category_pressed.bind(2))
 	category_hat_btn.pressed.connect(_on_category_pressed.bind(3))
 	PurchaseManager.currency_changed.connect(_update_gem_label)
+	confirm_cancel_btn.pressed.connect(confirm_overlay.hide)
+	confirm_discard_btn.pressed.connect(_on_confirm_discard_pressed)
+	confirm_overlay.hide()
 	refresh()
 
 
@@ -90,6 +103,11 @@ func refresh() -> void:
 	_selected_costume_id = ProfileManager.costume_id
 	_selected_colors = ProfileManager.costume_colors.duplicate()
 	_selected_hat_id = ProfileManager.hat_id
+	# M-10: リサイズ(_ensure_color_slot_count)前の保存済みの値を基準にする
+	_initial_name = ProfileManager.sanitize_name(ProfileManager.player_name)
+	_initial_costume_id = _selected_costume_id
+	_initial_colors = _selected_colors.duplicate()
+	_initial_hat_id = _selected_hat_id
 	_ensure_color_slot_count()
 	_setup_skin_grid()
 	_setup_costume_grid()
@@ -108,7 +126,7 @@ func refresh() -> void:
 	var rate = 0.0
 	if ProfileManager.matches_played > 0:
 		rate = (float(total_wins) / float(ProfileManager.matches_played)) * 100.0
-	winrate_val.text = "%.1f%% (%d勝)" % [rate, total_wins]
+	winrate_val.text = tr("%.1f%% (%d勝)") % [rate, total_wins]
 
 
 func _update_gem_label() -> void:
@@ -136,7 +154,7 @@ func _setup_skin_grid() -> void:
 
 	for index in range(Humanoid.SKINS.size()):
 		var entry: Dictionary = Humanoid.SKINS[index]
-		skin_grid.add_child(_build_skin_card(index, String(entry.get("name", "キャラクター"))))
+		skin_grid.add_child(_build_skin_card(index, tr(String(entry.get("name", tr("キャラクター"))))))
 
 
 func _build_skin_card(index: int, display_name: String) -> Control:
@@ -168,7 +186,7 @@ func _build_skin_card(index: int, display_name: String) -> Control:
 
 	var caption := Label.new()
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	caption.text = "使用できます"
+	caption.text = tr("使用できます")
 	caption.add_theme_color_override("font_color", Color(0.5, 0.9, 0.6))
 	box.add_child(caption)
 	return box
@@ -188,8 +206,8 @@ func _update_category_availability() -> void:
 	var fixed_design := _selected_skin != 0
 	category_costume_btn.disabled = fixed_design
 	category_color_btn.disabled = fixed_design
-	category_costume_btn.tooltip_text = "このキャラクターは固定デザインです" if fixed_design else ""
-	category_color_btn.tooltip_text = "このキャラクターは固定デザインです" if fixed_design else ""
+	category_costume_btn.tooltip_text = tr("このキャラクターは固定デザインです") if fixed_design else ""
+	category_color_btn.tooltip_text = tr("このキャラクターは固定デザインです") if fixed_design else ""
 
 
 ## _selected_colors のサイズを現在のコスチュームの color_slots に合わせる。
@@ -236,7 +254,7 @@ func _build_item_card(id: StringName, def: Dictionary, owned: bool, selected_id:
 	btn.custom_minimum_size = CARD_SIZE
 	btn.toggle_mode = true
 	btn.button_pressed = (id == selected_id)
-	btn.text = String(def.get("name", String(id)))
+	btn.text = tr(String(def.get("name", String(id))))
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = swatch
@@ -265,11 +283,11 @@ func _build_item_card(id: StringName, def: Dictionary, owned: bool, selected_id:
 	var caption := Label.new()
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if owned:
-		caption.text = "所持済み"
+		caption.text = tr("所持済み")
 		caption.add_theme_color_override("font_color", Color(0.5, 0.9, 0.6))
 	else:
 		var price := int(def.get("price", 0))
-		caption.text = "🔒 未所持" if price <= 0 else "🔒 💎%d" % price
+		caption.text = tr("🔒 未所持") if price <= 0 else "🔒 💎%d" % price
 		caption.add_theme_color_override("font_color", Color(0.9, 0.75, 0.4))
 	box.add_child(caption)
 
@@ -296,7 +314,7 @@ func _setup_color_slots() -> void:
 		row.add_theme_constant_override("separation", 8)
 
 		var label := Label.new()
-		label.text = "色 %d:" % (slot + 1)
+		label.text = tr("色 %d:") % (slot + 1)
 		label.custom_minimum_size = Vector2(60, 0)
 		row.add_child(label)
 
@@ -354,13 +372,13 @@ func _on_hat_button_pressed(id: StringName) -> void:
 ## 固定デザインのキャラクターでは、柄・カラーが対象外であることも案内する。
 func _update_hint_label() -> void:
 	if not ProfileManager.owns_costume(_selected_costume_id):
-		var name: String = String(CostumeCatalog.get_def(_selected_costume_id).get("name", String(_selected_costume_id)))
-		hint_label.text = "「%s」は未所持です（試着のみ・保存では反映されません。ショップで購入できます）" % name
+		var name: String = tr(String(CostumeCatalog.get_def(_selected_costume_id).get("name", String(_selected_costume_id))))
+		hint_label.text = tr("「%s」は未所持です（試着のみ・保存では反映されません。ショップで購入できます）") % name
 	elif not ProfileManager.owns_hat(_selected_hat_id):
-		var name: String = String(HatCatalog.get_def(_selected_hat_id).get("name", String(_selected_hat_id)))
-		hint_label.text = "「%s」は未所持です（試着のみ・保存では反映されません。ショップで購入できます）" % name
+		var name: String = tr(String(HatCatalog.get_def(_selected_hat_id).get("name", String(_selected_hat_id))))
+		hint_label.text = tr("「%s」は未所持です（試着のみ・保存では反映されません。ショップで購入できます）") % name
 	elif _selected_skin != 0:
-		hint_label.text = "%sは固定デザインです。帽子は変更できます" % Humanoid.SKINS[_selected_skin]["name"]
+		hint_label.text = tr("%sは固定デザインです。帽子は変更できます") % tr(Humanoid.SKINS[_selected_skin]["name"])
 	else:
 		hint_label.text = ""
 
@@ -375,7 +393,10 @@ func _update_preview() -> void:
 
 
 func _on_save_pressed() -> void:
-	ProfileManager.update_profile(name_edit.text)
+	var err := ProfileManager.update_profile(name_edit.text)
+	if not err.is_empty():
+		hint_label.text = "⚠ " + err
+		return
 	ProfileManager.set_skin(_selected_skin)
 	if ProfileManager.owns_costume(_selected_costume_id):
 		ProfileManager.set_costume(_selected_costume_id, _selected_colors)
@@ -385,6 +406,37 @@ func _on_save_pressed() -> void:
 
 
 func _on_back_pressed() -> void:
+	if _is_dirty():
+		_open_confirm_overlay()
+	else:
+		_leave()
+
+
+## M-10: 未所持アイテムの「試着」は_on_save_pressed()が保存しない(所持ガード)ため、
+## hint_labelの「試着のみ・保存では反映されません」という説明と矛盾しないよう
+## 判定の対象からも除外する
+func _is_dirty() -> bool:
+	if ProfileManager.sanitize_name(name_edit.text) != _initial_name:
+		return true
+	if ProfileManager.owns_costume(_selected_costume_id):
+		if _selected_costume_id != _initial_costume_id or _selected_colors != _initial_colors:
+			return true
+	if ProfileManager.owns_hat(_selected_hat_id) and _selected_hat_id != _initial_hat_id:
+		return true
+	return false
+
+
+## shop_screenのConfirmOverlayと同じ既定フォーカス思想(誤ってEnterで破棄しないよう
+## 既定は「やめる」)。用途がここでは1つだけなので、shop_screenのような汎用Callable
+## 保持は行わず直接_leave()を呼ぶ
+func _open_confirm_overlay() -> void:
+	confirm_message_label.text = tr("保存していない変更があります。破棄して戻りますか？")
+	confirm_overlay.show()
+	confirm_cancel_btn.grab_focus()
+
+
+func _on_confirm_discard_pressed() -> void:
+	confirm_overlay.hide()
 	_leave()
 
 

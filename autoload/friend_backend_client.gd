@@ -74,16 +74,3 @@ static func remove_friend(host: Node, friend_puid: String) -> Dictionary:
 	}, _auth_headers())
 
 
-## ⑦レーティング戦の逃走者切断時のCPU代行(暫定実装)用。ホストが切断検知時に呼ぶ。
-## target_puidは切断した相手の自己申告PUID(peer_profiles由来、未検証)ーー
-## 呼び出し元自身の身元はAuthorizationヘッダのトークンで証明する
-static func report_penalty(host: Node, target_puid: String, rating_delta: int) -> Dictionary:
-	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "report-penalty", {
-		"puid": target_puid,
-		"rating_delta": rating_delta,
-	}, _auth_headers())
-
-
-## ⑦本人クライアントが起動時に一度だけ呼ぶ。取得と同時にサーバー側で削除される
-static func consume_penalty(host: Node) -> Dictionary:
-	return await HttpJsonClient.post_json(host, FRIEND_API_BASE_URL + "consume-penalty", {}, _auth_headers())
