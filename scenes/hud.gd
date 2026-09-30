@@ -155,6 +155,42 @@ func _ready() -> void:
 	## C-07 T-6: キーボード操作ヒントはタッチ操作時には意味がなく、仮想スティック
 	## 直上の視覚密集も緩和するため非表示にする
 	info_label.visible = not SettingsManager.should_show_touch_controls()
+	_capture_base_offsets()
+	get_viewport().size_changed.connect(_apply_safe_area)
+	_apply_safe_area()
+
+
+## iPhone のノッチ・角の丸み(safe area)の分だけ、画面の端に付いた HUD 要素を内側へ寄せる
+## (2026-09-30: Web 版を viewport-fit=cover にしてノッチの横まで描くようにしたため)。
+## tscn の offset を基準として覚えておき、画面サイズが変わるたびに基準から計算し直す
+## (前回ずらした値に重ねてずらさないため)。PC 版・Android では余白が 0 なので何も変わらない。
+## Vignette は画面全体を覆う演出なので対象外
+var _base_offsets := {}
+
+
+func _capture_base_offsets() -> void:
+	for child in get_children():
+		if child is Control and child != vignette:
+			var c := child as Control
+			_base_offsets[c] = Rect2(c.offset_left, c.offset_top, c.offset_right, c.offset_bottom)
+
+
+func _apply_safe_area() -> void:
+	var insets_dp := WebScreen.safe_area_insets_dp()
+	# 余白は実寸どおりに換算する(タッチボタンのような「背の低い画面では縮める」はしない)
+	var u := WebScreen.units_per_dp(DisplayServer.screen_get_scale(),
+		get_viewport().get_visible_rect().size, get_window().size, 1.0)
+	var insets := {}
+	for k in insets_dp:
+		insets[k] = float(insets_dp[k]) * u
+	for c: Control in _base_offsets:
+		var o := WebScreen.inset_offsets(
+			Rect2(c.anchor_left, c.anchor_top, c.anchor_right, c.anchor_bottom),
+			_base_offsets[c], insets)
+		c.offset_left = o.position.x
+		c.offset_top = o.position.y
+		c.offset_right = o.size.x
+		c.offset_bottom = o.size.y
 
 
 ## HUD には操作可能なウィジェットが一つも無いので、全 Control をマウス無視にする。

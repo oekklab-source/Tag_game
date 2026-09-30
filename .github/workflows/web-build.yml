@@ -85,6 +85,14 @@ jobs:
           cp docs/concept/store/screenshots/playing.png export/web/og_image.png
           test -s export/web/og_image.png
 
+      # 「ホーム画面に追加」用の manifest とアイコン(iPhone で全画面にする唯一の方法)。
+      # 詳細は web/README.md。README 自体は公開しない
+      - name: Add web app manifest and icons
+        run: |
+          set -euo pipefail
+          cp web/manifest.webmanifest web/apple-touch-icon.png web/icon-192.png web/icon-512.png export/web/
+          test -s export/web/manifest.webmanifest
+
       # GitHub Pages に Jekyll 処理をさせない（_ で始まるファイルの除外などを防ぐ）
       - name: Add .nojekyll
         run: touch export/web/.nojekyll

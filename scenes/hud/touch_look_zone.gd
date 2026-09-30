@@ -15,12 +15,12 @@ extends Control
 ## 本ノードは画面全域を覆う初めてのタッチ要素で、左上のPauseButton(T-2)と物理的に重なる。
 ## mouse_filter=IGNORE(touch_controls.tscn側で設定)に加え、ここでも矩形を明示除外する
 ## 二重防御にしている(タッチのGUI合成マウス経路とrawタッチ経路のどちらが優先されるか
-## ドキュメントで断定できないため)。
+## ドキュメントで断定できないため)。2026-09-30 に全画面ボタンが隣に増えたので、
+## 除外判定は touch_controls.gd の is_on_top_button() にまとめた。
 
 @onready var touch_controls: CanvasLayer = get_parent() as CanvasLayer
 
 var _active_finger: int = -1
-var _local_player: Player = null
 
 
 func _input(event: InputEvent) -> void:
@@ -38,8 +38,8 @@ func _on_touch(event: InputEventScreenTouch) -> void:
 			return # VirtualJoystick等が既に捕まえた指
 		if _active_finger != -1:
 			return # 既に1本捕捉中(未捕捉のみ拾う)
-		if touch_controls.pause_button.get_global_rect().has_point(event.position):
-			return # PauseButtonとの矩形重なりの明示除外(ヘッダコメント参照)
+		if touch_controls.is_on_top_button(event.position):
+			return # PauseButton・全画面ボタンとの矩形重なりの明示除外(ヘッダコメント参照)
 		_active_finger = event.index
 		get_viewport().set_input_as_handled()
 	elif event.index == _active_finger:
@@ -50,7 +50,7 @@ func _on_touch(event: InputEventScreenTouch) -> void:
 func _on_drag(event: InputEventScreenDrag) -> void:
 	if event.index != _active_finger:
 		return
-	var player := _get_local_player()
+	var player: Node = touch_controls.get_local_player()
 	if player != null:
 		player.apply_look_delta(event.relative)
 	get_viewport().set_input_as_handled()
@@ -64,14 +64,3 @@ func _process(_delta: float) -> void:
 		# (C-07 T-8、詳細は virtual_joystick.gd の同じ箇所)。
 		# どちらも指を離すイベントが来ないため、ここで強制解放する。
 		_active_finger = -1
-
-
-func _get_local_player() -> Player:
-	if is_instance_valid(_local_player):
-		return _local_player
-	var my_name := str(multiplayer.get_unique_id())
-	for p in get_tree().get_nodes_in_group("players"):
-		if p.name == my_name:
-			_local_player = p
-			return p
-	return null

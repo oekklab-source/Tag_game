@@ -40,6 +40,9 @@ extends Control
 @onready var error_log_list_label: Label = $ErrorLogDialog/Panel/VBox/Scroll/ListLabel
 @onready var error_log_close_btn: Button = $ErrorLogDialog/Panel/VBox/Buttons/CloseButton
 
+## スマホのブラウザ向けの全画面ボタン(2026-09-30)。scenes/hud/web_screen.gd 参照
+@onready var fullscreen_button: Button = $FullscreenButton
+
 const COSTUME_SCENE := "res://scenes/costume_screen.tscn"
 const SHOP_SCENE := "res://scenes/shop_screen.tscn"
 const FRIEND_SCENE := "res://scenes/friend_screen.tscn"
@@ -85,6 +88,8 @@ func _ready() -> void:
 	if OS.has_feature("web"):
 		quit_button.visible = false
 
+	_setup_web_screen_buttons()
+
 	# H-09: ボタン文言を実際の遷移先(Web=DirectConnectタブ既定, デスクトップ=ロビー全体)に合わせる
 	play_button.text = tr("参加する（リンク/アドレス指定）") if OS.has_feature("web") else tr("オンラインプレイ（部屋を探す・作る）")
 
@@ -121,6 +126,49 @@ func _server_from_query() -> String:
 	if typeof(q) != TYPE_STRING:
 		return ""
 	return (q as String).strip_edges()
+
+
+## スマホのブラウザ向け(2026-09-30、スマホ実機で「全画面で遊びたい」と指摘を受けて追加)。
+## - 全画面ボタン: タッチ操作を出す端末で、ホーム画面から起動していないときだけ出す。
+##   Fullscreen API がある端末(Android Chrome・iPad)は全画面に切り替える。
+##   iPhone には API が無いので、ホーム画面に追加する手順を案内する(WebScreen のヘッダ参照)
+## - 「招待リンクを貼り付けて参加」: ホーム画面から起動したときだけ出す。ホーム画面のアイコンは
+##   毎回変わる ?s= を持てないため。ボタンの実体は HTML(export_presets.cfg の head_include)
+func _setup_web_screen_buttons() -> void:
+	fullscreen_button.visible = (
+		WebScreen.is_web()
+		and SettingsManager.should_show_touch_controls()
+		and not WebScreen.is_standalone())
+	fullscreen_button.pressed.connect(_on_fullscreen_pressed)
+	get_viewport().size_changed.connect(_refresh_fullscreen_label)
+	_refresh_fullscreen_label()
+	if WebScreen.is_standalone():
+		WebScreen.set_join_paste_button(true, tr("招待リンクを貼り付けて参加"),
+			tr("招待リンクを貼り付けてください"))
+
+
+func _exit_tree() -> void:
+	# HTML のボタンはシーンの外(ページ上)にあるので、タイトルを離れるときに明示的に消す
+	WebScreen.set_join_paste_button(false)
+
+
+func _refresh_fullscreen_label() -> void:
+	fullscreen_button.text = tr("全画面を解除") if WebScreen.is_fullscreen() else tr("全画面")
+
+
+func _on_fullscreen_pressed() -> void:
+	if WebScreen.fullscreen_enabled():
+		WebScreen.toggle_fullscreen()
+		return
+	var dialog := AcceptDialog.new()
+	dialog.title = tr("全画面で遊ぶには")
+	dialog.dialog_text = tr("iPhone のブラウザは全画面にできません。\n共有ボタン → 「ホーム画面に追加」を選び、追加したアイコンから起動すると全画面で遊べます。\n（ホーム画面から起動したときは、タイトル画面の「招待リンクを貼り付けて参加」から参加します）")
+	dialog.confirmed.connect(dialog.queue_free)
+	dialog.canceled.connect(dialog.queue_free)
+	# 既定では折り返さず横に伸びて、スマホの画面からはみ出す
+	dialog.get_label().autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	add_child(dialog)
+	dialog.popup_centered(Vector2i(900, 0))
 
 
 func _try_auto_join_from_query() -> void:

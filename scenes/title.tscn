@@ -93,6 +93,15 @@ grow_horizontal = 2
 grow_vertical = 2
 texture = SubResource("GradientTexture2D_bg")
 
+[node name="FullscreenButton" type="Button" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 264.0
+offset_bottom = 88.0
+text = "全画面"
+
 [node name="TopRightBadge" type="PanelContainer" parent="."]
 layout_mode = 1
 anchors_preset = 1
