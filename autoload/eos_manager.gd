@@ -242,6 +242,7 @@ func create_lobby(lobby_type: int = 0, max_members: int = 8, lobby_name: String 
 		await _publish_can_host()
 		lobby_created.emit(1, current_lobby_id)
 	else:
+		print("[EosManager] EOS未接続のため、ロビーはこのプロセス内だけの仮のもの(他のPCからは見えない)。")
 		current_lobby_id = "mock-12345678"
 		is_host = true
 		lobby_created.emit(1, current_lobby_id)

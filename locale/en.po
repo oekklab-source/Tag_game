@@ -388,6 +388,9 @@ msgstr "Joined (someone else is hosting)"
 msgid "4人であそぶ: %d人が参加中%s"
 msgstr "4-player game: %d joined%s"
 
+msgid "※EOSに接続されていないため、この部屋は他のPCからは見えません"
+msgstr "* Not connected to EOS, so other PCs can't see this room"
+
 msgid "この対戦は鬼がランダムで決まります（立候補不可）%s"
 msgstr "Chasers are chosen at random in this match (no volunteering)%s"
 
@@ -1098,6 +1101,9 @@ msgstr "Creating lobby..."
 
 msgid "ロビーを作成しました！ゲームを開始します。"
 msgstr "Lobby created! Starting the game."
+
+msgid "EOSに接続されていないため、この部屋は他のPCの「部屋をさがす」には表示されません。"
+msgstr "Not connected to EOS, so this room won't appear in \"Find a Room\" on other PCs."
 
 msgid "ロビーの作成に失敗しました。"
 msgstr "Couldn't create the lobby."

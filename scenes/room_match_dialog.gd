@@ -344,6 +344,13 @@ func _on_lobby_created(connect_status: int, _lobby_id: String) -> void:
 	spinner.set_active(false)
 	if connect_status == 1:
 		status_label.text = tr("ロビーを作成しました！ゲームを開始します。")
+		status_label.remove_theme_color_override("font_color")
+		# EOS未接続時のcreate_lobby()はEOSに何も登録せず成功を返すだけ(同一PC内のUI確認用)。
+		# 成功文言のままだと「他のPCから見えない部屋」を作ったことに本人が気付けない
+		# (2026-10-02、eos_credentials.cfgの無いclone直後のPCでホストして実際に詰まった)
+		if not EosManager.is_eos_available:
+			status_label.text = tr("EOSに接続されていないため、この部屋は他のPCの「部屋をさがす」には表示されません。")
+			status_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
 		# ②EOSロビー経由=見知らぬ相手とのレーティング戦。鬼のランダム化・レート適用の判定に使う
 		NetworkManager.matched_via_eos_lobby = true
 		NetworkManager.start_host(true)
