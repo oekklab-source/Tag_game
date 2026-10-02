@@ -1,9 +1,14 @@
-[gd_scene load_steps=5 format=3 uid="uid://c6r8qvnx7g84d"]
+[gd_scene load_steps=6 format=3 uid="uid://c6r8qvnx7g84d"]
 
 [ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://scenes/room_match_dialog.gd" id="2_script"]
+[ext_resource type="PackedScene" path="res://scenes/loading_spinner.tscn" id="3_spinner"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_modal"]
+content_margin_left = 30.0
+content_margin_top = 25.0
+content_margin_right = 30.0
+content_margin_bottom = 25.0
 bg_color = Color(0.12, 0.12, 0.18, 0.95)
 border_width_left = 3
 border_width_top = 3
@@ -43,7 +48,7 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0, 0, 0, 0.65)
 
-[node name="Panel" type="Panel" parent="."]
+[node name="Panel" type="PanelContainer" parent="."]
 custom_minimum_size = Vector2(700, 560)
 layout_mode = 1
 anchors_preset = 8
@@ -60,16 +65,7 @@ grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_modal")
 
 [node name="VBox" type="VBoxContainer" parent="Panel"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 25.0
-offset_right = -30.0
-offset_bottom = -25.0
-grow_horizontal = 2
-grow_vertical = 2
+layout_mode = 2
 theme_override_constants/separation = 12
 
 [node name="Title" type="Label" parent="Panel/VBox"]
@@ -108,6 +104,12 @@ size_flags_horizontal = 3
 [node name="QuickMatchButton" type="Button" parent="Panel/VBox/TabContainer/LobbyList/TopRow"]
 layout_mode = 2
 text = "おまかせマッチ"
+
+[node name="QuickMatchCancelButton" type="Button" parent="Panel/VBox/TabContainer/LobbyList/TopRow"]
+layout_mode = 2
+visible = false
+text = "中断"
+tooltip_text = "おまかせマッチの検索を中断します"
 
 [node name="CreateOpenButton" type="Button" parent="Panel/VBox/TabContainer/LobbyList/TopRow"]
 layout_mode = 2
@@ -217,7 +219,16 @@ layout_mode = 2
 size_flags_horizontal = 4
 text = "直結ホスト開始"
 
-[node name="StatusLabel" type="Label" parent="Panel/VBox"]
+[node name="StatusRow" type="HBoxContainer" parent="Panel/VBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+alignment = 1
+theme_override_constants/separation = 8
+
+[node name="Spinner" parent="Panel/VBox/StatusRow" instance=ExtResource("3_spinner")]
+layout_mode = 2
+
+[node name="StatusLabel" type="Label" parent="Panel/VBox/StatusRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.8, 0.2, 1)
 horizontal_alignment = 1

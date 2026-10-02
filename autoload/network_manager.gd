@@ -12,7 +12,7 @@ enum SessionKind { SOLO, ONLINE }
 
 const PORT := 9999
 const WORLD_SCENE := "res://scenes/world.tscn"
-const MAIN_SCENE := "res://scenes/title.tscn"
+const TITLE_SCENE := "res://scenes/title.tscn"
 const MIGRATION_OVERLAY_SCENE := "res://scenes/migration_overlay.tscn"
 ## ⑨EOSがオーナー消失を検知して新オーナーを確定させるまでの待ち時間。この間に
 ## host_migratedが来なければ諦める(EOSのハートビート検知は疎通確認ベースで
@@ -24,18 +24,44 @@ const MIGRATION_RECONNECT_WAIT_SEC := 30.0
 ## create_process で撃ちっぱなしにした別プロセスの標準出力を直接は読めないため、
 ## ファイル経由でホスト名を受け渡す
 const TUNNEL_HOST_FILE := "user://tunnel_host.txt"
+## tools/serve.ps1 が cloudflared の PID を書き出す先。_stop_tunnel() が直接止めるのに使う
+const TUNNEL_PID_FILE := "user://tunnel_cloudflared.pid"
+## tools/serve.ps1 がトンネルを張れなかった理由を書き出す先（窓を出さないので、失敗はここでしか分からない）
+const TUNNEL_ERROR_FILE := "user://tunnel_error.txt"
 const TUNNEL_POLL_INTERVAL := 1.0
 const TUNNEL_POLL_TIMEOUT := 30.0
+## 招待リンク配布用のページ(tools/serve.ps1が案内するURLと同じ)
+const PAGES_URL := "https://oekklab-source.github.io/Tag_game"
+
+## C-03 R-5: rating_report.gd/host_migration.gdと同じ理由(headless単体実行で
+## class_nameのグローバル登録が更新されていないケースへの対処)でpreloadを使う
+const _RatingBackendClientScript := preload("res://autoload/rating_backend_client.gd")
 
 var mode := Mode.NONE
 var session_kind := SessionKind.SOLO
 var join_address := "127.0.0.1"
-var last_error := ""
+
+## M-07: last_errorのsetterで自動的に追記される直近のエラー履歴(最大ERROR_LOG_MAX件、
+## 超えたら古い方からpop_front)。last_error自体の「読んだら空文字を代入してクリアする」
+## 既存パターン(title.gd)はそのまま動作する(空文字への代入はここに追記されない)
+const ERROR_LOG_MAX := 10
+var error_log: Array[String] = []
+
+var last_error: String = "":
+	set(v):
+		last_error = v
+		if not v.is_empty():
+			error_log.append(v)
+			if error_log.size() > ERROR_LOG_MAX:
+				error_log.pop_front()
 ## ②EOSロビー参加者が実際に接続すべきアドレス（LAN IP、後にトンネルのホスト名で
 ## 上書きされることがある）。host_addr としてロビーデータに載せる
 var public_address := ""
 signal public_address_ready(addr: String)
-## URL の ?s= による自動参加は1回だけ。接続失敗時は leave() が main.tscn へ戻すので、
+## Cloudflare Tunnel を張れなかった（インターネット越しの参加者はつながれない。LAN内なら可）。
+## reason は "not_found"（cloudflared未インストール）/ "exited"（途中で終了）/ "timeout"
+signal tunnel_failed(reason: String)
+## URL の ?s= による自動参加は1回だけ。接続失敗時は leave() が title.tscn へ戻すので、
 ## ガードが無いと同じアドレスへ無限に再接続しに行く
 var auto_join_done := false
 ## ③このセッションがEOSロビー(ルームマッチ/クイックマッチ、見知らぬ相手との
@@ -70,6 +96,20 @@ func _ready() -> void:
 	_apply_cmdline()
 
 
+## アプリの正常終了（終了メニュー・窓の×・quit()）はすべてここを通る。
+## 強制終了・クラッシュではここに来ないが、その場合は tools/serve.ps1 側がゲームの消滅を
+## 見張っていて自分で cloudflared を止める
+func _exit_tree() -> void:
+	_stop_tunnel()
+
+
+## ロビー画面に表示する招待リンク。public_addressが未確定の間は空文字を返す
+func join_link() -> String:
+	if public_address.is_empty():
+		return ""
+	return "%s/?s=%s" % [PAGES_URL, public_address]
+
+
 ## 動作確認用。`-- client <addr>` を付けて world.tscn を直接起動するとロビーを飛ばす。
 ## ホストは world.gd 側で mode == NONE をホスト扱いするので指定不要。
 ##   godot --headless --path . res://scenes/world.tscn
@@ -99,9 +139,7 @@ func start_host(is_online: bool = false) -> bool:
 	var err := probe.listen(PORT)
 	probe.stop()
 	if err != OK:
-		last_error = ("ポート %d が既に使われています。
-"
-			+ "前に起動した Godot（ゲーム）が残っていないか確認して、閉じてから試してください。") % PORT
+		last_error = tr("ポート %d が既に使われています。\n前に起動した Godot（ゲーム）が残っていないか確認して、閉じてから試してください。") % PORT
 		return false
 	mode = Mode.HOST
 	session_kind = SessionKind.ONLINE if is_online else SessionKind.SOLO
@@ -110,6 +148,7 @@ func start_host(is_online: bool = false) -> bool:
 	public_address = _resolve_lan_address()
 	if not public_address.is_empty():
 		public_address_ready.emit(public_address)
+	MusicManager.stop_lobby_bgm()
 	get_tree().change_scene_to_file(WORLD_SCENE)
 	return true
 
@@ -150,6 +189,7 @@ func start_client(address: String) -> void:
 	mode = Mode.CLIENT
 	session_kind = SessionKind.ONLINE
 	join_address = address
+	MusicManager.stop_lobby_bgm()
 	get_tree().change_scene_to_file(WORLD_SCENE)
 
 
@@ -186,11 +226,9 @@ func setup_peer() -> Error:
 		err = peer.create_client(resolve_url(join_address))
 	if err != OK:
 		if mode == Mode.HOST:
-			last_error = ("ポート %d で待ち受けられませんでした。
-"
-				+ "前に起動した Godot（ゲーム）が残っていないか確認してください。") % PORT
+			last_error = tr("ポート %d で待ち受けられませんでした。\n前に起動した Godot（ゲーム）が残っていないか確認してください。") % PORT
 		else:
-			last_error = "通信を開始できませんでした（エラー %d）" % err
+			last_error = tr("通信を開始できませんでした（エラー %d）") % err
 		# ここは world.tscn の _ready() の途中。その場でシーンを差し替えると
 		# 「Parent node is busy adding/removing children」で失敗し、
 		# タイトルにも戻れない半端な状態のまま残る
@@ -205,7 +243,16 @@ func setup_peer() -> Error:
 ## HOST 開始と同時に Cloudflare Tunnel を張って参加リンクを作る（tools/serve.ps1）。
 ## そのスクリプトは Get-NetTCPConnection / Set-Clipboard など Windows PowerShell 前提なので
 ## Windows デスクトップ版でのみ起動する。同一プロセス内で再ホストしても、前のトンネルが
-## まだ生きていれば張り直さない（cloudflare 側のサブドメインが変わって混乱するのを防ぐ）
+## まだ生きていれば張り直さない（cloudflare 側のサブドメインが変わって混乱するのを防ぐ）。
+##
+## 窓は出さない（open_console=false）。以前は PowerShell の窓がユーザーに見えていたうえ、
+## 誰も止めないので部屋を抜けてもゲームを閉じても cloudflared と公開トンネルが残り続けていた
+## （2日前のトンネルが生きているのを実際に見つけた）。今は二重に止める:
+##   - ゲーム側: leave() と _exit_tree() が _stop_tunnel() を呼ぶ
+##   - serve.ps1 側: -ParentPid でこのプロセスを見張り、消えたら（強制終了・クラッシュで
+##     GDScript が走らない場合）自分で cloudflared を止める
+## なお Godot 4.7.2 の create_process(open_console=false) は子に窓付きコンソールを作らない
+## ことを実測済み（子の GetConsoleWindow() が 0。open_console=true だと窓が作られる）
 func _launch_tunnel() -> void:
 	if OS.has_feature("web") or OS.get_name() != "Windows":
 		return
@@ -228,14 +275,59 @@ func _launch_tunnel() -> void:
 	# 前回の記録が残っていると、今回まだ確立していないのに古いホスト名を拾ってしまう
 	if FileAccess.file_exists(TUNNEL_HOST_FILE):
 		DirAccess.remove_absolute(host_file)
+	_remove_user_file(TUNNEL_ERROR_FILE)
+	# TUNNEL_PID_FILE はここでは消さない。前回の cloudflared が孤児として残っていた場合、
+	# serve.ps1 がこの記録を見て止める（PID の再利用に備えて名前も確かめる）
 	# create_process は PID をそのまま返す（失敗時 -1）。辞書ではない
 	# pwsh (PowerShell Core) が入っていない環境向けに、Windows PowerShell へフォールバックする
 	# (tools/serve.ps1 自体はどちらでも動く内容で書かれている)
-	var ps_args := ["-NoProfile", "-File", script_path, "-HostAddrFile", host_file]
-	_tunnel_pid = OS.create_process("pwsh", ps_args, true)
+	var ps_args := ["-NoProfile", "-File", script_path, "-HostAddrFile", host_file,
+		"-ParentPid", str(OS.get_process_id()),
+		"-PidFile", ProjectSettings.globalize_path(TUNNEL_PID_FILE),
+		"-ErrorFile", ProjectSettings.globalize_path(TUNNEL_ERROR_FILE)]
+	_tunnel_pid = OS.create_process("pwsh", ps_args, false)
 	if _tunnel_pid == -1:
-		_tunnel_pid = OS.create_process("powershell", ps_args, true)
+		_tunnel_pid = OS.create_process("powershell", ps_args, false)
 	_start_tunnel_poll()
+
+
+## トンネルを畳む（部屋を抜けた・アプリを終了する）。何も張っていなければ何もしない。
+## serve.ps1 の PowerShell と cloudflared を両方止める。Windows の OS.kill() は
+## TerminateProcess なので子プロセスは道連れにならず、PowerShell だけ止めると
+## cloudflared が孤児として残る（serve.ps1 の finally も TerminateProcess では走らない）
+func _stop_tunnel() -> void:
+	_stop_tunnel_poll()
+	if _tunnel_pid == -1:
+		return
+	if OS.is_process_running(_tunnel_pid):
+		OS.kill(_tunnel_pid)
+	_tunnel_pid = -1
+	var cf_pid := _read_user_file(TUNNEL_PID_FILE).to_int()
+	# serve.ps1 が終わるときは PID ファイルを消すので、残っているのは cloudflared が
+	# まだ生きている（か、止める直前だった）場合だけ。
+	# OS.is_process_running() で確かめてから止めてはいけない。Windows 版の実装は自分が
+	# create_process した子しか追跡せず、孫の cloudflared には常に false を返すため、
+	# 一度も止まらない（実測で踏んだ）。OS.kill() は任意の PID に効き、既に居なければ失敗するだけ
+	if cf_pid > 0:
+		OS.kill(cf_pid)
+	_remove_user_file(TUNNEL_PID_FILE)
+	_remove_user_file(TUNNEL_HOST_FILE)
+	_remove_user_file(TUNNEL_ERROR_FILE)
+
+
+## serve.ps1 が書くファイルを読む。Windows PowerShell 5.1 の -Encoding utf8 は BOM を付けるので取り除く
+func _read_user_file(path: String) -> String:
+	if not FileAccess.file_exists(path):
+		return ""
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return ""
+	return f.get_as_text().replace("﻿", "").strip_edges()
+
+
+func _remove_user_file(path: String) -> void:
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 
 ## res://tools/serve.ps1 は（embed_pck の書き出し版では）PCK内の仮想パスで、
@@ -281,15 +373,22 @@ func _start_tunnel_poll() -> void:
 
 func _on_tunnel_poll_tick() -> void:
 	_tunnel_poll_elapsed += TUNNEL_POLL_INTERVAL
-	if FileAccess.file_exists(TUNNEL_HOST_FILE):
-		var f := FileAccess.open(TUNNEL_HOST_FILE, FileAccess.READ)
-		var host := f.get_as_text().strip_edges() if f else ""
-		if not host.is_empty():
-			public_address = host
-			public_address_ready.emit(public_address)
-			_stop_tunnel_poll()
-			return
+	var host := _read_user_file(TUNNEL_HOST_FILE)
+	if not host.is_empty():
+		public_address = host
+		public_address_ready.emit(public_address)
+		_stop_tunnel_poll()
+		return
+	# 窓を出さなくなったので、cloudflared が無い・落ちた等はここで拾ってゲーム内に出すしかない
+	var err := _read_user_file(TUNNEL_ERROR_FILE)
+	if not err.is_empty():
+		var reason := err.get_slice("\n", 0).strip_edges()
+		push_warning("[NetworkManager] トンネルを張れませんでした: %s" % err)
+		tunnel_failed.emit(reason)
+		_stop_tunnel_poll()
+		return
 	if _tunnel_poll_elapsed >= TUNNEL_POLL_TIMEOUT:
+		tunnel_failed.emit("timeout")
 		_stop_tunnel_poll()
 
 
@@ -310,23 +409,25 @@ func leave() -> void:
 	session_kind = SessionKind.SOLO
 	public_address = ""
 	matched_via_eos_lobby = false
-	_stop_tunnel_poll()
+	# 部屋を抜けた・解散した時点で参加リンクは用済み。残すと公開トンネルが開いたままになる
+	_stop_tunnel()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	GameManager.reset()
 	# EOSロビー経由のセッションだった場合、ここで明示的に抜けておかないと
 	# ロビーがゴースト状態(検索には出るがホストの実体はもう無い)のまま残り続ける
 	if not EosManager.current_lobby_id.is_empty():
 		EosManager.leave_lobby()
-	get_tree().change_scene_to_file(MAIN_SCENE)
+	MusicManager.play_lobby_bgm()
+	get_tree().change_scene_to_file(TITLE_SCENE)
 
 
 func _on_connection_failed() -> void:
-	last_error = "ホストに接続できませんでした"
+	last_error = tr("ホストに接続できませんでした")
 	leave()
 
 
 func _on_server_disconnected() -> void:
-	last_error = "ホストとの接続が切れました"
+	last_error = tr("ホストとの接続が切れました")
 	if not _should_attempt_migration():
 		leave()
 		return
@@ -334,7 +435,7 @@ func _on_server_disconnected() -> void:
 	# ローカルのレプリケート済み状態から確保しておく(GameManager.reset()で失われる前)
 	_pending_host_penalty = GameManager.snapshot_for_host_disconnect_penalty()
 	is_migrating = true
-	_show_migration_overlay("ホストとの接続が切れました。引き継ぎ先を確認しています…")
+	_show_migration_overlay(tr("ホストとの接続が切れました。引き継ぎ先を確認しています…"))
 	_start_migration_timeout(MIGRATION_OWNER_WAIT_SEC)
 
 
@@ -353,19 +454,20 @@ func _on_host_migrated(_new_owner_puid: String, i_am_new_host: bool) -> void:
 	if i_am_new_host:
 		if EosManager.can_host_of(EosManager.product_user_id):
 			# ⑨自分がホストとして確定した時点でペナルティを報告する
-			# (新ホストに昇格した端末だけが報告する。friend-apiはpuidキーの単純上書きで
-			# 冪等なため、_migration_failed()側の全員報告フォールバックと重複しても安全)
+			# (新ホストに昇格した端末だけが報告する。rating-apiは決定的ID(SHA-256)で導出した
+			# match_idのUNIQUE制約により1回だけ反映されるため、_migration_failed()側の
+			# 全員報告フォールバックと重複しても安全、C-03 R-5)
 			_report_pending_host_penalty()
 			_promote_self_to_host()
 		elif await EosManager.handoff_if_incapable():
 			# Web版等ホストになれない端末が昇格した場合。can_host=1の別メンバーへ委譲済みで、
 			# 再度host_migratedが発火するのを待つ
-			_update_migration_status("別のプレイヤーへホストを引き継いでいます…")
+			_update_migration_status(tr("別のプレイヤーへホストを引き継いでいます…"))
 			_start_migration_timeout(MIGRATION_OWNER_WAIT_SEC)
 		else:
-			_migration_failed("ホストを引き継げるプレイヤーがいませんでした")
+			_migration_failed(tr("ホストを引き継げるプレイヤーがいませんでした"))
 	else:
-		_update_migration_status("新しいホストの準備を待っています…")
+		_update_migration_status(tr("新しいホストの準備を待っています…"))
 		# ⑨オーナー確定待ち(15秒)のタイムアウトがまだ有効なままだと、新ホストの
 		# トンネル確立を待っている最中(最大30秒)に誤って_migration_failed()してしまう。
 		# 世代カウンタを進めて古いタイムアウトを無効化してから再接続待ちに入る
@@ -374,7 +476,7 @@ func _on_host_migrated(_new_owner_puid: String, i_am_new_host: bool) -> void:
 
 
 func _promote_self_to_host() -> void:
-	_update_migration_status("あなたが新しいホストになりました。準備しています…")
+	_update_migration_status(tr("あなたが新しいホストになりました。準備しています…"))
 	_reset_for_migration()
 	mode = Mode.HOST
 	session_kind = SessionKind.ONLINE
@@ -393,7 +495,7 @@ func _reconnect_as_client() -> void:
 	if not is_migrating:
 		return  # 待っている間にタイムアウト等で既に処理済み
 	if addr.is_empty():
-		_migration_failed("新しいホストに接続できませんでした")
+		_migration_failed(tr("新しいホストに接続できませんでした"))
 		return
 	_reset_for_migration()
 	start_client(addr)
@@ -410,8 +512,9 @@ func _migration_failed(reason: String) -> void:
 	if not is_migrating:
 		return
 	last_error = reason
-	# ⑨新ホストが決まらなかった場合、生存者全員が独立に報告する(friend-apiは
-	# puidキーの単純上書きで冪等なため、複数人が同じ値を送っても壊れない)
+	# ⑨新ホストが決まらなかった場合、生存者全員が独立に報告する(rating-apiは決定的ID
+	# (SHA-256)で導出したmatch_idのUNIQUE制約により、複数人が同じ値を送っても
+	# 1回だけ反映される、C-03 R-5)
 	_report_pending_host_penalty()
 	is_migrating = false
 	_hide_migration_overlay()
@@ -423,12 +526,21 @@ func _report_pending_host_penalty() -> void:
 		return
 	var s: Dictionary = _pending_host_penalty
 	_pending_host_penalty = {}
+	# C-03 R-5: rating_report.gd.report_match_result()と同じ位置(ネットワーク呼び出し
+	# 直前)にゲートを置く
+	if not (BackendConfig.USE_LIVE_RATING_BACKEND and EosManager.is_eos_available):
+		return
 	# 固定値1500ではなく、reset()前にsnapshot_for_host_disconnect_penalty()が
 	# 確保しておいた実際の相手陣営レートを使う(apply_match_end()と同じ修正)
+	var opponent_rating := int(s.get("opponent_avg_rating", 1500))
 	var delta := RankingManager.calculate_rating_delta(
-		s.was_runner, false, s.survival, s.hunter_count, false, s.self_rating,
-		int(s.get("opponent_avg_rating", 1500)))
-	FriendManager.report_disconnect_penalty(s.puid, delta)
+		s.was_runner, false, s.survival, s.hunter_count, false, s.self_rating, opponent_rating)
+	# 生存者全員が独立に(調整なしで)呼びうる。match_idはrating-api側がtarget_puid/
+	# was_runner/hunter_count/self_ratingから決定的に導出するため、誰が先に届いても
+	# match_logのUNIQUE制約で2件目以降は自然に無視される
+	_RatingBackendClientScript.report_disconnect_penalty(
+		self, s.puid, s.was_runner, s.hunter_count, s.self_rating, delta,
+		s.survival, opponent_rating)
 
 
 ## SceneTreeTimerは後から止められないため、世代カウンタ(_migration_token)で
@@ -439,7 +551,7 @@ func _start_migration_timeout(seconds: float) -> void:
 	get_tree().create_timer(seconds).timeout.connect(
 		func() -> void:
 			if is_migrating and token == _migration_token:
-				_migration_failed("ホストの引き継ぎがタイムアウトしました")
+				_migration_failed(tr("ホストの引き継ぎがタイムアウトしました"))
 	)
 
 

@@ -7,6 +7,9 @@ Steamworks → EOS 移行はコード上は全フェーズ完了しているが�
 上から順に進めることを推奨（依存が少ない順）。各項目の詳しい手順は既存の README にあるので、
 ここでは「次に何をするか」と「完了条件」だけをまとめる。
 
+> この文書はバックエンドと EOS の作業に限る。法務文書・ストア登録・実機確認まで含めた
+> 人手作業の全体一覧と順番は [OWNER_TASKS.md](OWNER_TASKS.md) を見ること。
+
 ## 1. EOS Developer Portal — リーダーボード定義（Phase 3）
 
 1. [Epic Developer Portal](https://dev.epicgames.com/portal) で Stat 定義 `PlayerRating` を作成する
@@ -173,7 +176,7 @@ Title Storage, Voice）のうち、コード側（`autoload/`・`scenes/` 全体
 `addons/epic-online-services-godot/` 自体は除く）で実際に呼んでいるのは **Leaderboards / Lobbies /
 Player Data Storage / Stats の4項目のみ**。残り10項目は未使用（特に Sessions はこのゲームが使う
 EOS Lobbies とは別インターフェースで無関係、Player Reports/Sanctions は EOS ネイティブ機能ではなく
-`report_profile` RPC・friend-api の `/report-penalty` で自前実装済み）。なお「P2P」という項目自体が
+`report_profile` RPC・rating-api の `/report-disconnect-penalty` で自前実装済み）。なお「P2P」という項目自体が
 Client Policy の権限一覧に存在しないことも確認した（このゲームは EOS の P2P Interface を使わず、
 ENet/WebSocket + Cloudflare トンネルで通信しているため、そもそも懸念不要）。
 **判断**: 単一プロダクトのポリシーであり他プロダクトへの権限漏洩リスクがないため、
@@ -253,3 +256,90 @@ PRは常に `MERGEABLE`）。本番デプロイは本チェックリストの手
 自体を送らないようにした(`_update_heartbeat_state()`、`get_friends()`呼び出しのたびに再評価)。
 手順3(KV書き込み量の数日観測)は引き続き未実施 — デプロイから数日経ってから
 Cloudflareダッシュボードで確認すること。
+
+
+## 9. レートのサーバー権威化（C-03・`service/rating-api`）— 未デプロイ
+
+詳細手順: [service/rating-api/README.md](../service/rating-api/README.md)
+
+**状況**: コードは R-1〜R-12 まで完了しているが、**D1 の作成・デプロイはまだ行っていない**。
+[autoload/backend_config.gd](../autoload/backend_config.gd) の `USE_LIVE_RATING_BACKEND` は
+`false` のままで、レートはクライアントのローカル自己計算が最終値になっている。
+切り替えを阻んでいた穴（`/report-match` の報告者検証・切断ペナルティの累積・
+`/claim-initial-rating` の自己申告上限）は R-10 で塞ぎ済み。
+
+### 9-1. デプロイ
+
+```sh
+cd service/rating-api
+npx wrangler d1 create tag-game-rating-db
+# 出力された database_id を wrangler.toml の [[d1_databases]].database_id に設定する
+npx wrangler d1 execute tag-game-rating-db --remote --file=schema.sql
+npx wrangler deploy
+```
+
+デプロイ後、実機の EOS Connect ID Token で5エンドポイント（`/report-match`
+`/report-disconnect-penalty` `/claim-initial-rating` `/rating` `/leaderboard-top`）を
+手動で叩き、401/200 双方の応答を確認する。`wrangler.toml` の `[vars]` に
+`ALLOW_DEBUG_AUTH` を**絶対に書かないこと**（`.dev.vars` 限定）。
+
+### 9-2. 旧 friend-api の `penalty:*` キーの掃除
+
+C-03 R-5 で `service/friend-api` の `/report-penalty`・`/consume-penalty` を廃止し、
+`service/rating-api` の `/report-disconnect-penalty` へ統合した。コード側の削除は完了して
+いるが、**本番 KV（`FRIEND_KV`）に残っている `penalty:<puid>` キーは誰も読まなくなった**
+（＝適用されないまま残るゴミキー）。`USE_LIVE_FRIEND_BACKEND` は既に `true` ＝本番稼働中
+なので、実データが存在する可能性がある。
+
+```sh
+cd service/friend-api
+# 1) 残存確認（0件ならこの手順は不要。--local を付けなければ本番KVを見る）
+npx wrangler kv key list --binding FRIEND_KV --prefix "penalty:"
+
+# 2) 上のリストを見て消してよいことを確認したら、その出力をそのまま
+#    kv bulk delete へ渡す（[{"name":"penalty:xxx"}, ...] 形式をそのまま受け付ける）
+npx wrangler kv key list --binding FRIEND_KV --prefix "penalty:" > penalty-keys.json
+npx wrangler kv bulk delete --binding FRIEND_KV penalty-keys.json
+rm penalty-keys.json
+```
+
+（コマンドの形は wrangler 3.114.17 で `--help` を実際に引いて確認済み。
+`kv key list` / `kv bulk delete` とも `--local` を付けなければ本番KVを対象にする。）
+
+**注意**: この掃除は「適用されずに消える未適用ペナルティ」を確定させる操作である。
+残っている件数が多い場合は、消す前に一覧を保存しておくとよい（レートに反映されなかった
+切断ペナルティの実数がわかる）。急ぐ必要は無いので、9-1 の後で構わない。
+
+**完了条件**: `npx wrangler kv key list --binding FRIEND_KV --prefix "penalty:"` が空になる。
+
+### 9-3. クライアント配布と `USE_LIVE_RATING_BACKEND` 切替の順序
+
+**この節が C-03 で最も事故りやすい。** 2つの独立した注意点がある。
+
+**(a) 切断ペナルティの空白期間を作らないこと（C-03 R-5）**
+
+`USE_LIVE_RATING_BACKEND` の `false→true` と、旧 friend-api 経路を削除した
+クライアントビルドの配布は**必ず同時に行う**。現状
+（`USE_LIVE_FRIEND_BACKEND=true` / `USE_LIVE_RATING_BACKEND=false`）では旧 friend-api
+経由の切断ペナルティが実際に機能している唯一の経路であり、新旧の切り替えがずれると
+切断ペナルティが完全に無効化される空白期間が生まれる。
+また、配布済みの旧クライアントが `/report-penalty` を叩くと **404** になる
+（エンドポイントごと削除済みのため）。クライアント側は失敗時に何もしない設計なので
+クラッシュはしないが、そのビルドのペナルティは記録されない。
+
+**(b) 同じ `PROTOCOL_VERSION` のまま挙動が変わるビルドがあること（C-03 R-11 / R-12）**
+
+R-11（`cpu_hunter_count` の送信・CPU鬼トドメの報告）と R-12（補正RPCの受信側検証）は
+**RPC のメソッド名・シグネチャ・ノードパスを変えていない**ため
+`PROTOCOL_VERSION` を上げていない（CLAUDE.md の鉄則どおり、上げる必要が無い）。
+つまり **v11 の新旧ビルドが同じ試合に同居しうる**。影響は次のとおりで、いずれも
+収束するので版数を上げる必要は無いが、把握しておくこと:
+
+- ホストが旧 v11 ビルドだと `cpu_hunter_count` が送られない。サーバーは未指定を 0 と
+  みなすので、CPU鬼を含む試合では R-11 以前と同じズレ（補正トーストが出る）が残る。
+  ホストが新ビルドなら参加者が旧ビルドでも正しく揃う（Nを決めるのはホストの報告だけ）。
+- 参加者が旧 v11 ビルドだと補正RPCの値域検証が無い。ただし正しい値を配るのはサーバー
+  なので、正常系では違いが出ない。
+
+**完了条件**: 9-1 のデプロイと `USE_LIVE_RATING_BACKEND=true` のクライアントビルド配布が
+同日中に完了し、ランクマッチ1試合の結果が D1 の `ratings` テーブルへ実際に反映されること。

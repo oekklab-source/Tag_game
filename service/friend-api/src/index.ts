@@ -36,19 +36,10 @@
  * 400応答も実際には理由がクライアントに届いていない、既知の制約)ため、理由を実際に
  * UIへ届けたい新規エンドポイントではこの形を踏襲しない。
  *
- * ⑦レーティング戦で逃げる役が対戦中に切断した場合の「敗北精算待ち」記録(暫定実装)。
- * フレンド機能とは無関係だが、PUIDキーのKVを既に持つこのWorkerに相乗りさせる方が
- * 新規Workerを増やすより単純なため、ここに同居させている:
- *   POST /report-penalty   -> ホストが切断検知時に敗北分のレート変動を記録する。
- *     呼び出し元(ホスト)の身元はトークンで検証されるが、対象PUID(body.puid、
- *     切断した相手)はホストの自己申告のままーー既知の制約として受容する
- *     (サーバーは対戦の存在自体を知らないため検証しようがない)。
- *     rating_deltaは負値・絶対値上限([[PENALTY_MIN_DELTA]]..-1)のみ許可し、
- *     トークンPUID単位で1日あたりの報告数に上限を設ける。
- *   POST /consume-penalty  -> 本人クライアントが起動時に一度だけ取得し、同時に削除する
- *     (読み取りと削除を1回のリクエストにまとめているため、取得後クライアント側で
- *     適用する前に落ちると精算されずに消える。二重ペナルティより「たまに精算漏れ」の
- *     方が実害が小さいため、意図的にこちらを選んでいる)
+ * (旧・切断ペナルティ経路の/report-penalty・/consume-penaltyはC-03 R-5で
+ * service/rating-apiの/report-disconnect-penaltyへ統合・廃止した。対象PUIDが
+ * ホストの自己申告のままという既知の制約は移設先でも継続する、
+ * docs/SECURITY_NOTES.md項目3参照)
  */
 
 export interface Env {
@@ -78,10 +69,6 @@ const JWKS_URL = "https://api.epicgames.dev/auth/v1/oauth/jwks";
 const EXPECTED_ISS = "https://api.epicgames.dev/auth/v1/oauth";
 const JWKS_CACHE_KEY = "jwks_cache";
 const JWKS_CACHE_TTL_SEC = 60 * 60; // 1時間(Epicの鍵ローテーションは頻繁ではない)
-
-const PENALTY_MIN_DELTA = -64;
-const PENALTY_MAX_DELTA = -1;
-const PENALTY_REPORT_LIMIT_PER_DAY = 20;
 
 interface PuidRecord {
 	display_name: string;
@@ -131,12 +118,6 @@ interface StatsRecord {
 	updated_at: number;
 }
 
-interface PendingPenalty {
-	rating_delta: number;
-	reason: string;
-	created_at: number;
-}
-
 interface Jwk {
 	kty: string;
 	n: string;
@@ -169,10 +150,6 @@ export default {
 				return handleListFriends(env, puid);
 			case "/remove-friend":
 				return handleRemoveFriend(request, env, puid);
-			case "/report-penalty":
-				return handleReportPenalty(request, env, puid);
-			case "/consume-penalty":
-				return handleConsumePenalty(env, puid);
 			case "/search-user":
 				return handleSearchUser(request, env, puid);
 			case "/heartbeat":
@@ -515,41 +492,6 @@ async function handleRemoveFriend(request: Request, env: Env, puid: string): Pro
 	return json({ ok: true });
 }
 
-async function handleReportPenalty(request: Request, env: Env, puid: string): Promise<Response> {
-	const body = await safeJson(request);
-	const targetPuid = String(body?.puid ?? "");
-	const ratingDelta = Number(body?.rating_delta ?? NaN);
-	if (!targetPuid || !Number.isFinite(ratingDelta)) {
-		return json({ reason: "invalid_request" }, 400);
-	}
-	if (ratingDelta < PENALTY_MIN_DELTA || ratingDelta > PENALTY_MAX_DELTA) {
-		return json({ reason: "invalid_delta" }, 400);
-	}
-	// レート制限はトークンで検証済みの「報告者」(ホスト)単位。対象PUID(targetPuid)は
-	// 引き続きホストの自己申告のままだが、これは既知の制約として受容している(docs/SECURITY_NOTES.md参照)
-	if (!(await checkAndBumpRateLimit(env, penaltyReportRateLimitKey(puid), PENALTY_REPORT_LIMIT_PER_DAY))) {
-		return json({ reason: "rate_limited" }, 429);
-	}
-	const record: PendingPenalty = {
-		rating_delta: ratingDelta,
-		reason: "runner_disconnect",
-		created_at: Date.now(),
-	};
-	await env.FRIEND_KV.put(penaltyKey(targetPuid), JSON.stringify(record));
-	return json({ ok: true });
-}
-
-async function handleConsumePenalty(env: Env, puid: string): Promise<Response> {
-	const raw = await env.FRIEND_KV.get(penaltyKey(puid));
-	if (!raw) {
-		return json({ pending: false });
-	}
-	await env.FRIEND_KV.delete(penaltyKey(puid));
-	const record: PendingPenalty = JSON.parse(raw);
-	return json({ pending: true, rating_delta: record.rating_delta });
-}
-
-
 /** コード完全一致 or 表示名完全一致でユーザーを検索する。KVのget()は完全一致lookupしか
  * できないため、部分一致・前方一致・一覧列挙は構造的に実装できない(意図した制約)。
  * PUIDは返さない(コードと表示名のみ。追加はコードで行う) */
@@ -710,16 +652,9 @@ function requestsKey(puid: string): string {
 function friendsKey(puid: string): string {
 	return `friends:${puid}`;
 }
-function penaltyKey(puid: string): string {
-	return `penalty:${puid}`;
-}
 function rateLimitKey(ip: string): string {
 	const day = new Date().toISOString().slice(0, 10);
 	return `rl:${ip}:${day}`;
-}
-function penaltyReportRateLimitKey(reporterPuid: string): string {
-	const day = new Date().toISOString().slice(0, 10);
-	return `rlpenalty:${reporterPuid}:${day}`;
 }
 function nameKey(displayName: string): string {
 	return `name:${displayName}`;

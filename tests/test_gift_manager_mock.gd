@@ -68,3 +68,18 @@ func _test_send_gift_empty_puid() -> void:
 	print("\n--- [3] send_gift() 空文字列PUID ---")
 	var ok: bool = await GiftManager.send_gift("", &"costume", &"some_id")
 	_assert(ok == false, "空文字列PUIDでのsend_gift()はfalseを返す(クラッシュしない)")
+
+# --- 実セーブ(user://profile.json / settings.json)とクラウドセーブの保護 ---
+# ラウンドを回さないテストでも、EOS にログインできる環境では起動時のクラウドセーブ同期が
+# 実セーブを書き換える(2026-09-25 に boost_panel の実行中に実測)。どのテストが
+# 踏むかを個別に見極めるより、全テストで一律に挟む。詳細は tests/save_guard.gd のヘッダ。
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
+
+
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
+
+
+func _exit_tree() -> void:
+	_SaveGuard.restore(_save_backup)

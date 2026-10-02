@@ -1,0 +1,20 @@
+name = "tag-game-rating-api"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# D1データベース: レート台帳(ratings)・試合ログ(match_log、二重計上防止)に加え、
+# R-2でJWKSキャッシュ(jwks_cache)・レート制限カウンタ(rate_limit_counters)も同居させた。
+# schema.sql参照。KVではなくD1にした理由: /leaderboard-top (ORDER BY rating DESC LIMIT ?)
+# のようなソート済みレンジクエリが必要なため(KVは完全一致lookupのみ)。
+# `npx wrangler d1 create tag-game-rating-db` で作成し、出力された database_id を
+# ここに設定する(R-2で実施予定、今はプレースホルダ)。
+[[d1_databases]]
+binding = "DB"
+database_name = "tag-game-rating-db"
+database_id = "PLACEHOLDER_SET_AFTER_WRANGLER_D1_CREATE"
+
+# EOS_CLIENT_IDはfriend-api/wrangler.tomlと同じ非秘匿値(エクスポート済みexeの
+# eos_credentials.cfgに平文同梱される値と同じ)。src/index.tsのverifyIdToken()が
+# トークンのaudクレーム検証に使う。
+[vars]
+EOS_CLIENT_ID = "xyza7891Y8hf8lR6EoUUo3FqGlAPT6gp"

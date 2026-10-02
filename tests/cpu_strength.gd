@@ -207,3 +207,21 @@ func _report(what: String, ok: bool, why: String) -> void:
 	if not ok:
 		_fails += 1
 	print("  %s  %s" % [what, "OK" if ok else "FAIL（%s）" % why])
+
+
+# --- Phase 3 L-12: 実セーブ(user://profile.json / settings.json)の保護 ---
+# このテストはラウンドを回す/プロフィールを触るため、通常のゲーム終了経路
+# (GameManager._end_round() -> hud.gd -> ProfileManager.record_casual_match())から
+# 間接的に save_profile() を踏み、開発機の実セーブを書き換えてしまう。
+# _enter_tree/_exit_tree で挟むので、テスト本体のコードには一切触れていない。
+# 詳細と実測値は tests/save_guard.gd のヘッダを参照。
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
+
+
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
+
+
+func _exit_tree() -> void:
+	_SaveGuard.restore(_save_backup)

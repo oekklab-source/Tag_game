@@ -11,6 +11,8 @@ const HUD_SCENE := preload("res://scenes/hud.tscn")
 
 
 func _ready() -> void:
+	# L-09: 日本語の原文を照合するので、OS の言語(英語環境なら en)に関係なく ja に固定する
+	TranslationServer.set_locale("ja")
 	await get_tree().process_frame
 	var me: Player = PLAYER_SCENE.instantiate()
 	me.name = "1"
@@ -63,7 +65,7 @@ func _ready() -> void:
 	for i in 5:
 		await get_tree().process_frame
 	_report("Qでメイン画面へ戻る", get_tree().current_scene != null
-		and get_tree().current_scene.scene_file_path == NetworkManager.MAIN_SCENE
+		and get_tree().current_scene.scene_file_path == NetworkManager.TITLE_SCENE
 		and NetworkManager.mode == NetworkManager.Mode.NONE,
 		"メイン画面へ遷移していない")
 	_report("復帰後はデバッグOFF", not GameManager.debug_cpu_runner,
@@ -101,3 +103,18 @@ func _finish() -> void:
 	print("=== debug_controls の結果: %s ===" % [
 		"ALL OK" if _fails == 0 else "%d 件 FAIL" % _fails])
 	get_tree().quit(_fails)
+
+# --- 実セーブ(user://profile.json / settings.json)とクラウドセーブの保護 ---
+# ラウンドを回さないテストでも、EOS にログインできる環境では起動時のクラウドセーブ同期が
+# 実セーブを書き換える(2026-09-25 に boost_panel の実行中に実測)。どのテストが
+# 踏むかを個別に見極めるより、全テストで一律に挟む。詳細は tests/save_guard.gd のヘッダ。
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
+
+
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
+
+
+func _exit_tree() -> void:
+	_SaveGuard.restore(_save_backup)

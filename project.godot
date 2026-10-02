@@ -14,6 +14,7 @@ config/name="3D Chase Game"
 run/main_scene="res://scenes/title.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
+config/version="0.1.0"
 
 [autoload]
 
@@ -38,6 +39,8 @@ HSessions="*res://addons/epic-online-services-godot/heos/hsessions.gd"
 HPlayerDataStorage="*res://addons/epic-online-services-godot/heos/hplayerdatastorage.gd"
 EosManager="*res://autoload/eos_manager.gd"
 QuitMenu="*res://autoload/quit_menu.tscn"
+SettingsManager="*res://autoload/settings_manager.gd"
+MusicManager="*res://autoload/music_manager.gd"
 
 [display]
 
@@ -50,7 +53,7 @@ window/stretch/aspect="expand"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/epic-online-services-godot/plugin.cfg")
+enabled=PackedStringArray("res://addons/epic-online-services-godot/plugin.cfg", "res://addons/tag_game_export_guard/plugin.cfg")
 
 [gui]
 
@@ -149,6 +152,11 @@ taunt_3={
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":51,"key_label":0,"unicode":51,"location":0,"echo":false,"script":null)
 ]
 }
+
+[internationalization]
+
+locale/translations=PackedStringArray("res://locale/en.po")
+locale/fallback="ja"
 
 [layer_names]
 

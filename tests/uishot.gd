@@ -2,7 +2,12 @@ extends Node
 
 ## UI の見た目を PNG に落とす。--headless では描画されないのでウィンドウ有りで実行する。
 ##
-##   godot --path . res://tests/uishot.tscn -- --shots <出力先フォルダ>
+##   godot --path . res://tests/uishot.tscn -- --shots <出力先フォルダ> [--locale en]
+##       [--text-size normal|large|xlarge]
+##
+## --locale を付けるとその言語で撮る(L-09、英文のはみ出し確認用)。
+## --text-size を付けるとその文字サイズ(UI全体の拡大率)で撮る(L-10、はみ出し確認用)。
+## どちらも設定は保存しない
 
 func _ready() -> void:
 	var out := "."
@@ -10,11 +15,15 @@ func _ready() -> void:
 	for i in args.size():
 		if args[i] == "--shots" and i + 1 < args.size():
 			out = args[i + 1]
+		if args[i] == "--locale" and i + 1 < args.size():
+			TranslationServer.set_locale(args[i + 1])
+		if args[i] == "--text-size" and i + 1 < args.size():
+			SettingsManager.set_text_size(args[i + 1])
 	DirAccess.make_dir_recursive_absolute(out)
 	await get_tree().process_frame
 
 	# 1) タイトル画面
-	var title: Node = load("res://scenes/main.tscn").instantiate()
+	var title: Node = load("res://scenes/title.tscn").instantiate()
 	get_tree().root.add_child(title)
 	get_tree().current_scene = title
 	await _shot(out, "title")
@@ -62,7 +71,94 @@ func _ready() -> void:
 	for i in 5:
 		await get_tree().physics_frame
 	await _shot(out, "result")
+
+	# M-15: world.tscn配下の単体画面(ranking_dialog/room_match_dialog/migration_overlay)は
+	# title.tscnの子として埋め込まれた状態でなくても単体instantiateで開けるため、
+	# world.tscnを片付けてから撮る(worldとダイアログを同時に映すと見た目の判断がしづらいため)
+	world.queue_free()
+	await get_tree().process_frame
+
+	# 5) ランキングダイアログ
+	var ranking: Control = load("res://scenes/ranking_dialog.tscn").instantiate()
+	get_tree().root.add_child(ranking)
+	ranking.open()
+	await get_tree().process_frame
+	await _shot(out, "ranking_dialog")
+	ranking.queue_free()
+	await get_tree().process_frame
+
+	# 6) ルームマッチダイアログ
+	var room_match: Control = load("res://scenes/room_match_dialog.tscn").instantiate()
+	get_tree().root.add_child(room_match)
+	room_match.open()
+	await get_tree().process_frame
+	await _shot(out, "room_match_dialog")
+	room_match.queue_free()
+	await get_tree().process_frame
+
+	# 7) ホストマイグレーション中のオーバーレイ
+	var migration: CanvasLayer = load("res://scenes/migration_overlay.tscn").instantiate()
+	get_tree().root.add_child(migration)
+	migration.set_text(tr("別のプレイヤーへホストを引き継いでいます…"))
+	await get_tree().process_frame
+	await _shot(out, "migration_overlay")
+	migration.queue_free()
+	await get_tree().process_frame
+
+	# 7b) L-09: タイトルから開く専用シーン。英語で撮ったときの文言のはみ出しを見るため
+	for scene_name in ["settings_screen", "shop_screen", "costume_screen", "friend_screen"]:
+		var screen: Node = load("res://scenes/%s.tscn" % scene_name).instantiate()
+		get_tree().root.add_child(screen)
+		for i in 10:
+			await get_tree().process_frame
+		await _shot(out, scene_name)
+		screen.queue_free()
+		await get_tree().process_frame
+
+	# 8) C-07 T-8: タッチUIを16:9以外のウィンドウサイズで撮る。
+	# project.godot は stretch/mode="canvas_items" + aspect="expand" なので、
+	# 論理ビューポートの寸法は実ウィンドウの縦横比で変わる(1920x1080固定ではない)。
+	# アンカー未設定のまま絶対座標で置いたノードは、ここで初めて破綻が目に見える。
+	# **T-6まではこのケースを一度も撮っていなかったため、「狭い/縦長で崩れないこと」
+	# という受け入れ基準が実際には検証されていなかった**(RV-05はそれで見逃された)。
+	# サイズは「実機の縦横比」を再現できればよく、実解像度である必要は無い。
+	# 実際 1080x2340 をそのまま指定すると**ウィンドウが画面の高さを超え**、
+	# 画面外になった領域が合成されず、撮れた画像の上部に別レイアウトの残像が
+	# 写り込む(T-8で実際に踏んだ。フレーム待ちを増やしても消えなかった)。
+	# 1/3 にして縦横比だけ合わせる: 2340x1080 -> 780x360、1080x2340 -> 360x780
+	await _shot_touch_controls(out, "touch_landscape", Vector2i(780, 360))
+	await _shot_touch_controls(out, "touch_portrait", Vector2i(360, 780))
+
 	get_tree().quit()
+
+
+## TouchControls を指定のウィンドウサイズ(実機の縦横比を再現する比率)で1枚撮る。
+## touch_controls.gd は SettingsManager と GameManager.state を見て自分の visible を
+## 決めるので、撮影の間だけ「タッチON」「PLAYING」を作ってから元へ戻す。
+## world.tscn は使わない——NetworkManager(Autoload)が同じホストポートへ再バインドしに
+## 行き、複数回インスタンス化すると画面がタイトル/ロビー/ネットワークエラーの
+## 混ざったものになるため(T-6セッションで実際に踏んだ罠)。
+func _shot_touch_controls(out: String, name: String, size: Vector2i) -> void:
+	var prev_size := DisplayServer.window_get_size()
+	var prev_mode: String = SettingsManager.touch_controls_mode
+	var prev_state: int = GameManager.state
+
+	DisplayServer.window_set_size(size)
+	SettingsManager.touch_controls_mode = "on"
+	GameManager.state = GameManager.State.PLAYING
+
+	var touch: CanvasLayer = load("res://scenes/hud/touch_controls.tscn").instantiate()
+	get_tree().root.add_child(touch)
+	# ウィンドウのリサイズが論理ビューポートへ反映されるまで数フレーム要る
+	for i in 20:
+		await get_tree().process_frame
+	await _shot(out, name)
+	touch.queue_free()
+
+	SettingsManager.touch_controls_mode = prev_mode
+	GameManager.state = prev_state
+	DisplayServer.window_set_size(prev_size)
+	await get_tree().process_frame
 
 
 func _shot(out: String, name: String) -> void:
@@ -71,3 +167,21 @@ func _shot(out: String, name: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png("%s/%s.png" % [out, name])
 	print("saved %s.png" % name)
+
+
+# --- Phase 3 L-12: 実セーブ(user://profile.json / settings.json)の保護 ---
+# このテストはラウンドを回す/プロフィールを触るため、通常のゲーム終了経路
+# (GameManager._end_round() -> hud.gd -> ProfileManager.record_casual_match())から
+# 間接的に save_profile() を踏み、開発機の実セーブを書き換えてしまう。
+# _enter_tree/_exit_tree で挟むので、テスト本体のコードには一切触れていない。
+# 詳細と実測値は tests/save_guard.gd のヘッダを参照。
+const _SaveGuard := preload("res://tests/save_guard.gd")
+var _save_backup := {}
+
+
+func _enter_tree() -> void:
+	_save_backup = _SaveGuard.backup()
+
+
+func _exit_tree() -> void:
+	_SaveGuard.restore(_save_backup)

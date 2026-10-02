@@ -62,7 +62,6 @@ const SLIDE_SNAP := 0.6       # 滑走中の床スナップ距離。高速降下
 ## 無入力時は目標速度＝ゼロへ即座に上書きされ、出口の水平速度が消える。
 ## その間は空中と同じ扱いにして、is_on_floor() の値を無視する
 const WARP_GRACE := 0.2
-const MOUSE_SENSITIVITY := 0.003
 const PITCH_MIN := -60.0
 const PITCH_MAX := 30.0
 ## 通常移動中、カメラ軸は動かさず見た目だけを入力方向へ向ける速さ。
@@ -215,6 +214,8 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	add_to_group("players")
+	# L-09: 頭上の名札はプレイヤー名(利用者の入力)なので自動翻訳させない
+	name_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	$TagArea.body_entered.connect(_on_tag_area_body_entered)
 	if is_multiplayer_authority():
 		sync_position = position
@@ -291,10 +292,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	# Esc でのマウス解放は QuitMenu が開くときに行う
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
-		spring_arm.rotation.x = clampf(
-			spring_arm.rotation.x - event.relative.y * MOUSE_SENSITIVITY,
-			deg_to_rad(PITCH_MIN), deg_to_rad(PITCH_MAX))
+		apply_look_delta(event.relative)
 
 
 func _physics_process(delta: float) -> void:
@@ -530,7 +528,7 @@ func _update_emote_label() -> void:
 	emote_label.visible = visible_to_me
 	if not visible_to_me:
 		return
-	emote_label.text = EMOTE_TEXT[sync_emote]
+	emote_label.text = tr(EMOTE_TEXT[sync_emote])
 	emote_label.modulate = EMOTE_COLOR[sync_emote]
 
 
@@ -765,6 +763,17 @@ func register_placed_block_camera(block: CollisionObject3D) -> void:
 ## いずれも「そのボディの権威ピア」でのみ適用する。
 ## 移動結果は既存の位置レプリケーションで他ピアへ伝わるため RPC は不要。
 
+## マウス/タッチドラッグ共通の視点操作。sensitivity 省略時は現在の設定値を使う
+## (タッチ側(touch_look_zone.gd)は既定引数のまま呼び、マウス側(_unhandled_input)も同様)。
+func apply_look_delta(delta: Vector2, sensitivity := SettingsManager.mouse_sensitivity) -> void:
+	if not is_multiplayer_authority():
+		return
+	rotate_y(-delta.x * sensitivity)
+	spring_arm.rotation.x = clampf(
+		spring_arm.rotation.x - delta.y * sensitivity,
+		deg_to_rad(PITCH_MIN), deg_to_rad(PITCH_MAX))
+
+
 ## ジャンプ台などの打ち上げ。y は上書き、水平は加算
 func launch(v: Vector3) -> void:
 	if not is_multiplayer_authority():
@@ -880,7 +889,7 @@ func _update_role_visuals() -> void:
 		_current_color = color
 		role_label.modulate = color
 		# 準備中の立候補者は「逃げる役に立候補している」ことだけ示す
-		role_label.text = ROLE_TEXT["runner"] if is_runner else ROLE_TEXT["hunter"]
+		role_label.text = tr(ROLE_TEXT["runner"] if is_runner else ROLE_TEXT["hunter"])
 
 
 ## ②④ 他ピア（自分以外）のキャラ・コスチュームを GameManager.peer_profiles から反映する

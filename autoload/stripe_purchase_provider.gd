@@ -19,6 +19,14 @@ const POLL_INTERVAL := 5.0
 const POLL_TIMEOUT := 1860.0 # Checkout Sessionのexpires_at最小値(30分)に余裕を足した値
 const PENDING_PURCHASE_PATH := "user://pending_purchase.json"
 
+## H-10対策: OS.shell_open()はブラウザのポップアップブロッカーに阻まれても
+## 戻り値からは分からない(戻り値を見ても呼び出し自体は成功したことになる)。
+## 検知を諦める代わりに、呼び出し側(shop_screen.gd)がこのURLへの
+## 「開かない場合はこちら」的な再試行リンクを出せるよう、常にURLを流しておく。
+## pack_idも一緒に流すのは、複数パックの購入が同時に進行中の場合に
+## どの行のフォールバックリンクを表示すべきか呼び出し側が判別できるようにするため
+signal checkout_opened(pack_id: StringName, url: String)
+
 var _host: Node
 var _cancel_requested := false
 
@@ -40,6 +48,7 @@ func buy_pack(pack_id: StringName) -> Dictionary:
 	# reconcile_pending() が次回起動時に決済結果を回収できる
 	_save_pending(order_id, pack_id)
 	OS.shell_open(checkout_url)
+	checkout_opened.emit(pack_id, checkout_url)
 
 	var elapsed := 0.0
 	while elapsed < POLL_TIMEOUT:

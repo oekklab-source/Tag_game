@@ -6,7 +6,7 @@ extends Node
 signal profile_updated
 
 const SAVE_PATH := "user://profile.json"
-const SCHEMA_VERSION := 5
+const SCHEMA_VERSION := 6
 ## 多重起動防止用ロックファイル。SAVE_PATHは同一PC上の全プロセス共通の1ファイルなので、
 ## 2つ目のプロセスが後からsave_profile()すると1つ目の変更(プレゼント受領等)を
 ## 丸ごと上書きして消してしまう(実機で発生: 接続トラブル対応中に多重起動し、
@@ -18,6 +18,14 @@ const SCHEMA_VERSION := 5
 ## 確率は極めて低いため、プロセス開始時刻の照合(WMI/PowerShell呼び出しが必要)までは行わない
 const INSTANCE_LOCK_PATH := "user://instance.lock"
 var _holds_instance_lock := false
+
+## M-11: 名前バリデーション(sanitize_name/name_error)で使う定数
+const MAX_NAME_LENGTH := 16
+## NGワードの最小セット(運営/管理者への成りすまし対策のみ)。実運用の辞書拡張は
+## コンテンツポリシー側の判断であり、ここはプレースホルダー
+const NG_WORDS: PackedStringArray = [
+	"admin", "administrator", "gm", "運営", "モデレーター", "management",
+]
 
 var player_name: String = "Player"
 ## ④現在選択中のコスチュームの色見本1つ目のミラー。costume_colors[0] と常に一致させ、
@@ -55,6 +63,12 @@ var casual_matches_played: int = 0
 ## merge_server_inventory() でのLWW判定・クラウドとの新旧比較に使う
 var last_modified_unix: int = 0
 
+## C-03 R-4: /claim-initial-ratingへの初回登録がサーバー側で既に成功済みか。
+## 一度trueになったら再claimしない一方向ラッチ。サーバー側のalready_claimed拒否は
+## 安全網であって主ガードではない(再claimするとサーバー側matches_played/winsが
+## 0から作り直されてしまうため、ローカルにも記録を残す)
+var initial_rating_claimed: bool = false
+
 
 func _ready() -> void:
 	if not _acquire_instance_lock():
@@ -79,11 +93,15 @@ func _acquire_instance_lock() -> bool:
 	if OS.has_feature("web") or DisplayServer.get_name() == "headless":
 		return true
 	if _other_instance_holds_lock():
+		# M-12対策: このダイアログはOS標準のもので見た目はゲームと揃わないが、
+		# 表示できるUIツリーがまだ無い最初期(autoload._ready())で発生するため
+		# ゲーム内スタイルのパネルには置き換えられない(README/CLAUDE.md参照)。
+		# 文言だけでも「なぜ・これからどうなるか」を明確にしておく
+		# L-09: この時点ではまだ SettingsManager(autoload の後ろのほう)が言語設定を
+		# 反映していないので、OS の言語で決まる起動時ロケールで訳される
 		OS.alert(
-			"Tag_Game は既に起動しています。\n"
-			+ "二重に起動すると、セーブデータ（プレゼントの受け取り等）が正しく保存されないことがあります。\n"
-			+ "先に起動しているウィンドウを閉じてから、もう一度起動してください。",
-			"多重起動を検出しました")
+			tr("Tag_Game はすでに別のウィンドウで起動しています。\n\n同時に起動したままだと、セーブデータ（プレゼントの受け取りなど）が正しく保存されないことがあるため、このウィンドウはこのまま終了します。\n\n先に起動しているウィンドウを閉じてから、もう一度起動しなおしてください。"),
+			tr("多重起動のため、このウィンドウは終了します"))
 		get_tree().quit()
 		return false
 	var out := FileAccess.open(INSTANCE_LOCK_PATH, FileAccess.WRITE)
@@ -188,6 +206,12 @@ func _apply_data(data: Dictionary) -> void:
 	else:
 		last_modified_unix = 0
 
+	# C-03 R-4: schema<6（フィールドが存在しない旧セーブ）は false で初期化する
+	if schema >= 6:
+		initial_rating_claimed = bool(data.get("initial_rating_claimed", initial_rating_claimed))
+	else:
+		initial_rating_claimed = false
+
 
 ## ④HTML文字列配列 <-> PackedColorArray の変換。保存(save_profile)・読み込み(_apply_data)・
 ## ネットワーク配信(GameManager._my_profile_payload / player.gd._apply_peer_costume)の
@@ -242,7 +266,8 @@ func to_save_dict() -> Dictionary:
 		"hunter_wins": hunter_wins,
 		"highest_rating": highest_rating,
 		"casual_matches_played": casual_matches_played,
-		"last_modified_unix": last_modified_unix
+		"last_modified_unix": last_modified_unix,
+		"initial_rating_claimed": initial_rating_claimed
 	}
 
 
@@ -256,12 +281,42 @@ func save_profile() -> void:
 	profile_updated.emit()
 
 
-## プロフィール名の更新
-func update_profile(new_name: String) -> void:
-	player_name = new_name.strip_edges()
-	if player_name.is_empty():
-		player_name = "Player"
+## 前後・連続する空白の圧縮、16文字への切り詰め、空文字のフォールバックを行う。
+## 失敗しない(例外を投げない)自動整形のみを担当する
+static func sanitize_name(raw: String) -> String:
+	var s := raw.strip_edges()
+	s = s.replace("　", " ")
+	var re := RegEx.new()
+	re.compile("[ \\t]+")
+	s = re.sub(s, " ", true)
+	s = s.strip_edges()
+	if s.length() > MAX_NAME_LENGTH:
+		s = s.substr(0, MAX_NAME_LENGTH).strip_edges()
+	if s.is_empty():
+		s = "Player"
+	return s
+
+
+## sanitize_name()適用後の名前を検査し、NGワードを含む場合はエラー文言を返す。
+## 問題なければ空文字を返す
+static func name_error(name: String) -> String:
+	var lower := name.to_lower()
+	for w in NG_WORDS:
+		if lower.contains(w.to_lower()):
+			return TranslationServer.translate("使用できない言葉が含まれています")
+	return ""
+
+
+## プロフィール名の更新。整形→検査の順で行い、エラーがあれば保存せず文言を返す
+## (空文字="" は成功を表す)
+func update_profile(new_name: String) -> String:
+	var sanitized := sanitize_name(new_name)
+	var err := name_error(sanitized)
+	if not err.is_empty():
+		return err
+	player_name = sanitized
 	save_profile()
+	return ""
 
 
 ## ④指定コスチュームを所持しているか
@@ -307,6 +362,14 @@ static func _clamp_skin(id: int) -> int:
 ##   - 通貨・見た目等の単純フィールド: last_modified_unix によるLWW(新しい方を採用)
 ##   - レート/戦績クラスタ: matches_played(単調増加カウンタ)が大きい方を採用(同数ならLWW)。
 ##     highest_rating のみ常に max(local, remote) を取り、退行させない
+##   - C-03 R-4: BackendConfig.USE_LIVE_RATING_BACKENDがtrueの間は、rating/matches_played/
+##     runner_wins/hunter_wins/highest_ratingをこの関数では一切書き換えない(casual_matches_played
+##     はランク戦スコープ外なので従来通り常時マージする)。これらのフィールドはrating-api(D1)が
+##     唯一の権威になり、EosManager.eos_initialized後にRankingManager._reconcile_server_rating()が
+##     /ratingから確定値を反映する。ここでPDS由来の値を先に適用してreconciliationに任せる設計には
+##     しない――reconciliationはネットワークエラー・レート制限で黙って失敗しうるfire-and-forget
+##     経路なので、「後で直る」に依存すると失敗時に別デバイスの陳腐化したPDSスナップショットが
+##     そのまま残ってしまう。何もしない方が安全
 func merge_server_inventory(data: Dictionary) -> void:
 	var remote_schema := int(data.get("schema_version", 1))
 	var remote_ts := int(data.get("last_modified_unix", 0)) if remote_schema >= 5 else 0
@@ -343,22 +406,33 @@ func merge_server_inventory(data: Dictionary) -> void:
 		last_modified_unix = remote_ts
 		changed = true
 
-	# レート/戦績クラスタ: matches_played が大きい方をクラスタごと採用(同数ならLWW)
+	# レート/戦績クラスタ: matches_played が大きい方をクラスタごと採用(同数ならLWW)。
+	# casual_matches_playedはランク戦スコープ外なので、rating側の除外条件とは独立に常時マージする
 	var remote_matches := int(data.get("matches_played", -1))
 	if remote_matches >= 0:
 		if remote_matches > matches_played or (remote_matches == matches_played and remote_ts > local_ts_before):
-			if remote_matches != matches_played:
+			if remote_matches != matches_played and not BackendConfig.USE_LIVE_RATING_BACKEND:
 				rating = int(data.get("rating", rating))
 				matches_played = remote_matches
 				runner_wins = int(data.get("runner_wins", runner_wins))
 				hunter_wins = int(data.get("hunter_wins", hunter_wins))
-				casual_matches_played = int(data.get("casual_matches_played", casual_matches_played))
 				changed = true
-		# highest_rating は勝敗に関わらず常に退行させない(ratchet)
-		var remote_highest := int(data.get("highest_rating", highest_rating))
-		if remote_highest > highest_rating:
-			highest_rating = remote_highest
-			changed = true
+			# C-03 R-12(RV-13): 実際に値が変わったときだけ changed を立てる。
+			# 無条件に立てていたため、USE_LIVE_RATING_BACKEND=true のときに
+			# matches_played をリモートから採らない(上のガード)せいで
+			# remote_matches > matches_played が永久に真になり、クラウド同期のたびに
+			# save_profile() -> profile_updated -> GameManager._on_profile_updated()
+			# -> broadcast_my_profile() が無駄に走っていた
+			var remote_casual := int(data.get("casual_matches_played", casual_matches_played))
+			if remote_casual != casual_matches_played:
+				casual_matches_played = remote_casual
+				changed = true
+		if not BackendConfig.USE_LIVE_RATING_BACKEND:
+			# highest_rating は勝敗に関わらず常に退行させない(ratchet)
+			var remote_highest := int(data.get("highest_rating", highest_rating))
+			if remote_highest > highest_rating:
+				highest_rating = remote_highest
+				changed = true
 
 	if changed:
 		save_profile()
@@ -417,6 +491,43 @@ func apply_match_result(delta_rating: int, is_winner: bool, was_runner: bool) ->
 			runner_wins += 1
 		else:
 			hunter_wins += 1
+	save_profile()
+
+
+## C-03 R-3: rating-apiが確定したレートで、apply_match_result()が既にローカル計算・反映
+## 済みのratingを黙って上書き補正する。matches_played/runner_wins/hunter_winsは
+## apply_match_result()で既に加算済みのため、ここでは絶対に触らない(二重加算防止)。
+## highest_ratingのみ既存同様ratchet(後退させない)
+func apply_server_rating_correction(new_rating: int) -> void:
+	rating = maxi(100, new_rating)
+	highest_rating = max(highest_rating, rating)
+	save_profile()
+
+
+## C-03 R-4: /claim-initial-ratingが成功した直後に呼ぶ唯一の入口。
+## ratingは変更しない(送ったローカル値をサーバーがそのまま採用しただけで補正ではない)
+func mark_initial_rating_claimed() -> void:
+	if initial_rating_claimed:
+		return
+	initial_rating_claimed = true
+	save_profile()
+
+
+## C-03 R-4: 起動時reconciliation(RankingManager._reconcile_server_rating())専用の
+## フルスナップショット反映。apply_server_rating_correction()(試合直後のRPC経由、
+## rating+highest_ratingのみで呼び出し文脈も違う)とは別関数として維持する。
+##
+## matches_played/runner_wins/hunter_winsには一切触れない(設計判断、意図的):
+## サーバー側のこれらのカウンタは/claim-initial-rating実行時点から0で数え直される
+## 「claim後カウンタ」であり、ローカルの通算カウンタとは意味が違う。上書きすると
+## claim以前の全戦績表示が消える(claimは既存プレイヤーにも起こりうるタイミングなので
+## 無視できない実害)。ratingは対戦マッチング(tier_lock)・リーダーボードの両方で
+## 外部公開される値であり食い違いが実害になるため必ずサーバー値を採用する。
+## highest_ratingは既存箇所と同じくratchet(後退させない)のみ行う
+func apply_server_rating_snapshot(new_rating: int, server_highest_rating: int) -> void:
+	rating = maxi(100, new_rating)
+	highest_rating = maxi(highest_rating, server_highest_rating)
+	initial_rating_claimed = true
 	save_profile()
 
 

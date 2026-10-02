@@ -9,6 +9,8 @@ extends CenterContainer
 ## ボタンが押されたことだけ signal で root に伝える
 
 signal open_overlay_requested(key: String)
+## M-09: 定員変更などの結果をトーストで知らせたいときに使う(hud.gdの_toastへそのまま繋ぐ)
+signal toast_requested(text: String, color: Color)
 
 ## scenes/hud.gd(ルート)の同名定数と値を揃えておくこと(役割バッジの色と一致させる)
 const COLOR_RUNNER := Color(0.35, 1.0, 0.55)
@@ -19,8 +21,12 @@ const COLOR_HUNTER := Color(1.0, 0.45, 0.4)
 ## このコンテナの実サイズへ自動追従するので、別途レンダリング解像度を落とす必要はない
 const COSTUME_PREVIEW_SCENE := preload("res://scenes/costume_preview.tscn")
 const PREVIEW_SIZE := 96
+## L-10: _fit_to_screen() で画面の上下左右に残す余白
+const FIT_MARGIN := 16.0
 
+@onready var box: PanelContainer = $Box
 @onready var status: Label = $Box/Col/Status
+@onready var status_sub: Label = $Box/Col/StatusSub
 @onready var list: VBoxContainer = $Box/Col/ListBox/List
 @onready var role_button: Button = $Box/Col/RoleButton
 @onready var open_costume_button: Button = $Box/Col/OverlayButtonsRow/OpenCostumeButton
@@ -33,14 +39,28 @@ const PREVIEW_SIZE := 96
 @onready var max_members_apply_button: Button = $Box/Col/MaxMembersRow/MaxMembersApplyButton
 @onready var leave_button: Button = $Box/Col/LeaveButton
 @onready var hint: Label = $Box/Col/Hint
+@onready var invite_row: HBoxContainer = $Box/Col/InviteRow
+@onready var invite_label: Label = $Box/Col/InviteRow/InviteLabel
+@onready var copy_link_button: Button = $Box/Col/InviteRow/CopyLinkButton
+@onready var version_label: Label = $Box/Col/ControlsHelpRow/VersionLabel
 
 var _roster_key := ""
 var _max_members_row_was_visible := false
 var _sb_row: StyleBoxFlat
+var _sb_row_hover: StyleBoxFlat
+var _public_address_confirmed := false
+## Cloudflare Tunnel を張れなかったときの注記（空ならトンネルは問題なし／確立待ち）。
+## 招待リンクの下に1行足して、LAN内の相手にしか届かないリンクであることを伝える
+var _tunnel_note := ""
+## H-04: キック確認ダイアログは1つ使い回し、対象idだけ差し替える
+## (friend_screen.gdの_remove_confirm_dialogと同じパターン)
+var _pending_kick_id := -1
+var _kick_confirm_dialog: ConfirmationDialog
 
 
 func _ready() -> void:
 	_sb_row = _row_style()
+	_sb_row_hover = _row_style_hover()
 	role_button.pressed.connect(GameManager.toggle_my_role)
 	open_costume_button.pressed.connect(func(): open_overlay_requested.emit("costume"))
 	open_shop_button.pressed.connect(func(): open_overlay_requested.emit("shop"))
@@ -57,6 +77,77 @@ func _ready() -> void:
 	# ホストが押すと全員切断されるが、それは server_disconnected 経由で
 	# 各参加者が自動的に NetworkManager.leave() されるので既存動作のまま
 	leave_button.pressed.connect(NetworkManager.leave)
+	copy_link_button.pressed.connect(_on_copy_link_pressed)
+	# ホストマイグレーション後の再emit(_promote_self_to_host())も含めて拾う。
+	# 既にpublic_addressが確定した後にこのパネルが読み込まれるケースは
+	# シグナルを取りこぼすため、下の即時チェックで補う
+	NetworkManager.public_address_ready.connect(_on_public_address_ready)
+	NetworkManager.tunnel_failed.connect(_on_tunnel_failed)
+	# この"v"は通信プロトコル版数(PROTOCOL_VERSION)。ストア版数(application/config/version)ではない
+	version_label.text = "v%d" % GameManager.PROTOCOL_VERSION
+	if not NetworkManager.public_address.is_empty():
+		_on_public_address_ready(NetworkManager.public_address)
+	_build_kick_confirm_dialog()
+
+
+## H-04: キック確認ダイアログ(OK/キャンセルを1つ使い回し、対象は_pending_kick_idに保持する)
+func _build_kick_confirm_dialog() -> void:
+	_kick_confirm_dialog = ConfirmationDialog.new()
+	_kick_confirm_dialog.title = tr("参加者を退出させる")
+	_kick_confirm_dialog.ok_button_text = tr("退出させる")
+	_kick_confirm_dialog.cancel_button_text = tr("キャンセル")
+	_kick_confirm_dialog.confirmed.connect(_on_kick_confirmed)
+	add_child(_kick_confirm_dialog)
+
+
+func _on_kick_pressed(id: int) -> void:
+	_pending_kick_id = id
+	_kick_confirm_dialog.dialog_text = tr("%s をロビーから退出させますか？") \
+		% _display_name(id, multiplayer.get_unique_id())
+	_kick_confirm_dialog.popup_centered()
+
+
+func _on_kick_confirmed() -> void:
+	if _pending_kick_id < 0:
+		return
+	GameManager.kick_peer(_pending_kick_id)
+	_pending_kick_id = -1
+
+
+## 招待リンクの画面内表示(C-04)。ホスト開始/トンネル確定/ホストマイグレーション後の
+## 再確定のいずれでもNetworkManager.public_address_readyから呼ばれる
+func _on_public_address_ready(addr: String) -> void:
+	_public_address_confirmed = true
+	# IP ではなくホスト名が来た＝トンネルが（遅れてでも）確立したので、失敗の注記は外す
+	if not addr.is_valid_ip_address():
+		_tunnel_note = ""
+	_refresh_invite_label()
+
+
+## トンネルは窓を出さずに裏で張るので、張れなかったことはここでしか伝わらない
+## （以前は PowerShell の窓にエラーが出ていた）
+func _on_tunnel_failed(reason: String) -> void:
+	if reason == "not_found":
+		_tunnel_note = tr("※cloudflared が入っていないため、インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）")
+	else:
+		_tunnel_note = tr("※インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）")
+	_refresh_invite_label()
+
+
+func _refresh_invite_label() -> void:
+	var text := tr("招待リンク: %s") % NetworkManager.join_link()
+	if not _tunnel_note.is_empty():
+		text += "\n" + _tunnel_note
+	invite_label.text = text
+
+
+func _on_copy_link_pressed() -> void:
+	DisplayServer.clipboard_set(NetworkManager.join_link())
+	copy_link_button.text = tr("コピーしました")
+	copy_link_button.disabled = true
+	await get_tree().create_timer(1.5).timeout
+	copy_link_button.text = tr("リンクをコピー")
+	copy_link_button.disabled = false
 
 
 ## ロビーの一覧の行。コードで作る行にも .tscn 側と同じ角丸を効かせる
@@ -68,6 +159,13 @@ func _row_style() -> StyleBoxFlat:
 	sb.content_margin_right = 14.0
 	sb.content_margin_top = 8.0
 	sb.content_margin_bottom = 8.0
+	return sb
+
+
+## L-02: 役割指名ボタンのホバー時。_row_style()と同じ形でbg_colorだけ明るくする
+func _row_style_hover() -> StyleBoxFlat:
+	var sb := _row_style()
+	sb.bg_color = Color(1, 1, 1, 0.14)
 	return sb
 
 
@@ -88,27 +186,31 @@ func update_lobby(overlay_open: bool) -> void:
 	# 立候補UI(役割ボタン・ホストの指名クリック)自体を出さない。DirectConnect
 	# (フレンドのみのプライベート対戦)は従来通り立候補制のまま
 	var is_eos_matched := NetworkManager.matched_via_eos_lobby
+	# EOSロビー経由(見知らぬ相手とのレート戦)で招待リンクを見せると、意図的に
+	# 特定の相手を招き入れてレートを操作できてしまう。DirectConnect(非レート)でのみ出す
+	invite_row.visible = _public_address_confirmed and not is_eos_matched
 	_update_max_members_row(is_host)
-	# 版数を出しておくと、古いビルドが混ざったときに見ただけで分かる。
+	# 版数は_ready()でControlsHelpRow/VersionLabelに出す(古いビルドが混ざったときに
+	# 見ただけで分かるように)。ここではStatusの毎フレーム更新のみ扱う。
 	# 定員は常に4人（逃走者1 + 鬼3）で、足りない鬼は CPU が埋めることも書いておく
 	var humans_on_hunt: int = maxi(ids.size() - 1, 0)
 	var cpu_fill: int = maxi(GameManager.MAX_HUNTERS - humans_on_hunt, 0)
 	if GameManager.debug_cpu_runner:
 		cpu_fill = 0  # デバッグ（CPU逃走者）は1対1の検証用で CPU 鬼を足さない
-	var fill_text := "" if cpu_fill <= 0 else "（うち CPU の鬼 %d人）" % cpu_fill
-	status.text = "%s ／ 4人であそぶ: %d人が参加中%s ／ v%d" % ["ホスト（あなた）" if is_host
-		else "参加中（ホストは別の人）", ids.size(), fill_text, GameManager.PROTOCOL_VERSION]
+	var fill_text := "" if cpu_fill <= 0 else tr("（うち CPU の鬼 %d人）") % cpu_fill
+	status.text = tr("ホスト（あなた）") if is_host else tr("参加中（ホストは別の人）")
+	status_sub.text = tr("4人であそぶ: %d人が参加中%s") % [ids.size(), fill_text]
 
 	_rebuild_roster(ids, me, is_host, is_eos_matched)
 
-	var debug_available := is_host and ids.size() == 1
+	var debug_available := OS.is_debug_build() and is_host and ids.size() == 1
 	if is_host and GameManager.debug_cpu_runner and not debug_available:
 		GameManager.set_debug_cpu_runner(false)
 	debug_cpu_runner_button.visible = debug_available
 	debug_cpu_runner_button.set_pressed_no_signal(GameManager.debug_cpu_runner)
-	debug_cpu_runner_button.text = "デバッグ: CPU逃走者 ON" if GameManager.debug_cpu_runner else "デバッグ: CPU逃走者 OFF"
+	debug_cpu_runner_button.text = tr("デバッグ: CPU逃走者 ON") if GameManager.debug_cpu_runner else tr("デバッグ: CPU逃走者 OFF")
 	var i_am_runner := GameManager.wanted_runner == me
-	role_button.text = "デバッグ中: あなたは鬼" if GameManager.debug_cpu_runner else ("おにに戻る" if i_am_runner else "逃げる役になる")
+	role_button.text = tr("デバッグ中: あなたは鬼") if GameManager.debug_cpu_runner else (tr("おにに戻る") if i_am_runner else tr("逃げる役になる"))
 	role_button.disabled = GameManager.debug_cpu_runner
 	role_button.visible = not is_eos_matched
 	start_button.visible = is_host
@@ -118,18 +220,38 @@ func update_lobby(overlay_open: bool) -> void:
 		hint.text = GameManager.peer_notice
 		hint.modulate = Color(1.0, 0.55, 0.4)
 	elif is_eos_matched:
-		hint.text = "この対戦は鬼がランダムで決まります（立候補不可）%s" \
-			% ("　Enter キー: 開始" if is_host else "　― ホストが始めるのを待っています")
+		hint.text = tr("この対戦は鬼がランダムで決まります（立候補不可）%s") \
+			% (tr("　Enter キー: 開始") if is_host else tr("　― ホストが始めるのを待っています"))
 		hint.modulate = Color.WHITE
 	elif is_host and GameManager.debug_cpu_runner:
-		hint.text = "デバッグ中: あなたが鬼、CPUが逃げる役です。Enter キー: 開始"
+		hint.text = tr("デバッグ中: あなたが鬼、CPUが逃げる役です。Enter キー: 開始")
 		hint.modulate = Color.WHITE
 	elif is_host:
-		hint.text = "R キー: 役割を切りかえ　Tab キー: 逃げる役を指名　Enter キー: 開始"
-		hint.modulate = Color.WHITE
+		hint.text = ""
 	else:
-		hint.text = "R キー: 役割を切りかえ　― ホストが始めるのを待っています"
+		hint.text = tr("R キー: 役割を切りかえ　― ホストが始めるのを待っています")
 		hint.modulate = Color.WHITE
+	hint.visible = not hint.text.is_empty()
+	_fit_to_screen()
+
+
+## L-10: 文字サイズ「大/特大」(SettingsManager.TEXT_SIZE_SCALES、ルート Window の
+## content_scale_factor)では、使える画面の高さが 1080/1.3≒831 相当まで減る。参加者が並ぶと
+## このパネルは標準でも縦 800 前後あるため、そのままでは見出しと操作説明が画面外に切れる
+## (実測: 特大で両方とも見えなくなった)。はみ出すときだけパネルごと縮めて収める。
+## 縮めるのは Box ではなくこのノード自身: Box は CenterContainer の子なので、並べ直しのたびに
+## Container.fit_child_in_rect() が scale を 1 に戻してしまう。このノードの親は CanvasLayer
+## (Container ではない)なので scale が保たれ、画面中央を支点に縮めれば中央寄せも崩れない。
+## 使える広さは自分の size ではなく get_viewport_rect() で測る: このノードも Container なので、
+## Box の最小サイズが画面より大きいと自分の size まで画面の外へ広がってしまう(実測で縮まなかった)
+func _fit_to_screen() -> void:
+	var need := box.get_combined_minimum_size()
+	if need.x <= 0.0 or need.y <= 0.0:
+		return
+	var avail := get_viewport_rect().size - Vector2(FIT_MARGIN, FIT_MARGIN) * 2.0
+	var s := minf(1.0, minf(avail.x / need.x, avail.y / need.y))
+	pivot_offset = size / 2.0
+	scale = Vector2(s, s)
 
 
 ## 定員変更UIはホストかつEOSロビー経由(公開ロビーを持っている)の時だけ意味を持つ。
@@ -150,8 +272,12 @@ func _update_max_members_row(is_host: bool) -> void:
 func _on_max_members_apply_pressed() -> void:
 	var new_max := int(max_members_spin.value)
 	var ok: bool = await EosManager.update_max_members(new_max)
-	if not ok:
+	if ok:
+		toast_requested.emit(tr("定員を%d人に変更しました") % new_max, COLOR_RUNNER)
+	else:
 		max_members_spin.value = EosManager.get_current_lobby_max_members()
+		toast_requested.emit(
+			tr("定員の変更に失敗しました（現在: %d人）") % int(max_members_spin.value), COLOR_HUNTER)
 
 
 ## 一覧は毎フレーム作り直さず、中身が変わったときだけ組み直す。
@@ -171,14 +297,14 @@ func _rebuild_roster(ids: Array[int], me: int, is_host: bool, is_eos_matched: bo
 		list.remove_child(c)
 		c.queue_free()
 	if ids.is_empty():
-		list.add_child(_roster_note("だれもいません"))
+		list.add_child(_roster_note(tr("だれもいません")))
 		return
 	for id in ids:
 		list.add_child(_roster_row(id, me, is_host, is_eos_matched))
 	if is_eos_matched:
-		list.add_child(_roster_note("鬼は開始時にランダムで決まります（立候補不可）"))
+		list.add_child(_roster_note(tr("鬼は開始時にランダムで決まります（立候補不可）")))
 	elif GameManager.wanted_runner < 0:
-		list.add_child(_roster_note("逃げる役が未定です（開始時にランダムで決まります）"))
+		list.add_child(_roster_note(tr("逃げる役が未定です（開始時にランダムで決まります）")))
 
 
 ## 1行 = 名前 + 役割バッジ。ホストなら行ごとクリックして指名できる
@@ -191,6 +317,8 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	h.add_theme_constant_override("separation", 12)
 	h.add_child(_roster_preview(id))
 	var name_label := Label.new()
+	# L-09: プレイヤー名は利用者の入力なので自動翻訳させない(title.gd の profile_badge_name と同じ理由)
+	name_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	name_label.text = _display_name(id, me)
 	name_label.add_theme_font_size_override("font_size", 19)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -199,20 +327,32 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	var rating_label := Label.new()
 	if GameManager.peer_profiles.has(id):
 		var rating := int(GameManager.peer_profiles[id].get("rating", 1500))
-		tier_badge.text = "[%s]" % RankingManager.tier_name(rating)
+		tier_badge.text = "[%s]" % tr(RankingManager.tier_name(rating))
 		tier_badge.modulate = RankingManager.tier_color(rating)
 		tier_badge.add_theme_font_size_override("font_size", 15)
 		rating_label.text = "%d Pt" % rating
 		rating_label.add_theme_font_size_override("font_size", 15)
 		rating_label.modulate = Color(1, 1, 1, 0.7)
 	var badge := Label.new()
-	badge.text = "にげる" if is_runner else "おに"
+	# H-08: 色分けだけに頼らないよう、役割ごとに異なる漢字1字を記号的に添える(応急処置)。
+	# 絵文字は ui/pop_theme.tres の和文フォント(MPLUSRounded1c-Bold.ttf)にフォールバックが
+	# 無く文字化け(豆腐化)のリスクがあるため避け、フォントが対応を謳う日本語グリフの
+	# 範囲内に収まる漢字にした(tier_badge の "[%s]" と同じ角括弧表記に揃えている)
+	badge.text = tr("[走] にげる") if is_runner else tr("[鬼] おに")
 	badge.add_theme_font_size_override("font_size", 19)
 	badge.modulate = COLOR_RUNNER if is_runner else COLOR_HUNTER
 	h.add_child(name_label)
 	h.add_child(tier_badge)
 	h.add_child(rating_label)
 	h.add_child(badge)
+	if is_host and not is_eos_matched and id != me:
+		# H-04: キックボタン(_kick_slot)の当たり判定と役割バッジが重ならないよう、
+		# バッジの後ろに当たり判定と同じ幅の透明スペーサーを確保しておく
+		# (_kick_slot が実際に出る条件と完全に一致させる。出ない行にまで空けると
+		# 全員の行が右に詰まって見える無駄な余白になる)
+		var kick_spacer := Control.new()
+		kick_spacer.custom_minimum_size = Vector2(44, 0)
+		h.add_child(kick_spacer)
 	row.add_child(h)
 	if not is_host or is_eos_matched:
 		return row
@@ -220,11 +360,45 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	var btn := Button.new()
 	btn.flat = true
 	btn.focus_mode = Control.FOCUS_NONE
-	btn.tooltip_text = "この人を逃げる役にする"
+	btn.tooltip_text = tr("この人を逃げる役にする")
 	btn.pressed.connect(func() -> void: GameManager.set_wanted_runner_to(id))
+	btn.mouse_entered.connect(func(): row.add_theme_stylebox_override("panel", _sb_row_hover))
+	btn.mouse_exited.connect(func(): row.add_theme_stylebox_override("panel", _sb_row))
 	btn.set_anchors_preset(Control.PRESET_FULL_RECT)
 	row.add_child(btn)
+	# H-04: 自分以外の行にだけキック用の当たり判定を重ねる
+	if id != me:
+		row.add_child(_kick_slot(id))
 	return row
+
+
+## H-04: rowの右端に小さく重なる「キック」当たり判定。
+## row は PanelContainer で直接の子をすべて同じフルレクトへ強制的に引き伸ばすため、
+## キックボタンを row へ直接 add すると btn と同じく行全体を覆ってしまう。
+## 非Containerのラッパー(このslot自身)でその強制から一度抜け、中だけ普通の
+## アンカー計算をさせて小さい当たり判定にする。slot自身は mouse_filter=IGNORE なので、
+## kbtn の矩形外のクリックは slot を素通りして btn (前の兄弟)の役割指名にフォールバックする
+func _kick_slot(id: int) -> Control:
+	var slot := Control.new()
+	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var kbtn := Button.new()
+	kbtn.flat = true
+	kbtn.focus_mode = Control.FOCUS_NONE
+	kbtn.text = "✕"
+	kbtn.tooltip_text = tr("この人をロビーから退出させる")
+	kbtn.anchor_left = 1.0
+	kbtn.anchor_right = 1.0
+	kbtn.anchor_top = 0.5
+	kbtn.anchor_bottom = 0.5
+	kbtn.offset_left = -40.0
+	kbtn.offset_right = 0.0
+	kbtn.offset_top = -18.0
+	kbtn.offset_bottom = 18.0
+	kbtn.pressed.connect(func() -> void: _on_kick_pressed(id))
+	kbtn.mouse_entered.connect(func(): kbtn.modulate = Color(1.0, 0.55, 0.5))
+	kbtn.mouse_exited.connect(func(): kbtn.modulate = Color.WHITE)
+	slot.add_child(kbtn)
+	return slot
 
 
 ## ⑥見た目プレビュー(costume_preview.tscnの小型埋め込み)。peer_profilesが届くまでは
@@ -269,16 +443,18 @@ func _roster_preview(id: int) -> Control:
 ## フォールバックとして残している
 func _display_name(id: int, me: int) -> String:
 	var nickname := GameManager.nickname_for(id)
-	var has_nickname := nickname != "プレイヤー %d" % id
+	# L-09: 以前は nickname_for() のフォールバック表記と文字列比較していたが、表記を tr() で
+	# 訳すようになったので、比較ではなく has_nickname() で判定する
+	var has_nickname := GameManager.has_nickname(id)
 	if id == me:
-		return "あなた（%s）" % nickname if has_nickname else "あなた"
+		return tr("あなた（%s）") % nickname if has_nickname else tr("あなた")
 	if has_nickname:
 		return nickname
 	if GameManager.peer_profiles.has(id):
 		var pname := String(GameManager.peer_profiles[id].get("name", ""))
 		if not pname.is_empty():
 			return pname
-	return "プレイヤー %d" % id
+	return tr("プレイヤー %d") % id
 
 
 func _roster_note(text: String) -> Control:

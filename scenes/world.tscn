@@ -1,7 +1,8 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scenes/world.gd" id="1_world"]
 [ext_resource type="PackedScene" path="res://scenes/hud.tscn" id="2_hud"]
+[ext_resource type="PackedScene" path="res://scenes/hud/touch_controls.tscn" id="3_touch_controls"]
 
 ; 天頂を紫寄り・地平を淡いペールホワイトにして、爽やかなグラデーションにする。
 ; sky_curve を小さくするとグラデーションの帯が広がり、青一色の抜けが減る
@@ -97,3 +98,5 @@ _spawnable_scenes = PackedStringArray("res://scenes/gimmicks/banana.tscn", "res:
 spawn_path = NodePath("../Items")
 
 [node name="HUD" parent="." instance=ExtResource("2_hud")]
+
+[node name="TouchControls" parent="." instance=ExtResource("3_touch_controls")]

@@ -13,17 +13,24 @@ const REQUEST_TIMEOUT_SEC := 10.0
 
 
 static func post_json(host: Node, url: String, body: Dictionary, extra_headers: PackedStringArray = []) -> Dictionary:
+	var headers := PackedStringArray(["Content-Type: application/json"])
+	headers.append_array(extra_headers)
+	return await _request(host, url, headers, HTTPClient.METHOD_POST, JSON.stringify(body))
+
+
+## C-03 R-6: /leaderboard-top のような認証不要のGET専用エンドポイント向け。
+## ボディ無し・Content-Typeヘッダ無し(GETなので不要)。post_json()と同じ成功判定
+## (response_code==200のみ成功、429含め非200は一律network_error)を共有する
+static func get_json(host: Node, url: String, extra_headers: PackedStringArray = []) -> Dictionary:
+	return await _request(host, url, extra_headers, HTTPClient.METHOD_GET, "")
+
+
+static func _request(host: Node, url: String, headers: PackedStringArray,
+		method: HTTPClient.Method, body: String) -> Dictionary:
 	var http := HTTPRequest.new()
 	http.timeout = REQUEST_TIMEOUT_SEC
 	host.add_child(http)
-	var headers := PackedStringArray(["Content-Type: application/json"])
-	headers.append_array(extra_headers)
-	var err := http.request(
-		url,
-		headers,
-		HTTPClient.METHOD_POST,
-		JSON.stringify(body)
-	)
+	var err := http.request(url, headers, method, body)
 	if err != OK:
 		http.queue_free()
 		return {"api_ok": false, "reason": "network_error"}
