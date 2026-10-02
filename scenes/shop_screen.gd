@@ -30,7 +30,13 @@ signal closed
 
 ## M-01: lobby_panel.gd._roster_preview()と同じ3Dプレビュー部品を再利用する
 const COSTUME_PREVIEW_SCENE := preload("res://scenes/costume_preview.tscn")
-const PREVIEW_SIZE := 96
+## 96 では全身像の中の塗り分けや帽子が判別できず、カードが全部同じに見えた(2026-10-02)。
+## カード幅(_build_item_card の 200)に収まる範囲で大きくする
+const PREVIEW_SIZE := 180
+
+## コスチューム(柄・カラー)が効く唯一のキャラ(Humanoid.SKINS の添字)。humanoid.gd の
+## apply_costume() は他のキャラだと何も塗らない
+const COSTUME_SKIN := 0
 
 const RARITY_COLORS := {
 	&"common": Color(0.6, 0.6, 0.65),
@@ -233,6 +239,16 @@ func _build_item_card(kind: StringName, id: StringName, def: Dictionary) -> Cont
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(name_lbl)
 
+	# プレビューはきょうりゅうで試着させているので、今のキャラが別だと「買っても
+	# 見た目が変わらない」ことをここで伝える(costume_screen の「固定デザイン」表示と同じ考え方)
+	if kind == &"costume" and ProfileManager.skin != COSTUME_SKIN:
+		var note_lbl := Label.new()
+		note_lbl.text = tr("きょうりゅう専用")
+		note_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		note_lbl.add_theme_font_size_override("font_size", 14)
+		note_lbl.add_theme_color_override("font_color", Color(0.7, 0.75, 0.85))
+		vbox.add_child(note_lbl)
+
 	var price := int(def.get("price", 0))
 
 	var price_lbl := Label.new()
@@ -267,7 +283,12 @@ func _build_item_card(kind: StringName, id: StringName, def: Dictionary) -> Cont
 
 ## M-01: costumeカード=そのコスチュームを試着+自分の現在の帽子、hatカード=自分の
 ## 現在のコスチューム+その帽子を試着、という基準見た目にする(組み合わせ映えが
-## 分かるように、かつcostume/hat両カードで対称的な実装にするため)
+## 分かるように、かつcostume/hat両カードで対称的な実装にするため)。
+## ただし costume カードは、自分の今のキャラ・色のままだと違いが見えないので例外にする
+## (2026-10-02「全部同じアバターに見える」報告):
+##   - キャラは常にきょうりゅう(COSTUME_SKIN)。他のキャラではコスチュームが一切効かない
+##   - 色はコスチュームごとの見本色(CostumeCatalog.preview_colors)。体の大部分は
+##     全コスチューム共通のユーザー色なので、同じ色だと違いがお腹・爪・トゲだけになる
 func _build_preview(kind: StringName, id: StringName, owned: bool) -> Control:
 	var preview: Control = COSTUME_PREVIEW_SCENE.instantiate()
 	preview.custom_minimum_size = Vector2(PREVIEW_SIZE, PREVIEW_SIZE)
@@ -280,8 +301,9 @@ func _build_preview(kind: StringName, id: StringName, owned: bool) -> Control:
 	var hat_id := ProfileManager.hat_id
 	match kind:
 		&"costume":
+			skin = COSTUME_SKIN
 			costume_id = id
-			colors = CostumeCatalog.default_colors(id)   # 未所持のため保存済み色が無い
+			colors = CostumeCatalog.preview_colors(id)   # 未所持のため保存済み色が無い
 		&"hat":
 			hat_id = id
 

@@ -1155,3 +1155,6 @@ msgstr "Paste invite link to join"
 
 msgid "招待リンクを貼り付けてください"
 msgstr "Paste the invite link"
+
+msgid "きょうりゅう専用"
+msgstr "Dino only"
