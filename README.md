@@ -1399,7 +1399,8 @@ scenes/costume_preview.tscn(.gd) プロフィール設定の3Dプレビュー（
 scenes/costume_screen.tscn(.gd)  プロフィール設定（名前・キャラクター/スキン柄/カラー/帽子・戦績）
 scenes/outfit_cards.gd        きせかえ画面とショップで共通のカード部品・色パレット（OutfitCards）
 scenes/shop_screen.tscn(.gd)  ショップ。試着しながらコーデを組み、未所持の物をまとめて買ってそのまま着る
-scenes/shop_stage.tscn(.gd)   ショップの3D舞台（店内・試着台・カウンターの店員さん。店員さんは試着や購入に反応する）
+scenes/shop_stage.tscn(.gd)   ショップの3D舞台（店内・試着台・カウンターの店員さん。店員さんは試着されると
+                              接客位置まで出てきてアバターを見て反応し、普段はお客さん(カメラ)を向く）
 tools/blender/references/SHOP_ART_PROMPTS.md  店員さん・店内の絵を Gemini で起こすためのプロンプト（3D化の元絵）
 tests/map_connectivity.tscn   ナビメッシュの連結性・滑り台の一方通行・走路の貫通の検証
 tests/item_drop.tscn          アイテムがラウンド外でも置けることの検証
@@ -1423,6 +1424,7 @@ tests/test_i18n.tscn          翻訳の整合性（未登録 msgid・訳し忘�
 tests/host_conflict.tscn      ポートが埋まっているときホストを弾いて理由を出すかの検証
 tests/costume_model.tscn      ④コスチューム・⑤帽子のデータモデル（所持・移行・整合性）を検証
 tests/shop_fitting.tscn       ショップの試着・まとめ買い・着替え・元に戻す・プレゼント可否の検証
+tests/shop_clerk.tscn         ショップの店員さんの動き（見る相手・歩く・反応・吹き出しの追従）の検証
 tests/test_eos_credentials_check.tscn eos_credentials.cfg の検証ロジック（起動可否と出荷可否の境界）
 tests/hat_placement.gd        ⑤帽子の装着位置（Chestボーン基準オフセット）を目視調整するスクリプト
                               （godot --path . --script res://tests/hat_placement.gd -- <出力先>）

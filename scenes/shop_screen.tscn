@@ -129,17 +129,12 @@ clip_contents = true
 [node name="ShopStage" parent="ContentMargin/ContentRow/StagePane/StageRoot" instance=ExtResource("3_stage")]
 layout_mode = 1
 
-; 店員さん(舞台の右側)の頭の上あたりに出す
+; 店員さんの頭の上に出す。位置は shop_screen.gd の _process() が毎フレーム店員さんに合わせる
 [node name="SpeechBubble" type="PanelContainer" parent="ContentMargin/ContentRow/StagePane/StageRoot"]
-layout_mode = 1
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -340.0
-offset_top = 16.0
-offset_right = -16.0
-offset_bottom = 72.0
-grow_horizontal = 0
+custom_minimum_size = Vector2(320, 0)
+layout_mode = 0
+offset_right = 320.0
+offset_bottom = 56.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_bubble")
 

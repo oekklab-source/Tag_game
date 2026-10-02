@@ -105,7 +105,7 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.2, 2.7, 2.6)
 mesh = SubResource("mesh_backdrop")
 
 [node name="Pedestal" type="MeshInstance3D" parent="SubViewportContainer/SubViewport/Set"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.7, 0.06, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, 0.06, 0)
 mesh = SubResource("mesh_pedestal")
 
 [node name="Counter" type="MeshInstance3D" parent="SubViewportContainer/SubViewport/Set"]
@@ -121,14 +121,14 @@ mesh = SubResource("mesh_counter_top")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.4, 2.2, 2.35)
 
 [node name="PlayerTurntable" type="Node3D" parent="SubViewportContainer/SubViewport"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.7, 0.12, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, 0.12, 0)
 
 [node name="Player" parent="SubViewportContainer/SubViewport/PlayerTurntable" instance=ExtResource("2_humanoid")]
 
-; 店員さん。カウンターの奥に立ち、少しプレイヤーの方へ向く。
+; 店員さん。位置と向きは shop_stage.gd が動かす(CLERK_HOME / CLERK_ASSIST)。
 ; カメラは +Z を向いているので、ワールドの +X は画面の左になる(プレイヤーが左、店員さんが右)
 [node name="Shopkeeper" type="Node3D" parent="SubViewportContainer/SubViewport"]
-transform = Transform3D(0.906308, 0, 0.422618, 0, 1, 0, -0.422618, 0, 0.906308, -1.5, 0, 0.65)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0, 0.65)
 
 [node name="LockBadge" type="Label" parent="."]
 layout_mode = 1

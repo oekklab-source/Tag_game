@@ -277,6 +277,7 @@ func _on_costume_pressed(id: StringName) -> void:
 	_focus_id = id
 	if switched:
 		_say(tr("スキン柄はきょうりゅう専用なので、きょうりゅうで試着しますね"))
+		stage.admire(true)
 	else:
 		_react_to_item(&"costume", id)
 	_rebuild()
@@ -301,12 +302,13 @@ func _react_to_item(kind: StringName, id: StringName) -> void:
 	var item_name := _item_name(kind, id)
 	if _owns(kind, id):
 		_say(tr("「%s」はもうお持ちですね。いろいろ合わせてみましょう！") % item_name)
+		stage.admire(false)
 		return
 	if kind == &"hat":
 		_say(tr("「%s」、人気なんですよ♪") % item_name)
 	else:
 		_say(tr("「%s」、とってもお似合いです！") % item_name)
-	stage.cheer()
+	stage.admire(true)
 
 
 func _on_reset_pressed() -> void:
@@ -444,6 +446,21 @@ func _wear_selected_outfit() -> void:
 
 
 # --- 店員さんのひとこと -----------------------------------------------------
+
+## 吹き出しを店員さんの頭の上に付いて行かせる(店員さんはカウンターの奥と接客位置を
+## 行き来するので、固定位置だと別の場所でしゃべっているように見える)
+func _process(_delta: float) -> void:
+	if not speech_bubble.visible:
+		return
+	var head: Vector2 = stage.clerk_head_position()
+	var area := speech_bubble.get_parent_control().size
+	var bubble := speech_bubble.size
+	# 吹き出しの左下(角の丸みを小さくしてある所)を頭の右上あたりに置き、舞台からはみ出さないようにする
+	var pos := Vector2(head.x - 24.0, head.y - bubble.y - 8.0)
+	pos.x = clampf(pos.x, 8.0, maxf(8.0, area.x - bubble.x - 8.0))
+	pos.y = clampf(pos.y, 8.0, maxf(8.0, area.y - bubble.y - 8.0))
+	speech_bubble.position = pos
+
 
 func _say(text: String) -> void:
 	speech_label.text = text

@@ -12,9 +12,9 @@ extends Control
 ## きょうりゅうにモノトーン柄＋ネコミミビーニーを着せた仮の姿、奥の壁は単色で動く。
 
 ## キャラの正面は -Z なので、カメラは -Z 側の少し高い位置から2人の間を見る。
-## カメラが +Z を向くため、ワールドの +X が画面の左になる(プレイヤー x=+0.7 が左、店員さん x=-1.5 が右)
-const CAMERA_POS := Vector3(-0.35, 1.6, -5.9)
-const CAMERA_LOOK_AT := Vector3(-0.35, 1.1, 0.4)
+## カメラが +Z を向くため、ワールドの +X が画面の左になる(プレイヤー x=+0.9 が左、店員さん x=-1.5 が右)
+const CAMERA_POS := Vector3(-0.28, 1.6, -6.4)
+const CAMERA_LOOK_AT := Vector3(-0.28, 1.1, 0.4)
 
 ## 奥の壁の絵。assets 側に置かれていれば貼る(tools/blender/references は .gdignore で
 ## Godot から見えないので、使う絵はここへコピーする)
@@ -27,6 +27,29 @@ const PLAYER_FACING := deg_to_rad(15.0)   # 少し店員さん側(画面の右)�
 const REACTION_SECONDS := 2.4
 const EMOTE_NICE := 1
 const EMOTE_COME := 2
+
+## --- 店員さんの動き ---
+## 普段はカウンターの奥(HOME)で画面の前のお客さん(=カメラ)の方を向き、ときどき
+## 試着台のアバターをちらっと見る。試着されたらカウンターの端(ASSIST)まで出てきて
+## アバターを見てから反応し、しばらく試着が無ければカウンターの奥へ戻る。
+## 向きは「見る相手」へ毎フレーム exp 減衰で寄せる(パッと振り向かず、首を回すように)
+const CLERK_HOME := Vector3(-1.5, 0.0, 0.65)
+const CLERK_ASSIST := Vector3(-0.5, 0.0, 0.5)
+## 歩く速さ(m/s)。Humanoid.update_motion に実際の速さを渡すので、歩幅はアニメ側が合わせる
+const CLERK_WALK_SPEED := 1.8
+const CLERK_TURN_RATE := 6.0
+## 最後に試着されてから、カウンターへ戻るまでの秒数
+const ASSIST_LINGER := 7.0
+## 試着されたとき、アバターを見続ける秒数と、着いてから喜ぶまでの間(見てから反応する)
+const ADMIRE_WATCH := 2.2
+const ADMIRE_DELAY := 0.3
+## 待機中のちら見: 間隔の幅(秒)と見る長さ
+const GLANCE_INTERVAL := Vector2(3.0, 6.0)
+const GLANCE_LENGTH := 1.3
+## 見る相手の頭の高さ。カメラは「お客さんの目」
+const AVATAR_HEAD_Y := 1.4
+const CLERK_HEAD_Y := 2.0
+const ARRIVE_EPS := 0.02
 
 ## 仮の店員さんの見た目(専用モデルが届くまで)
 const STAND_IN_COSTUME: StringName = &"mono"
@@ -52,6 +75,16 @@ var _shopkeeper: Node3D
 var _dragging := false
 var _reaction_left := 0.0
 
+var _clerk_goal := CLERK_HOME
+var _assist_left := 0.0      # >0: 接客位置に留まる残り秒
+var _watch_left := 0.0       # >0: アバターを見続ける残り秒(試着直後)
+var _glance_left := 0.0      # >0: ちら見の残り秒
+var _next_glance := 0.0
+var _pending_emote := 0      # 歩いている間に頼まれた反応は、着いてから出す
+var _pending_delay := 0.0
+var _clerk_speed := 0.0      # 直前フレームの歩く速さ(テストと向きの判定用)
+var _rng := RandomNumberGenerator.new()
+
 
 func _ready() -> void:
 	_camera.look_at_from_position(CAMERA_POS, CAMERA_LOOK_AT, Vector3.UP)
@@ -60,14 +93,20 @@ func _ready() -> void:
 	_spawn_shopkeeper()
 	_stock_hat_shelf()
 	reset_view()
+	_next_glance = _rng.randf_range(GLANCE_INTERVAL.x, GLANCE_INTERVAL.y)
 
 
 ## 表示中だけアニメを進める(非表示のオーバーレイで回し続けない)
 func _process(delta: float) -> void:
 	if not is_visible_in_tree():
 		return
+	tick(delta)
+
+
+## 1フレーム分進める。テストが固定の刻みで直接呼べるよう _process から分けてある
+func tick(delta: float) -> void:
 	_player.update_motion(0.0, true, delta)
-	_shopkeeper.update_motion(0.0, true, delta)
+	_tick_clerk(delta)
 	if _reaction_left > 0.0:
 		_reaction_left -= delta
 		if _reaction_left <= 0.0:
@@ -87,14 +126,37 @@ func set_locked(locked: bool) -> void:
 	_lock_badge.visible = locked
 
 
-## 店員さんが喜ぶ(試着・購入のとき)
+## 試着されたとき。接客位置まで出てきてアバターを見て、新しい物なら喜ぶ
+## (もう持っている物は見るだけ)
+func admire(excited: bool) -> void:
+	_clerk_goal = CLERK_ASSIST
+	_assist_left = ASSIST_LINGER
+	_watch_left = ADMIRE_WATCH
+	_glance_left = 0.0
+	if excited:
+		_pending_emote = EMOTE_NICE
+		_pending_delay = ADMIRE_DELAY
+
+
+## お客さんの方を向いて喜ぶ(購入・着替え・プレゼントのとき)
 func cheer() -> void:
-	_react(EMOTE_NICE)
+	_watch_left = 0.0
+	_glance_left = 0.0
+	_assist_left = maxf(_assist_left, ASSIST_LINGER * 0.5)
+	_pending_emote = EMOTE_NICE
+	_pending_delay = 0.0
 
 
 ## 店員さんが手招きする(入店のとき)
 func beckon() -> void:
 	_react(EMOTE_COME)
+
+
+## 店員さんの頭の上の位置(このコントロールのローカル座標)。吹き出しを店員さんに付いて行かせる
+func clerk_head_position() -> Vector2:
+	var head := _shopkeeper_root.global_position + Vector3.UP * CLERK_HEAD_Y
+	var vp: Vector2 = _camera.unproject_position(head)
+	return vp * (size / Vector2(_camera.get_viewport().size))
 
 
 func reset_view() -> void:
@@ -105,6 +167,69 @@ func reset_view() -> void:
 func _react(emote: int) -> void:
 	_shopkeeper.set_emote(emote)
 	_reaction_left = REACTION_SECONDS
+
+
+func _tick_clerk(delta: float) -> void:
+	var pos := _shopkeeper_root.position
+	var to := _clerk_goal - pos
+	to.y = 0.0
+	var dist := to.length()
+	_clerk_speed = 0.0
+	if dist > ARRIVE_EPS and delta > 0.0:
+		var step := minf(dist, CLERK_WALK_SPEED * delta)
+		_shopkeeper_root.position += to / dist * step
+		_clerk_speed = step / delta
+	var arrived := dist <= ARRIVE_EPS
+
+	if _assist_left > 0.0:
+		_assist_left -= delta
+		if _assist_left <= 0.0:
+			_clerk_goal = CLERK_HOME
+	if _watch_left > 0.0:
+		_watch_left -= delta
+	# 歩いている間・見つめている間は、ちら見しない
+	if arrived and _watch_left <= 0.0:
+		if _glance_left > 0.0:
+			_glance_left -= delta
+		else:
+			_next_glance -= delta
+			if _next_glance <= 0.0:
+				_glance_left = GLANCE_LENGTH
+				_next_glance = _rng.randf_range(GLANCE_INTERVAL.x, GLANCE_INTERVAL.y)
+	# エモートは止まっていないと再生されない(Humanoid.update_motion)ので、着いてから出す
+	if _pending_emote != 0 and arrived:
+		_pending_delay -= delta
+		if _pending_delay <= 0.0:
+			_react(_pending_emote)
+			_pending_emote = 0
+
+	var yaw := _shopkeeper_root.rotation.y
+	var want := _yaw_towards(pos, _clerk_look_point(to))
+	_shopkeeper_root.rotation.y = lerp_angle(yaw, want, 1.0 - exp(-CLERK_TURN_RATE * delta))
+	_shopkeeper.update_motion(_clerk_speed, true, delta)
+
+
+## 今どこを見るか。歩いている間は進む方向、試着直後・ちら見中・アバターを回している間は
+## アバター、それ以外はお客さん(カメラ)
+func _clerk_look_point(walk_dir: Vector3) -> Vector3:
+	var pos := _shopkeeper_root.position
+	if _clerk_speed > 0.0:
+		return pos + walk_dir
+	if _watch_left > 0.0 or _glance_left > 0.0 or _dragging:
+		return _turntable.position + Vector3.UP * AVATAR_HEAD_Y
+	return _camera.position
+
+
+## キャラの正面は -Z(Humanoid の約束)なので、正面を point へ向ける Y 回転
+static func _yaw_towards(from: Vector3, point: Vector3) -> float:
+	var d := point - from
+	return atan2(-d.x, -d.z)
+
+
+## 店員さんの今の正面と point の方向とのずれ(ラジアン)。テスト用
+func clerk_facing_error(point: Vector3) -> float:
+	var want := _yaw_towards(_shopkeeper_root.position, point)
+	return absf(angle_difference(_shopkeeper_root.rotation.y, want))
 
 
 func _on_gui_input(event: InputEvent) -> void:
@@ -130,6 +255,8 @@ func _spawn_shopkeeper() -> void:
 	_shopkeeper_root.add_child(_shopkeeper)
 	_shopkeeper.apply_costume(STAND_IN_COSTUME, PackedColorArray(STAND_IN_COLORS))
 	_shopkeeper.apply_hat(STAND_IN_HAT)
+	_shopkeeper_root.position = CLERK_HOME
+	_shopkeeper_root.rotation.y = _yaw_towards(CLERK_HOME, _camera.position)
 
 
 ## 棚に売り物の帽子を飾る(お店らしさと、帽子の形を一目で見せるため)
