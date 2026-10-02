@@ -7,12 +7,16 @@ extends Node
 ##
 ## --locale を付けるとその言語で撮る(L-09、英文のはみ出し確認用)。
 ## --text-size を付けるとその文字サイズ(UI全体の拡大率)で撮る(L-10、はみ出し確認用)。
-## どちらも設定は保存しない
+## どちらも設定は保存しない。
+## --only-touch を付けるとタッチ操作UIの3枚だけ撮る(スマホ向け配置の確認用。全画面を撮ると数分かかる)
 
 func _ready() -> void:
 	var out := "."
+	var only_touch := false
 	var args := OS.get_cmdline_user_args()
 	for i in args.size():
+		if args[i] == "--only-touch":
+			only_touch = true
 		if args[i] == "--shots" and i + 1 < args.size():
 			out = args[i + 1]
 		if args[i] == "--locale" and i + 1 < args.size():
@@ -21,6 +25,10 @@ func _ready() -> void:
 			SettingsManager.set_text_size(args[i + 1])
 	DirAccess.make_dir_recursive_absolute(out)
 	await get_tree().process_frame
+	if only_touch:
+		await _shot_all_touch_controls(out)
+		get_tree().quit()
+		return
 
 	# 1) タイトル画面
 	var title: Node = load("res://scenes/title.tscn").instantiate()
@@ -126,10 +134,17 @@ func _ready() -> void:
 	# 画面外になった領域が合成されず、撮れた画像の上部に別レイアウトの残像が
 	# 写り込む(T-8で実際に踏んだ。フレーム待ちを増やしても消えなかった)。
 	# 1/3 にして縦横比だけ合わせる: 2340x1080 -> 780x360、1080x2340 -> 360x780
-	await _shot_touch_controls(out, "touch_landscape", Vector2i(780, 360))
-	await _shot_touch_controls(out, "touch_portrait", Vector2i(360, 780))
+	await _shot_all_touch_controls(out)
 
 	get_tree().quit()
+
+
+## デスクトップはウィンドウ 1px = 1dp なので、780x360 はそのままスマホの横持ち(dp)の見え方になる
+## (touch_controls.gd はボタンを dp で並べる)。active はダッシュ ON と挑発メニューを開いた状態
+func _shot_all_touch_controls(out: String) -> void:
+	await _shot_touch_controls(out, "touch_landscape", Vector2i(780, 360))
+	await _shot_touch_controls(out, "touch_landscape_active", Vector2i(780, 360), true)
+	await _shot_touch_controls(out, "touch_portrait", Vector2i(360, 780))
 
 
 ## TouchControls を指定のウィンドウサイズ(実機の縦横比を再現する比率)で1枚撮る。
@@ -138,7 +153,7 @@ func _ready() -> void:
 ## world.tscn は使わない——NetworkManager(Autoload)が同じホストポートへ再バインドしに
 ## 行き、複数回インスタンス化すると画面がタイトル/ロビー/ネットワークエラーの
 ## 混ざったものになるため(T-6セッションで実際に踏んだ罠)。
-func _shot_touch_controls(out: String, name: String, size: Vector2i) -> void:
+func _shot_touch_controls(out: String, name: String, size: Vector2i, active := false) -> void:
 	var prev_size := DisplayServer.window_get_size()
 	var prev_mode: String = SettingsManager.touch_controls_mode
 	var prev_state: int = GameManager.state
@@ -152,7 +167,14 @@ func _shot_touch_controls(out: String, name: String, size: Vector2i) -> void:
 	# ウィンドウのリサイズが論理ビューポートへ反映されるまで数フレーム要る
 	for i in 20:
 		await get_tree().process_frame
+	if active:
+		touch.dash_button.set_toggled(true)
+		touch.emote_button._open_submenu()
+		for i in 12:
+			await get_tree().process_frame
 	await _shot(out, name)
+	if active:
+		touch.dash_button.set_toggled(false)
 	touch.queue_free()
 
 	SettingsManager.touch_controls_mode = prev_mode

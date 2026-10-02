@@ -388,6 +388,9 @@ msgstr "Joined (someone else is hosting)"
 msgid "4人であそぶ: %d人が参加中%s"
 msgstr "4-player game: %d joined%s"
 
+msgid "※EOSに接続されていないため、この部屋は他のPCからは見えません"
+msgstr "* Not connected to EOS, so other PCs can't see this room"
+
 msgid "この対戦は鬼がランダムで決まります（立候補不可）%s"
 msgstr "Chasers are chosen at random in this match (no volunteering)%s"
 
@@ -1099,6 +1102,9 @@ msgstr "Creating lobby..."
 msgid "ロビーを作成しました！ゲームを開始します。"
 msgstr "Lobby created! Starting the game."
 
+msgid "EOSに接続されていないため、この部屋は他のPCの「部屋をさがす」には表示されません。"
+msgstr "Not connected to EOS, so this room won't appear in \"Find a Room\" on other PCs."
+
 msgid "ロビーの作成に失敗しました。"
 msgstr "Couldn't create the lobby."
 
@@ -1130,3 +1136,22 @@ msgstr "Tag_Game is already running in another window.\n\nRunning two copies at 
 
 msgid "多重起動のため、このウィンドウは終了します"
 msgstr "Already running - this window will close"
+
+# --- スマホのブラウザ: 全画面・ホーム画面から起動 (scenes/title, scenes/hud/touch_controls) ---
+msgid "全画面"
+msgstr "Fullscreen"
+
+msgid "全画面を解除"
+msgstr "Exit fullscreen"
+
+msgid "全画面で遊ぶには"
+msgstr "Playing in fullscreen"
+
+msgid "iPhone のブラウザは全画面にできません。\n共有ボタン → 「ホーム画面に追加」を選び、追加したアイコンから起動すると全画面で遊べます。\n（ホーム画面から起動したときは、タイトル画面の「招待リンクを貼り付けて参加」から参加します）"
+msgstr "Browsers on iPhone can't go fullscreen.\nTap the Share button, choose \"Add to Home Screen\", then launch the game from the new icon to play in fullscreen.\n(When launched from the Home Screen, join a game with \"Paste invite link to join\" on the title screen.)"
+
+msgid "招待リンクを貼り付けて参加"
+msgstr "Paste invite link to join"
+
+msgid "招待リンクを貼り付けてください"
+msgstr "Paste the invite link"

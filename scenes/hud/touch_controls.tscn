@@ -115,6 +115,18 @@ theme_override_styles/hover = SubResource("pause_btn_hover")
 theme_override_styles/pressed = SubResource("pause_btn_pressed")
 text = "≡"
 
+[node name="FullscreenButton" type="Button" parent="."]
+visible = false
+offset_left = 92.0
+offset_top = 16.0
+offset_right = 260.0
+offset_bottom = 80.0
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("pause_btn_normal")
+theme_override_styles/hover = SubResource("pause_btn_hover")
+theme_override_styles/pressed = SubResource("pause_btn_pressed")
+text = "全画面"
+
 [node name="TouchLookZone" type="Control" parent="."]
 anchors_preset = 15
 anchor_right = 1.0
@@ -161,9 +173,11 @@ offset_bottom = -140.0
 grow_horizontal = 0
 grow_vertical = 0
 mouse_filter = 2
-theme_override_styles/panel = SubResource("action_btn_dash_style")
+theme_override_styles/panel = SubResource("action_btn_style")
 script = ExtResource("4_touch_action_button")
 action_name = "dash"
+is_toggle = true
+toggled_style = SubResource("action_btn_dash_style")
 
 [node name="Label" type="Label" parent="ActionDash"]
 anchors_preset = 15

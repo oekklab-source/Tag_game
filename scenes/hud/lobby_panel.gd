@@ -200,6 +200,10 @@ func update_lobby(overlay_open: bool) -> void:
 	var fill_text := "" if cpu_fill <= 0 else tr("（うち CPU の鬼 %d人）") % cpu_fill
 	status.text = tr("ホスト（あなた）") if is_host else tr("参加中（ホストは別の人）")
 	status_sub.text = tr("4人であそぶ: %d人が参加中%s") % [ids.size(), fill_text]
+	# 部屋作成ダイアログの注記はホスト開始ですぐ隠れるので、待機中ずっと見えるここにも出す
+	# (EOS未接続のcreate_lobby()は仮の部屋を作るだけで、他のPCの検索には出ない)
+	if is_host and is_eos_matched and not EosManager.is_eos_available:
+		status_sub.text += "\n" + tr("※EOSに接続されていないため、この部屋は他のPCからは見えません")
 
 	_rebuild_roster(ids, me, is_host, is_eos_matched)
 

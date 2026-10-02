@@ -20,6 +20,13 @@ const MIGRATION_OVERLAY_SCENE := "res://scenes/migration_overlay.tscn"
 const MIGRATION_OWNER_WAIT_SEC := 15.0
 ## ⑨新ホストがCloudflare Tunnelを再確立するまでの待ち時間。既存のTUNNEL_POLL_TIMEOUTと揃える
 const MIGRATION_RECONNECT_WAIT_SEC := 30.0
+## ⑨参加者側が新ホストのhost_addrを待つ時間。新ホストのトンネル確立(最大TUNNEL_POLL_TIMEOUT=30秒)に
+## ロビー属性の更新が届くまでの余裕を足す。以前は30秒のタイマー1本で「アドレス待ち(最大30秒)」と
+## 「実際の接続」の両方をまかなっていたため、トンネルが遅いと接続中に、トンネル無し(LANのみ)だと
+## アドレス待ちを使い切って必ずタイムアウトしていた
+const MIGRATION_ADDR_WAIT_SEC := 40.0
+## ⑨アドレスが確定してから新ホストへの接続が確立するまでの待ち時間(段階ごとに張り直す)
+const MIGRATION_CONNECT_WAIT_SEC := 15.0
 ## tools/serve.ps1 がトンネルのホスト名を書き出す先。ホストのゲームプロセスは
 ## create_process で撃ちっぱなしにした別プロセスの標準出力を直接は読めないため、
 ## ファイル経由でホスト名を受け渡す
@@ -87,6 +94,13 @@ var _pending_host_penalty := {}
 ## 「もう次の段階に進んでいる/マイグレーションが終わっている」場合の遅延タイムアウトを無視する
 var _migration_token := 0
 var _migration_overlay: CanvasLayer = null
+## 切断した旧ホストに繋いでいたアドレス。新ホストのhost_addrを待つ際、ロビー属性に
+## 残っているこの値を「新しいアドレス」と取り違えないために使う
+var _pre_migration_host_addr := ""
+## _reconnect_as_client()の呼び出し世代。Web版メンバー経由の委譲ではhost_migratedが2回来て
+## 再接続待ちが2本並ぶため、古い方が後から start_client() しないよう捨てるのに使う
+## (_migration_tokenはタイムアウトの張り直しで進むため、こちらとは別に持つ)
+var _reconnect_gen := 0
 
 
 func _ready() -> void:
@@ -404,6 +418,7 @@ func leave() -> void:
 	# 呼ばれた場合の後始末(再接続試行中の接続失敗など)。既にクリア済みなら無害
 	is_migrating = false
 	_pending_host_penalty = {}
+	_pre_migration_host_addr = ""
 	_hide_migration_overlay()
 	mode = Mode.NONE
 	session_kind = SessionKind.SOLO
@@ -434,9 +449,29 @@ func _on_server_disconnected() -> void:
 	# ⑨旧ホスト(peer_id==1)のペナルティ計算に必要な情報は、まだ生きている今のうちに
 	# ローカルのレプリケート済み状態から確保しておく(GameManager.reset()で失われる前)
 	_pending_host_penalty = GameManager.snapshot_for_host_disconnect_penalty()
+	# 旧ホストのpuidも同じ理由で今のうちに確保する(下の「昇格済みか」の判定に使う)
+	var old_host_puid := String(GameManager.peer_profiles.get(1, {}).get("puid", ""))
+	_pre_migration_host_addr = join_address
 	is_migrating = true
 	_show_migration_overlay(tr("ホストとの接続が切れました。引き継ぎ先を確認しています…"))
 	_start_migration_timeout(MIGRATION_OWNER_WAIT_SEC)
+	# ⑨EOSの昇格通知(Promoted)は、ゲーム通信の切断検知より先に届くことがある。ホストが
+	# 退出してleave_lobby()すればEOSは即座にオーナーを移すが、参加者はCloudflareトンネル経由の
+	# wssで繋がっているため、切断に気づくのはCloudflareの端点が接続を閉じてからになる。
+	# 先に届いた通知は is_migrating=false として_on_host_migrated()で捨てられているので、
+	# ここでロビーの現オーナーを見て、既に移っていれば15秒待たずに続きを進める
+	# (以前はこの順番になると、二度と来ない通知を待って必ずタイムアウトしていた)
+	var current_owner := EosManager.current_owner_puid()
+	if _owner_already_moved(old_host_puid, current_owner):
+		_on_host_migrated.call_deferred(current_owner, EosManager.is_host)
+
+
+## ⑨EOSロビーのオーナーが、切断した旧ホストから既に別の誰かへ移っているか。
+## どちらかが分からない(空)なら「まだ」とみなし、従来どおりhost_migratedを待つ
+static func _owner_already_moved(old_host_puid: String, current_owner_puid: String) -> bool:
+	if old_host_puid.is_empty() or current_owner_puid.is_empty():
+		return false
+	return old_host_puid != current_owner_puid
 
 
 ## ⑨EOSロビー経由(クイックマッチ/ルームマッチ)の対戦のみマイグレーションを試みる。
@@ -450,6 +485,10 @@ func _should_attempt_migration() -> bool:
 ## 差し替える。is_migrating中でなければ無関係なロビーイベントとして無視する
 func _on_host_migrated(_new_owner_puid: String, i_am_new_host: bool) -> void:
 	if not is_migrating:
+		# 切断検知より先に届いた場合もここに来る(_on_server_disconnected()側で拾い直す)。
+		# 実機で順番を確かめられるようにログだけ残す
+		print("[NetworkManager] 引き継ぎ中でないので host_migrated を無視: new_owner=%s, i_am_new_host=%s"
+			% [_new_owner_puid, i_am_new_host])
 		return
 	if i_am_new_host:
 		if EosManager.can_host_of(EosManager.product_user_id):
@@ -471,7 +510,7 @@ func _on_host_migrated(_new_owner_puid: String, i_am_new_host: bool) -> void:
 		# ⑨オーナー確定待ち(15秒)のタイムアウトがまだ有効なままだと、新ホストの
 		# トンネル確立を待っている最中(最大30秒)に誤って_migration_failed()してしまう。
 		# 世代カウンタを進めて古いタイムアウトを無効化してから再接続待ちに入る
-		_start_migration_timeout(MIGRATION_RECONNECT_WAIT_SEC)
+		_start_migration_timeout(MIGRATION_ADDR_WAIT_SEC)
 		_reconnect_as_client()
 
 
@@ -490,13 +529,20 @@ func _promote_self_to_host() -> void:
 ## ⑨新ホストがhost_addr属性を更新するまでポーリングする
 ## (EosManager.await_host_addr()を長い待ち時間で再利用)
 func _reconnect_as_client() -> void:
+	_reconnect_gen += 1
+	var gen := _reconnect_gen
 	var addr := await EosManager.await_host_addr(
-		EosManager.current_lobby_id, int(MIGRATION_RECONNECT_WAIT_SEC / 0.5), 0.5)
+		EosManager.current_lobby_id, int(MIGRATION_ADDR_WAIT_SEC / 0.5), 0.5,
+		_pre_migration_host_addr)
 	if not is_migrating:
 		return  # 待っている間にタイムアウト等で既に処理済み
+	if gen != _reconnect_gen:
+		return  # 後から始まった再接続待ち(委譲で2回目のhost_migrated)に任せる
 	if addr.is_empty():
 		_migration_failed(tr("新しいホストに接続できませんでした"))
 		return
+	# アドレス待ちと接続で別々の時間を割り当てる(MIGRATION_ADDR_WAIT_SEC参照)
+	_start_migration_timeout(MIGRATION_CONNECT_WAIT_SEC)
 	_reset_for_migration()
 	start_client(addr)
 

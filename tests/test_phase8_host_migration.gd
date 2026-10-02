@@ -32,6 +32,9 @@ func _ready() -> void:
 	_test_disconnect_penalty_gated_by_live_backend_flag()
 	_test_snapshot_for_host_disconnect_penalty()
 	_test_handoff_candidate_selection()
+	_test_owner_already_moved()
+	await _test_await_host_addr_ignores_old_host()
+	_test_current_owner_puid()
 
 	print("==================================================")
 	print("Phase 8 結果: PASS=%d, FAIL=%d" % [passed_count, failed_count])
@@ -171,6 +174,67 @@ func _test_handoff_candidate_selection() -> void:
 	EosManager._current_lobby = saved_lobby
 	EosManager.is_host = saved_is_host
 	EosManager.product_user_id = saved_puid
+
+
+## 5. NetworkManager._owner_already_moved(): EOSの昇格通知がゲーム通信の切断検知より先に
+## 届いた場合(通知は捨てられている)、切断時点のロビーの状態から昇格済みと判断できること。
+## 以前はこの順番になると、二度と来ない通知を15秒待って必ず「引き継ぎがタイムアウト」していた
+func _test_owner_already_moved() -> void:
+	print("\n--- [5] NetworkManager._owner_already_moved() ---")
+	_assert(NetworkManager._owner_already_moved("old-host", "survivor"),
+		"オーナーが旧ホストから別の人へ移っていれば昇格済み")
+	_assert(not NetworkManager._owner_already_moved("old-host", "old-host"),
+		"オーナーがまだ旧ホストのままなら未昇格(host_migratedを待つ)")
+	_assert(not NetworkManager._owner_already_moved("", "survivor"),
+		"旧ホストのpuidが分からなければ判断せず待つ")
+	_assert(not NetworkManager._owner_already_moved("old-host", ""),
+		"ロビーのオーナーが分からなければ判断せず待つ")
+
+
+## 6. EosManager.await_host_addr(ignore_addr): 切断直後のロビー属性に残っている旧ホストの
+## アドレスを「新しいホストのアドレス」と取り違えないこと(以前は死んだトンネル名へ即接続していた)
+func _test_await_host_addr_ignores_old_host() -> void:
+	print("\n--- [6] EosManager.await_host_addr() が旧ホストのアドレスを読み飛ばす ---")
+	var saved_lobby: HLobby = EosManager._current_lobby
+
+	var lobby := HLobby.new()
+	lobby.lobby_id = "fake-lobby"
+	lobby.attributes = [HLobby.make_attribute("host_addr", "old-host.trycloudflare.com")]
+	EosManager._current_lobby = lobby
+
+	var stale := await EosManager.await_host_addr("fake-lobby", 2, 0.05, "old-host.trycloudflare.com")
+	_assert(stale == "", "旧ホストのアドレスしか無い間は返さない(空文字)")
+
+	var plain := await EosManager.await_host_addr("fake-lobby", 2, 0.05)
+	_assert(plain == "old-host.trycloudflare.com",
+		"ignore_addrを渡さない既存の呼び出し(friend_manager等)は従来どおり即返す")
+
+	lobby.attributes = [HLobby.make_attribute("host_addr", "new-host.trycloudflare.com")]
+	var fresh := await EosManager.await_host_addr("fake-lobby", 2, 0.05, "old-host.trycloudflare.com")
+	_assert(fresh == "new-host.trycloudflare.com", "新しいホスト名に変われば即返す")
+
+	lobby.attributes = [HLobby.make_attribute("host_addr", "192.168.1.20")]
+	var lan := await EosManager.await_host_addr("fake-lobby", 2, 0.05, "old-host.trycloudflare.com")
+	_assert(lan == "192.168.1.20", "トンネルが無ければ新ホストのLAN IPで妥協する")
+
+	EosManager._current_lobby = saved_lobby
+
+
+## 7. EosManager.current_owner_puid(): ロビーがあればオーナー、無ければ空文字
+func _test_current_owner_puid() -> void:
+	print("\n--- [7] EosManager.current_owner_puid() ---")
+	var saved_lobby: HLobby = EosManager._current_lobby
+
+	EosManager._current_lobby = null
+	_assert(EosManager.current_owner_puid() == "", "ロビーが無ければ空文字")
+
+	var lobby := HLobby.new()
+	lobby.lobby_id = "fake-lobby"
+	lobby.owner_product_user_id = "survivor"
+	EosManager._current_lobby = lobby
+	_assert(EosManager.current_owner_puid() == "survivor", "ロビーのオーナーを返す")
+
+	EosManager._current_lobby = saved_lobby
 
 
 func _make_fake_member(lobby: HLobby, puid: String, can_host: bool) -> HLobbyMember:

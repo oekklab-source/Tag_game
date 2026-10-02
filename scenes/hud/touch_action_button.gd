@@ -13,6 +13,17 @@ extends Panel
 ## emote(カモン)だけは長押し判定が終わるまで確定しないため例外的に離した瞬間に確定する
 ## (下記参照)。
 ##
+## [ダッシュは切り替え式(is_toggle、2026-09-30 スマホ実機の指摘で変更)]
+## 押している間だけダッシュだと、右親指がボタンに取られて視点を回せない。
+## そこでタッチ操作のダッシュは「1回押すとON、もう1回でOFF」にし、ONの間は
+## action_press("dash") を保つ(player.gd は Input.is_action_pressed("dash") を読むだけなので無改修)。
+## 自動でOFFにするのは: スタミナ切れ(exhausted)・スティックから指を離した
+## (touch_controls.gd が VirtualJoystick.released で set_toggled(false) を呼ぶ)・
+## TouchControls が非表示になった、の3つ。
+##
+## [当たり判定] 見た目の円より hit_padding だけ広い円(is_hit())。大きさと位置は
+## touch_controls.gd の _apply_layout() が dp で決める(隣のボタンと当たり判定が重ならない配置)。
+##
 ## [node順の制約] touch_look_zone.gd は「まだ誰にも捕まっていない指」を画面全域どこでも
 ## 拾う取りこぼし回収役で、本ノードの矩形は除外していない。Godot4の_input()は逆深さ優先
 ## (後の兄弟が先に呼ばれる、virtual_joystick.gdヘッダコメント参照)なので、本ノードは
@@ -21,6 +32,9 @@ extends Panel
 
 @export var action_name: String = ""
 @export var is_taunt_button: bool = false ## カモンボタンのみtrue。長押しサブメニューを持つ
+@export var is_toggle: bool = false ## ダッシュのみtrue。押すたびにON/OFF(ヘッダ参照)
+## ONの間の見た目(未設定なら見た目は変えない)
+@export var toggled_style: StyleBox
 
 const TAUNT_HOLD_TIME := 0.4 ## この秒数以上ホールドすると挑発サブメニューが開く
 
@@ -30,6 +44,62 @@ const TAUNT_HOLD_TIME := 0.4 ## この秒数以上ホールドすると挑発サ
 var _active_finger: int = -1
 var _hold_time: float = 0.0
 var _submenu_open: bool = false
+var _toggled: bool = false
+var _normal_style: StyleBox
+## 当たり判定を見た目より広げる量(画面の座標単位)。_apply_layout() が入れる
+var hit_padding := 0.0
+
+
+func _ready() -> void:
+	_normal_style = get_theme_stylebox("panel")
+
+
+func is_toggled() -> bool:
+	return _toggled
+
+
+## is_toggle のボタンのON/OFF。OFFにしたときは dash を確実に離す
+func set_toggled(on: bool) -> void:
+	if not is_toggle or on == _toggled:
+		return
+	_toggled = on
+	if on:
+		Input.action_press(action_name)
+	else:
+		Input.action_release(action_name)
+	if toggled_style != null:
+		add_theme_stylebox_override("panel", toggled_style if on else _normal_style)
+
+
+## 当たり判定は見た目と同じ円で、hit_padding だけ外側まで。矩形にしないのは、
+## 扇形に並べたボタン(斜め45°のカモンとダイブ)で矩形同士だと角が重なるため
+func hit_center() -> Vector2:
+	return get_global_rect().get_center()
+
+
+func hit_radius() -> float:
+	return size.x * 0.5 + hit_padding
+
+
+func is_hit(p: Vector2) -> bool:
+	return p.distance_to(hit_center()) <= hit_radius()
+
+
+## _apply_layout() から大きさが変わるたびに呼ぶ。StyleBoxFlat の角丸は px 指定なので、
+## 通常時と ON 時の両方のスタイルを新しい大きさの真円に作り直す
+func apply_round(radius: float) -> void:
+	_normal_style = _rounded(_normal_style, radius)
+	toggled_style = _rounded(toggled_style, radius)
+	add_theme_stylebox_override("panel", toggled_style if _toggled else _normal_style)
+
+
+static func _rounded(sb: StyleBox, radius: float) -> StyleBox:
+	if not sb is StyleBoxFlat:
+		return sb
+	var flat := (sb as StyleBoxFlat).duplicate() as StyleBoxFlat
+	# ちょうど半分にしない理由は touch_controls.gd の _round_panel() 参照(中央に縦線が出る)
+	flat.set_corner_radius_all(int(floor(radius * 0.93)))
+	return flat
 
 
 func _input(event: InputEvent) -> void:
@@ -45,11 +115,13 @@ func _on_touch(event: InputEventScreenTouch) -> void:
 	if event.pressed:
 		if _active_finger != -1:
 			return # 既に1本捕捉中(未捕捉のみ拾う)
-		if not get_global_rect().has_point(event.position):
+		if not is_hit(event.position):
 			return
 		_active_finger = event.index
 		_hold_time = 0.0
-		if not is_taunt_button:
+		if is_toggle:
+			set_toggled(not _toggled)
+		elif not is_taunt_button:
 			Input.action_press(action_name)
 		get_viewport().set_input_as_handled()
 	elif event.index == _active_finger:
@@ -58,6 +130,13 @@ func _on_touch(event: InputEventScreenTouch) -> void:
 
 
 func _process(delta: float) -> void:
+	if _toggled:
+		if not touch_controls.visible:
+			set_toggled(false)
+		else:
+			var player: Node = touch_controls.get_local_player()
+			if player != null and player.exhausted:
+				set_toggled(false)
 	if _active_finger == -1:
 		return
 	if not touch_controls.visible:
@@ -85,7 +164,7 @@ func _release(release_position: Variant) -> void:
 			# 長押し確定前はaction_pressしていないので、ここで初めて押下→即解放する。
 			Input.action_press(action_name)
 			Input.action_release(action_name)
-	else:
+	elif not is_toggle:
 		Input.action_release(action_name)
 	_active_finger = -1
 	_hold_time = 0.0
