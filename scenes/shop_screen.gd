@@ -3,6 +3,12 @@ extends Control
 ## ②③ショップ画面（専用シーン、①きせかえ画面と同じ画面遷移方式）。
 ## 通貨パック（ジェム、モック実装）の購入と、ジェムでのコスチューム/帽子購入、
 ## およびそれらの③プレゼント送付（同時オンラインのフレンドへ即時配信）を行う。
+##
+## 2026-10-02 に「アイテムのカードを一覧に並べて1つずつ買う」形から、「お店の中で
+## 試着しながらコーデを組み、未所持の物をまとめて買ってそのまま着る」形に作り直した。
+## 一覧のままだと小さなプレビューが並ぶだけで、組み合わせを楽しめなかったため。
+## 右側のタブとカードはきせかえ画面と同じ部品(OutfitCards)で、左側の舞台(shop_stage)では
+## 店員さんが試着や購入に反応する。
 
 const TITLE_SCENE := "res://scenes/title.tscn"
 const FRIEND_SCENE := "res://scenes/friend_screen.tscn"
@@ -12,11 +18,42 @@ const FRIEND_SCENE := "res://scenes/friend_screen.tscn"
 ## 従来通りタイトルへのシーン遷移を行うため、その場合は発火しない
 signal closed
 
+## カテゴリの並び(きせかえ画面と同じ)
+enum Tab { SKIN, COSTUME, COLOR, HAT }
+
 @onready var gem_label: Label = $TopBar/GemBadge/HBox/GemLabel
+@onready var add_gem_btn: Button = $TopBar/GemBadge/HBox/AddGemButton
 @onready var back_btn: Button = $TopBar/BackButton
-@onready var pack_row: HBoxContainer = $ContentMargin/Scroll/MainVBox/PackSection/PackRow
-@onready var item_grid: GridContainer = $ContentMargin/Scroll/MainVBox/ItemSection/ItemGrid
-@onready var status_label: Label = $ContentMargin/Scroll/MainVBox/StatusLabel
+@onready var stage: Control = $ContentMargin/ContentRow/StagePane/StageRoot/ShopStage
+@onready var speech_bubble: Control = $ContentMargin/ContentRow/StagePane/StageRoot/SpeechBubble
+@onready var speech_label: Label = $ContentMargin/ContentRow/StagePane/StageRoot/SpeechBubble/SpeechLabel
+@onready var hint_label: Label = $ContentMargin/ContentRow/RightPane/HintLabel
+@onready var tab_buttons: Array[Button] = [
+	$ContentMargin/ContentRow/RightPane/CategoryRow/CategorySidebar/SkinTabButton,
+	$ContentMargin/ContentRow/RightPane/CategoryRow/CategorySidebar/CostumeTabButton,
+	$ContentMargin/ContentRow/RightPane/CategoryRow/CategorySidebar/ColorTabButton,
+	$ContentMargin/ContentRow/RightPane/CategoryRow/CategorySidebar/HatTabButton,
+]
+@onready var tab_panels: Array[Control] = [
+	$ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/SkinPanel,
+	$ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/CostumePanel,
+	$ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/ColorPanel,
+	$ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/HatPanel,
+]
+@onready var skin_grid: GridContainer = $ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/SkinPanel/SkinGrid
+@onready var costume_grid: GridContainer = $ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/CostumePanel/CostumeGrid
+@onready var color_panel: VBoxContainer = $ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/ColorPanel
+@onready var hat_grid: GridContainer = $ContentMargin/ContentRow/RightPane/CategoryRow/CategoryContent/HatPanel/HatGrid
+@onready var cart_list: VBoxContainer = $ContentMargin/ContentRow/RightPane/CartBox/VBox/CartList
+@onready var status_label: Label = $ContentMargin/ContentRow/RightPane/StatusLabel
+@onready var gift_btn: Button = $ContentMargin/ContentRow/RightPane/ButtonRow/GiftButton
+@onready var reset_btn: Button = $ContentMargin/ContentRow/RightPane/ButtonRow/ResetButton
+@onready var checkout_btn: Button = $ContentMargin/ContentRow/RightPane/ButtonRow/CheckoutButton
+
+@onready var gem_overlay: Control = $GemPackOverlay
+@onready var pack_row: HBoxContainer = $GemPackOverlay/Panel/VBox/PackRow
+@onready var pack_status_label: Label = $GemPackOverlay/Panel/VBox/PackStatusLabel
+@onready var gem_close_btn: Button = $GemPackOverlay/Panel/VBox/CloseButton
 
 @onready var gift_overlay: Control = $GiftPickerOverlay
 @onready var gift_friend_list: VBoxContainer = $GiftPickerOverlay/Panel/VBox/FriendListContainer
@@ -28,22 +65,10 @@ signal closed
 @onready var confirm_cancel_btn: Button = $ConfirmOverlay/Panel/VBox/Buttons/CancelButton
 @onready var confirm_buy_btn: Button = $ConfirmOverlay/Panel/VBox/Buttons/BuyButton
 
-## M-01: lobby_panel.gd._roster_preview()と同じ3Dプレビュー部品を再利用する
-const COSTUME_PREVIEW_SCENE := preload("res://scenes/costume_preview.tscn")
-## 96 では全身像の中の塗り分けや帽子が判別できず、カードが全部同じに見えた(2026-10-02)。
-## カード幅(_build_item_card の 200)に収まる範囲で大きくする
-const PREVIEW_SIZE := 180
-
 ## コスチューム(柄・カラー)が効く唯一のキャラ(Humanoid.SKINS の添字)。humanoid.gd の
-## apply_costume() は他のキャラだと何も塗らない
+## apply_costume() は他のキャラだと何も塗らないので、コスチュームを選んだら
+## このキャラに着替えさせて試着する(2026-10-02「全部同じアバターに見える」報告)
 const COSTUME_SKIN := 0
-
-const RARITY_COLORS := {
-	&"common": Color(0.6, 0.6, 0.65),
-	&"rare": Color(0.35, 0.7, 1.0),
-	&"epic": Color(0.75, 0.4, 0.95),
-	&"legendary": Color(1.0, 0.75, 0.2),
-}
 
 ## ⑥PurchaseManagerが返す理由識別子(英語定数)を、画面表示用の日本語文言に変換する。
 ## 文言は表示する時点で tr() する(L-09)。L-09 で purchase_item 系も生の日本語から
@@ -58,18 +83,38 @@ const FAILURE_MESSAGES := {
 	"not_enough_gems": "ジェムが足りません",
 }
 
+## 試着中のコーデ。「元に戻す」かコーデを確定するまで保存しない
+var _sel_skin := 0
+var _sel_costume: StringName = CostumeCatalog.DEFAULT_ID
+var _sel_colors := PackedColorArray()
+var _sel_hat: StringName = HatCatalog.DEFAULT_ID
+
+## プレゼントの対象。コーデ全体は贈れないので、最後に選んだコスチューム/帽子1品にする
+var _focus_kind: StringName = &""
+var _focus_id: StringName = &""
+
 var _pending_gift_kind: StringName = &""
 var _pending_gift_id: StringName = &""
 
 ## C-02対策: 購入は必ずこの確認オーバーレイを経由させ、即時実行を防ぐ
 var _pending_confirm_action: Callable
 
+var _speech_tween: Tween
+
 
 func _ready() -> void:
 	back_btn.pressed.connect(_on_back_pressed)
+	add_gem_btn.pressed.connect(_open_gem_overlay)
+	gem_close_btn.pressed.connect(_close_gem_overlay)
 	gift_cancel_btn.pressed.connect(_close_gift_picker)
 	confirm_cancel_btn.pressed.connect(_close_confirm_overlay)
 	confirm_buy_btn.pressed.connect(_on_confirm_buy_pressed)
+	gift_btn.pressed.connect(func(): _open_gift_picker(_focus_kind, _focus_id))
+	reset_btn.pressed.connect(_on_reset_pressed)
+	checkout_btn.pressed.connect(_on_checkout_pressed)
+	for i in tab_buttons.size():
+		tab_buttons[i].pressed.connect(_on_category_pressed.bind(i))
+	tab_panels[Tab.COSTUME].get_parent().resized.connect(_fit_grid_columns)
 	PurchaseManager.currency_changed.connect(_refresh_gem_label)
 	PurchaseManager.purchase_failed.connect(_on_purchase_failed)
 	GiftManager.gift_received.connect(_on_gift_received)
@@ -79,20 +124,347 @@ func _ready() -> void:
 	# 反映されない」症状(currency_changed自体は正しく発火・保存されているのに
 	# 表示だけ古いまま、という実機報告)を防ぐ
 	get_window().focus_entered.connect(_refresh_gem_label)
+	gem_overlay.hide()
 	gift_overlay.hide()
 	confirm_overlay.hide()
 	refresh()
+	_say(tr("いらっしゃいませ！ 気になるものは、なんでも試着してみてくださいね♪"))
+	stage.beckon()
 
 
 func refresh() -> void:
 	_refresh_gem_label()
 	_setup_pack_row()
-	_setup_item_grid()
+	_load_saved_outfit()
+	_on_category_pressed(Tab.COSTUME)
 	status_label.text = ""
 
 
 func _refresh_gem_label() -> void:
 	gem_label.text = "💎 %d" % ProfileManager.premium_currency
+	# 残高が変わると「ジェムが足りるか」も変わるので、ボタンの表示も合わせる
+	_update_checkout()
+
+
+# --- 試着(コーデの組み立て) ---------------------------------------------
+
+## 今保存されているコーデから試着を始める(入店時と「元に戻す」)
+func _load_saved_outfit() -> void:
+	_sel_skin = ProfileManager.skin
+	_sel_costume = ProfileManager.costume_id
+	_sel_colors = ProfileManager.costume_colors.duplicate()
+	_sel_hat = ProfileManager.hat_id
+	_focus_kind = &""
+	_focus_id = &""
+	_rebuild()
+
+
+func _rebuild() -> void:
+	_setup_skin_grid()
+	_setup_costume_grid()
+	_setup_color_slots()
+	_setup_hat_grid()
+	_refresh_outfit()
+	_fit_grid_columns.call_deferred()
+
+
+## カードの列数を、実際に入る数に合わせる。固定の3列だと、文字サイズ「特大」や英語で
+## カードが広がったときに右端の列が切れて横スクロールになった(2026-10-02 に撮って確認)
+func _fit_grid_columns() -> void:
+	var avail: float = tab_panels[Tab.COSTUME].get_parent().size.x
+	for grid: GridContainer in [skin_grid, costume_grid, hat_grid]:
+		var card_w := 0.0
+		for child in grid.get_children():
+			card_w = maxf(card_w, child.get_combined_minimum_size().x)
+		if card_w <= 0.0:
+			continue
+		var sep := float(grid.get_theme_constant("h_separation"))
+		grid.columns = clampi(int((avail + sep) / (card_w + sep)), 1, 3)
+
+
+## 舞台・コーデの内容・ボタンなど、選択が変わるたびに変わる部分だけを更新する
+## (カラー変更のようにカードの並びが変わらない操作はここだけ呼ぶ)
+func _refresh_outfit() -> void:
+	stage.show_outfit(_sel_skin, _sel_costume, _sel_colors, _sel_hat)
+	stage.set_locked(not _cart_items().is_empty())
+	# カラーはきょうりゅう専用(きせかえ画面の _update_category_availability と同じ)
+	var fixed_design := _sel_skin != COSTUME_SKIN
+	tab_buttons[Tab.COLOR].disabled = fixed_design
+	tab_buttons[Tab.COLOR].tooltip_text = tr("このキャラクターは固定デザインです") if fixed_design else ""
+	if fixed_design and tab_panels[Tab.COLOR].visible:
+		_on_category_pressed(Tab.COSTUME)
+	hint_label.text = tr("%sは固定デザインです。帽子は変更できます") % tr(Humanoid.SKINS[_sel_skin]["name"]) \
+		if fixed_design else ""
+	_update_cart_list()
+	_update_checkout()
+	_update_gift_button()
+
+
+func _on_category_pressed(index: int) -> void:
+	for i in tab_panels.size():
+		tab_panels[i].visible = i == index
+		tab_buttons[i].button_pressed = i == index
+
+
+func _setup_skin_grid() -> void:
+	for child in skin_grid.get_children():
+		child.queue_free()
+	for index in range(Humanoid.SKINS.size()):
+		var display_name := tr(String(Humanoid.SKINS[index].get("name", tr("キャラクター"))))
+		skin_grid.add_child(OutfitCards.skin_card(index, display_name, index == _sel_skin,
+			tr("使用できます"), _on_skin_pressed.bind(index)))
+
+
+func _setup_costume_grid() -> void:
+	for child in costume_grid.get_children():
+		child.queue_free()
+	for id in CostumeCatalog.COSTUMES:
+		var def: Dictionary = CostumeCatalog.COSTUMES[id]
+		# カードの色は、そのコスチュームを選んだときの見本の体色にする(舞台で見える色と一致させる)
+		var swatch: Color = CostumeCatalog.preview_colors(id)[0]
+		costume_grid.add_child(_build_item_card(&"costume", id, def, swatch,
+			id == _sel_costume and _sel_skin == COSTUME_SKIN, _on_costume_pressed))
+
+
+func _setup_hat_grid() -> void:
+	for child in hat_grid.get_children():
+		child.queue_free()
+	for id in HatCatalog.HATS:
+		hat_grid.add_child(_build_item_card(&"hat", id, HatCatalog.HATS[id], OutfitCards.HAT_SWATCH,
+			id == _sel_hat, _on_hat_pressed))
+
+
+func _setup_color_slots() -> void:
+	for child in color_panel.get_children():
+		child.queue_free()
+	var labels: Array[String] = []
+	for slot in range(_sel_colors.size()):
+		labels.append(tr("色 %d:") % (slot + 1))
+	for row in OutfitCards.color_slot_rows(labels, _on_slot_color_pressed):
+		color_panel.add_child(row)
+
+
+func _build_item_card(kind: StringName, id: StringName, def: Dictionary, swatch: Color,
+		selected: bool, on_pressed: Callable) -> Control:
+	var owned := _owns(kind, id)
+	return OutfitCards.item_card(tr(String(def.get("name", String(id)))), def.get("rarity", &"common"),
+		swatch, selected, owned, _price_caption(owned, int(def.get("price", 0))),
+		Color(0.5, 0.9, 0.6) if owned else Color(0.9, 0.75, 0.4), on_pressed.bind(id))
+
+
+## 所持状況と値段の表記。値段0の未所持品(レート報酬扱い等)もショップでは
+## 0ジェムで入手できる(PurchaseManager.purchase_item の既存仕様)ので「無料」と出す
+func _price_caption(owned: bool, price: int) -> String:
+	if owned:
+		return tr("所持済み")
+	return tr("無料") if price <= 0 else "💎 %d" % price
+
+
+func _on_skin_pressed(index: int) -> void:
+	_sel_skin = clampi(index, 0, Humanoid.SKINS.size() - 1)
+	_rebuild()
+
+
+func _on_costume_pressed(id: StringName) -> void:
+	_sel_costume = id
+	# 今着ているコスチュームなら自分の色、それ以外は見本色で試着する。見本色は
+	# きせかえ画面と同じパレットの色なので、そのまま買って着ても同じ見た目になる
+	_sel_colors = ProfileManager.costume_colors.duplicate() if id == ProfileManager.costume_id \
+		else CostumeCatalog.preview_colors(id)
+	var switched := _sel_skin != COSTUME_SKIN
+	_sel_skin = COSTUME_SKIN
+	_focus_kind = &"costume"
+	_focus_id = id
+	if switched:
+		_say(tr("スキン柄はきょうりゅう専用なので、きょうりゅうで試着しますね"))
+	else:
+		_react_to_item(&"costume", id)
+	_rebuild()
+
+
+func _on_hat_pressed(id: StringName) -> void:
+	_sel_hat = id
+	_focus_kind = &"hat" if id != HatCatalog.DEFAULT_ID else &""
+	_focus_id = id if id != HatCatalog.DEFAULT_ID else &""
+	if id != HatCatalog.DEFAULT_ID:
+		_react_to_item(&"hat", id)
+	_rebuild()
+
+
+func _on_slot_color_pressed(slot: int, color: Color) -> void:
+	if slot < _sel_colors.size():
+		_sel_colors[slot] = color
+		_refresh_outfit()
+
+
+func _react_to_item(kind: StringName, id: StringName) -> void:
+	var item_name := _item_name(kind, id)
+	if _owns(kind, id):
+		_say(tr("「%s」はもうお持ちですね。いろいろ合わせてみましょう！") % item_name)
+		return
+	if kind == &"hat":
+		_say(tr("「%s」、人気なんですよ♪") % item_name)
+	else:
+		_say(tr("「%s」、とってもお似合いです！") % item_name)
+	stage.cheer()
+
+
+func _on_reset_pressed() -> void:
+	_load_saved_outfit()
+	stage.reset_view()
+	status_label.text = ""
+
+
+# --- コーデの内容とまとめ買い ---------------------------------------------
+
+## 試着中のコーデのうち、まだ持っていない物(=買うと着られる物)。
+## コスチュームはきょうりゅうで試着しているときだけ数える(他のキャラでは効かないので)
+func _cart_items() -> Array[Dictionary]:
+	var items: Array[Dictionary] = []
+	if _sel_skin == COSTUME_SKIN and not ProfileManager.owns_costume(_sel_costume):
+		items.append({"kind": &"costume", "id": _sel_costume,
+			"price": int(CostumeCatalog.get_def(_sel_costume).get("price", 0))})
+	if not ProfileManager.owns_hat(_sel_hat):
+		items.append({"kind": &"hat", "id": _sel_hat,
+			"price": int(HatCatalog.get_def(_sel_hat).get("price", 0))})
+	return items
+
+
+func _cart_total(items: Array[Dictionary]) -> int:
+	var total := 0
+	for it in items:
+		total += int(it["price"])
+	return total
+
+
+## 保存すると今の見た目から何か変わるか。保存されない物(他のキャラで試着中の
+## 未所持コスチューム)の違いは数えない
+func _outfit_differs() -> bool:
+	if _sel_skin != ProfileManager.skin or _sel_hat != ProfileManager.hat_id:
+		return true
+	var costume_counts := _sel_skin == COSTUME_SKIN or ProfileManager.owns_costume(_sel_costume)
+	return costume_counts and (_sel_costume != ProfileManager.costume_id
+		or _sel_colors != ProfileManager.costume_colors)
+
+
+func _update_cart_list() -> void:
+	for child in cart_list.get_children():
+		child.queue_free()
+	_add_cart_row(tr("キャラクター"), tr(String(Humanoid.SKINS[_sel_skin]["name"])), "")
+	if _sel_skin == COSTUME_SKIN:
+		var owned := ProfileManager.owns_costume(_sel_costume)
+		_add_cart_row(tr("スキン柄"), _item_name(&"costume", _sel_costume),
+			_price_caption(owned, int(CostumeCatalog.get_def(_sel_costume).get("price", 0))))
+	var hat_owned := ProfileManager.owns_hat(_sel_hat)
+	_add_cart_row(tr("帽子"), _item_name(&"hat", _sel_hat),
+		_price_caption(hat_owned, int(HatCatalog.get_def(_sel_hat).get("price", 0))))
+
+
+func _add_cart_row(category: String, item_name: String, caption: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var cat_lbl := Label.new()
+	cat_lbl.text = category
+	cat_lbl.custom_minimum_size = Vector2(110, 0)
+	cat_lbl.add_theme_color_override("font_color", Color(0.75, 0.75, 0.8))
+	row.add_child(cat_lbl)
+	var name_lbl := Label.new()
+	name_lbl.text = item_name
+	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_lbl)
+	var cap_lbl := Label.new()
+	cap_lbl.text = caption
+	cap_lbl.add_theme_color_override("font_color",
+		Color(0.5, 0.9, 0.6) if caption == tr("所持済み") else Color(0.9, 0.75, 0.4))
+	row.add_child(cap_lbl)
+	cart_list.add_child(row)
+
+
+## 確定ボタンは状態で3通り: 未所持があれば「まとめて買う」、全部持っていて見た目が
+## 変わるなら「着替える」、何も変わらなければ押せない
+func _update_checkout() -> void:
+	var items := _cart_items()
+	if not items.is_empty():
+		checkout_btn.text = tr("このコーデで買う（💎%d）") % _cart_total(items)
+		checkout_btn.disabled = false
+	elif _outfit_differs():
+		checkout_btn.text = tr("このコーデに着替える")
+		checkout_btn.disabled = false
+	else:
+		checkout_btn.text = tr("いまのコーデです")
+		checkout_btn.disabled = true
+
+
+func _on_checkout_pressed() -> void:
+	var items := _cart_items()
+	if items.is_empty():
+		_wear_selected_outfit()
+		_say(tr("おきがえ完了です！ よくお似合いです♪"))
+		stage.cheer()
+		_rebuild()
+		return
+	var total := _cart_total(items)
+	if total > ProfileManager.premium_currency:
+		_say(tr("ジェムが少し足りないみたいです…"))
+		status_label.text = tr(FAILURE_MESSAGES["not_enough_gems"])
+		_open_gem_overlay()
+		return
+	var lines := PackedStringArray()
+	for it in items:
+		lines.append("• %s  %s" % [_item_name(it["kind"], it["id"]), _price_caption(false, int(it["price"]))])
+	var msg := tr("次のアイテムを購入して、このコーデに着替えます。") + "\n" + "\n".join(lines) + "\n" \
+		+ tr("合計 💎%d（購入後の残高: 💎%d）") % [total, ProfileManager.premium_currency - total]
+	_open_confirm_overlay(msg, _do_checkout.bind(items))
+
+
+func _do_checkout(items: Array[Dictionary]) -> void:
+	for it in items:
+		# 失敗理由は purchase_failed → _on_purchase_failed() が出す。途中まで買えた物は
+		# 所持品として残る(ジェムと引き換え済み)ので、表示だけ最新にして止める
+		if not PurchaseManager.purchase_item(it["kind"], it["id"]):
+			_rebuild()
+			return
+	_wear_selected_outfit()
+	status_label.text = tr("%d点のアイテムを購入して着替えました！") % items.size()
+	_say(tr("お買い上げありがとうございます！ そのまま着ていってくださいね♪"))
+	stage.cheer()
+	_rebuild()
+
+
+## 試着中のコーデを保存する。ProfileManager の各 setter は未所持なら何もしない
+## (所持ガード)ので、買っていない物が紛れても保存されることはない
+func _wear_selected_outfit() -> void:
+	ProfileManager.set_skin(_sel_skin)
+	if ProfileManager.owns_costume(_sel_costume):
+		# PackedColorArray は参照渡し。そのまま渡すと、保存後にカラーを試着しただけで
+		# ProfileManager 側の色まで(保存せずに)書き換わる(tests/shop_fitting で実際に検出)
+		ProfileManager.set_costume(_sel_costume, _sel_colors.duplicate())
+	if ProfileManager.owns_hat(_sel_hat):
+		ProfileManager.set_hat(_sel_hat)
+
+
+# --- 店員さんのひとこと -----------------------------------------------------
+
+func _say(text: String) -> void:
+	speech_label.text = text
+	speech_bubble.show()
+	if _speech_tween:
+		_speech_tween.kill()
+	speech_bubble.modulate.a = 0.0
+	_speech_tween = create_tween()
+	_speech_tween.tween_property(speech_bubble, "modulate:a", 1.0, 0.18)
+
+
+# --- ジェム(通貨パック) ---------------------------------------------------
+
+func _open_gem_overlay() -> void:
+	pack_status_label.text = ""
+	gem_overlay.show()
+	gem_close_btn.grab_focus()
+
+
+func _close_gem_overlay() -> void:
+	gem_overlay.hide()
 
 
 func _setup_pack_row() -> void:
@@ -196,130 +568,16 @@ func _do_buy_pack_pressed(pack_id: StringName, btn: Button) -> void:
 	# queue_free()されている場合があるため、status_labelへのアクセス前にガードする
 	if ok and is_instance_valid(status_label):
 		var def := CurrencyPackCatalog.get_def(pack_id)
-		status_label.text = tr("💎%d を獲得しました！") % int(def.get("gems", 0))
+		var msg := tr("💎%d を獲得しました！") % int(def.get("gems", 0))
+		status_label.text = msg
+		pack_status_label.text = msg
 
 
 func _on_cancel_pack_pressed(_btn: Button) -> void:
 	PurchaseManager.cancel_pending_purchase()
 
 
-func _setup_item_grid() -> void:
-	for child in item_grid.get_children():
-		child.queue_free()
-
-	for id in CostumeCatalog.purchasable_ids():
-		item_grid.add_child(_build_item_card(&"costume", id, CostumeCatalog.get_def(id)))
-	for id in HatCatalog.purchasable_ids():
-		item_grid.add_child(_build_item_card(&"hat", id, HatCatalog.get_def(id)))
-
-
-func _build_item_card(kind: StringName, id: StringName, def: Dictionary) -> Control:
-	var box := PanelContainer.new()
-	box.custom_minimum_size = Vector2(200, 0)
-
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.1, 0.1, 0.15, 0.8)
-	style.set_corner_radius_all(12)
-	var rarity: StringName = def.get("rarity", &"common")
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	style.border_color = RARITY_COLORS.get(rarity, Color.WHITE)
-	box.add_theme_stylebox_override("panel", style)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-
-	var owned := _owns(kind, id)
-	vbox.add_child(_build_preview(kind, id, owned))
-
-	var name_lbl := Label.new()
-	name_lbl.text = tr(String(def.get("name", String(id))))
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(name_lbl)
-
-	# プレビューはきょうりゅうで試着させているので、今のキャラが別だと「買っても
-	# 見た目が変わらない」ことをここで伝える(costume_screen の「固定デザイン」表示と同じ考え方)
-	if kind == &"costume" and ProfileManager.skin != COSTUME_SKIN:
-		var note_lbl := Label.new()
-		note_lbl.text = tr("きょうりゅう専用")
-		note_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		note_lbl.add_theme_font_size_override("font_size", 14)
-		note_lbl.add_theme_color_override("font_color", Color(0.7, 0.75, 0.85))
-		vbox.add_child(note_lbl)
-
-	var price := int(def.get("price", 0))
-
-	var price_lbl := Label.new()
-	price_lbl.text = tr("所持済み") if owned else "💎 %d" % price
-	price_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	price_lbl.add_theme_color_override("font_color",
-		Color(0.5, 0.9, 0.6) if owned else Color(0.9, 0.75, 0.4))
-	vbox.add_child(price_lbl)
-
-	var buy_btn := Button.new()
-	buy_btn.text = tr("購入する")
-	buy_btn.disabled = owned
-	buy_btn.pressed.connect(_on_buy_item_pressed.bind(kind, id))
-	vbox.add_child(buy_btn)
-
-	var gift_btn := Button.new()
-	gift_btn.text = tr("🎁 プレゼントする")
-	# M-03対策: プレゼントはEOSのP2Pメッシュ経由でしか配信できず、Web版では
-	# EOSGが恒久的に動作しない(room_match_dialog.gd:57と同じ制約)ため、
-	# 挑戦させて後から失敗理由を出すのではなく、ここで先に無効化して伝える
-	if OS.has_feature("web"):
-		gift_btn.disabled = true
-		gift_btn.tooltip_text = tr("Web版ではプレゼント機能は利用できません（EOSのP2P接続が必要なため）")
-	else:
-		gift_btn.disabled = price <= 0
-	gift_btn.pressed.connect(_open_gift_picker.bind(kind, id))
-	vbox.add_child(gift_btn)
-
-	box.add_child(vbox)
-	return box
-
-
-## M-01: costumeカード=そのコスチュームを試着+自分の現在の帽子、hatカード=自分の
-## 現在のコスチューム+その帽子を試着、という基準見た目にする(組み合わせ映えが
-## 分かるように、かつcostume/hat両カードで対称的な実装にするため)。
-## ただし costume カードは、自分の今のキャラ・色のままだと違いが見えないので例外にする
-## (2026-10-02「全部同じアバターに見える」報告):
-##   - キャラは常にきょうりゅう(COSTUME_SKIN)。他のキャラではコスチュームが一切効かない
-##   - 色はコスチュームごとの見本色(CostumeCatalog.preview_colors)。体の大部分は
-##     全コスチューム共通のユーザー色なので、同じ色だと違いがお腹・爪・トゲだけになる
-func _build_preview(kind: StringName, id: StringName, owned: bool) -> Control:
-	var preview: Control = COSTUME_PREVIEW_SCENE.instantiate()
-	preview.custom_minimum_size = Vector2(PREVIEW_SIZE, PREVIEW_SIZE)
-	preview.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	preview.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-
-	var skin := ProfileManager.skin
-	var costume_id := ProfileManager.costume_id
-	var colors := ProfileManager.costume_colors
-	var hat_id := ProfileManager.hat_id
-	match kind:
-		&"costume":
-			skin = COSTUME_SKIN
-			costume_id = id
-			colors = CostumeCatalog.preview_colors(id)   # 未所持のため保存済み色が無い
-		&"hat":
-			hat_id = id
-
-	# lobby_panel.gd._roster_previewと同じ理由: この時点ではまだitem_gridに未接続で
-	# costume_preview.gdの@onready参照(_ready()で解決)が未解決のため、call_deferredで
-	# 1フレーム遅らせて接続後に実行させる
-	preview.call_deferred("set_interactive", false)
-	preview.call_deferred("show_skin", skin)
-	preview.call_deferred("show_costume", costume_id, colors)
-	preview.call_deferred("show_hat", hat_id)
-	preview.call_deferred("set_locked", not owned)
-	# 見た目反映後の1フレームだけ描いて止める(最大10件同時生成でもGPU負荷が
-	# 跳ねないよう、lobby_panelと同じ静止化を必ず適用する)
-	preview.call_deferred("request_static_render")
-	return preview
-
+# --- 共通 -------------------------------------------------------------------
 
 func _owns(kind: StringName, id: StringName) -> bool:
 	match kind:
@@ -331,32 +589,40 @@ func _owns(kind: StringName, id: StringName) -> bool:
 			return false
 
 
-func _on_buy_item_pressed(kind: StringName, id: StringName) -> void:
-	var def := CostumeCatalog.get_def(id) if kind == &"costume" else HatCatalog.get_def(id)
-	var price := int(def.get("price", 0))
-	var after := ProfileManager.premium_currency - price
-	var msg := tr("『%s』を💎%dで購入します。（購入後の残高: 💎%d）") % [
-		tr(String(def.get("name", String(id)))), price, after]
-	_open_confirm_overlay(msg, _do_buy_item_pressed.bind(kind, id))
+func _item_def(kind: StringName, id: StringName) -> Dictionary:
+	return CostumeCatalog.get_def(id) if kind == &"costume" else HatCatalog.get_def(id)
 
 
-func _do_buy_item_pressed(kind: StringName, id: StringName) -> void:
-	if PurchaseManager.purchase_item(kind, id):
-		var def := CostumeCatalog.get_def(id) if kind == &"costume" else HatCatalog.get_def(id)
-		status_label.text = tr("「%s」を購入しました！") % tr(String(def.get("name", String(id))))
-		_setup_item_grid()
+func _item_name(kind: StringName, id: StringName) -> String:
+	return tr(String(_item_def(kind, id).get("name", String(id))))
 
 
 func _on_purchase_failed(reason: String) -> void:
 	status_label.text = tr(FAILURE_MESSAGES.get(reason, reason))
 
 
+# --- ③プレゼント -------------------------------------------------------------
+
+## プレゼントできるのは、最後に選んだ有料のコスチューム/帽子1品
+func _update_gift_button() -> void:
+	# M-03対策: プレゼントはEOSのP2Pメッシュ経由でしか配信できず、Web版では
+	# EOSGが恒久的に動作しない(room_match_dialog.gd:57と同じ制約)ため、
+	# 挑戦させて後から失敗理由を出すのではなく、ここで先に無効化して伝える
+	if OS.has_feature("web"):
+		gift_btn.disabled = true
+		gift_btn.tooltip_text = tr("Web版ではプレゼント機能は利用できません（EOSのP2P接続が必要なため）")
+		return
+	var price := int(_item_def(_focus_kind, _focus_id).get("price", 0)) if _focus_id != &"" else 0
+	gift_btn.disabled = price <= 0
+	gift_btn.tooltip_text = tr("「%s」をフレンドに贈ります") % _item_name(_focus_kind, _focus_id) \
+		if price > 0 else tr("贈りたい有料のアイテムを選んでください")
+
+
 ## ③プレゼント相手選択ピッカーを開く（登録済みフレンド全員を表示、送信結果で成否を判定する）
 func _open_gift_picker(kind: StringName, id: StringName) -> void:
 	_pending_gift_kind = kind
 	_pending_gift_id = id
-	var def := CostumeCatalog.get_def(id) if kind == &"costume" else HatCatalog.get_def(id)
-	gift_title_label.text = tr("「%s」を贈る相手を選択") % tr(String(def.get("name", String(id))))
+	gift_title_label.text = tr("「%s」を贈る相手を選択") % _item_name(kind, id)
 
 	for child in gift_friend_list.get_children():
 		child.queue_free()
@@ -434,15 +700,16 @@ func _on_send_gift_pressed(friend_puid: String, friend_name: String) -> void:
 	var ok: bool = await GiftManager.send_gift(friend_puid, kind, id)
 	if ok:
 		status_label.text = tr("%s さんにプレゼントを贈りました！") % friend_name
+		_say(tr("プレゼント、きっと喜ばれますよ♪"))
+		stage.cheer()
 	else:
 		PurchaseManager.refund_gift(kind, id)
 		status_label.text = tr("%s さんに届けられませんでした（相手が起動していないか接続できませんでした）。ジェムは返金されました。") % friend_name
 
 
 func _on_gift_received(kind: StringName, id: StringName, from_name: String) -> void:
-	var def := CostumeCatalog.get_def(id) if kind == &"costume" else HatCatalog.get_def(id)
-	status_label.text = tr("%s さんから「%s」をプレゼントされました！") % [from_name, tr(String(def.get("name", String(id))))]
-	_setup_item_grid()
+	status_label.text = tr("%s さんから「%s」をプレゼントされました！") % [from_name, _item_name(kind, id)]
+	_rebuild()
 
 
 func _on_back_pressed() -> void:

@@ -1,0 +1,148 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://scenes/shop_stage.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scenes/humanoid.tscn" id="2_humanoid"]
+
+; costume_preview.tscn と同じ方針: グロー・シャドウは最初から切る(README のドローコール最適化)。
+; 店内らしく、背景色と環境光はクリーム寄りの暖色にしてある
+[sub_resource type="Environment" id="env_shop"]
+background_mode = 1
+background_color = Color(0.98, 0.93, 0.88, 1)
+ambient_light_source = 2
+ambient_light_color = Color(1, 0.95, 0.9, 1)
+ambient_light_energy = 0.8
+glow_enabled = false
+
+[sub_resource type="StandardMaterial3D" id="mat_floor"]
+albedo_color = Color(0.93, 0.8, 0.68, 1)
+roughness = 0.9
+
+[sub_resource type="PlaneMesh" id="mesh_floor"]
+material = SubResource("mat_floor")
+size = Vector2(12, 8)
+
+[sub_resource type="StandardMaterial3D" id="mat_backdrop"]
+albedo_color = Color(1, 0.88, 0.9, 1)
+roughness = 1.0
+
+[sub_resource type="QuadMesh" id="mesh_backdrop"]
+material = SubResource("mat_backdrop")
+size = Vector2(9.6, 5.4)
+
+[sub_resource type="StandardMaterial3D" id="mat_pedestal"]
+albedo_color = Color(0.72, 0.92, 0.85, 1)
+roughness = 0.5
+
+[sub_resource type="CylinderMesh" id="mesh_pedestal"]
+material = SubResource("mat_pedestal")
+top_radius = 0.62
+bottom_radius = 0.66
+height = 0.12
+
+[sub_resource type="StandardMaterial3D" id="mat_counter"]
+albedo_color = Color(0.62, 0.88, 0.78, 1)
+roughness = 0.6
+
+[sub_resource type="BoxMesh" id="mesh_counter"]
+material = SubResource("mat_counter")
+size = Vector3(1.5, 0.68, 0.6)
+
+[sub_resource type="StandardMaterial3D" id="mat_counter_top"]
+albedo_color = Color(1, 0.97, 0.9, 1)
+roughness = 0.5
+
+[sub_resource type="BoxMesh" id="mesh_counter_top"]
+material = SubResource("mat_counter_top")
+size = Vector3(1.62, 0.07, 0.7)
+
+[node name="ShopStage" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="SubViewportContainer" type="SubViewportContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+stretch = true
+
+[node name="SubViewport" type="SubViewport" parent="SubViewportContainer"]
+size = Vector2i(800, 800)
+own_world_3d = true
+msaa_3d = 0
+render_target_update_mode = 4
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="SubViewportContainer/SubViewport"]
+environment = SubResource("env_shop")
+
+[node name="Sun" type="DirectionalLight3D" parent="SubViewportContainer/SubViewport"]
+rotation_degrees = Vector3(-45, 30, 0)
+light_energy = 1.3
+shadow_enabled = false
+
+; 位置・向きは shop_stage.gd の CAMERA_POS / CAMERA_LOOK_AT で _ready() に設定する
+[node name="Camera3D" type="Camera3D" parent="SubViewportContainer/SubViewport"]
+fov = 38.0
+current = true
+
+[node name="Set" type="Node3D" parent="SubViewportContainer/SubViewport"]
+
+[node name="Floor" type="MeshInstance3D" parent="SubViewportContainer/SubViewport/Set"]
+mesh = SubResource("mesh_floor")
+
+; 奥の壁(書き割り)。キャラの正面は -Z でカメラも -Z 側にあるので、+Z 側に置いて
+; Y 軸で180度回し、面をカメラへ向ける。shop_backdrop.png が置かれていれば
+; shop_stage.gd がテクスチャを貼る(無ければこの単色のまま)
+[node name="Backdrop" type="MeshInstance3D" parent="SubViewportContainer/SubViewport/Set"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.2, 2.7, 2.6)
+mesh = SubResource("mesh_backdrop")
+
+[node name="Pedestal" type="MeshInstance3D" parent="SubViewportContainer/SubViewport/Set"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.7, 0.06, 0)
+mesh = SubResource("mesh_pedestal")
+
+[node name="Counter" type="MeshInstance3D" parent="SubViewportContainer/SubViewport/Set"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0.34, 0.1)
+mesh = SubResource("mesh_counter")
+
+[node name="CounterTop" type="MeshInstance3D" parent="SubViewportContainer/SubViewport/Set"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0.715, 0.1)
+mesh = SubResource("mesh_counter_top")
+
+; 帽子の陳列棚(奥の壁の上の方)。shop_stage.gd が棚板と HatCatalog の帽子を並べる
+[node name="HatShelf" type="Node3D" parent="SubViewportContainer/SubViewport/Set"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.4, 2.2, 2.35)
+
+[node name="PlayerTurntable" type="Node3D" parent="SubViewportContainer/SubViewport"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.7, 0.12, 0)
+
+[node name="Player" parent="SubViewportContainer/SubViewport/PlayerTurntable" instance=ExtResource("2_humanoid")]
+
+; 店員さん。カウンターの奥に立ち、少しプレイヤーの方へ向く。
+; カメラは +Z を向いているので、ワールドの +X は画面の左になる(プレイヤーが左、店員さんが右)
+[node name="Shopkeeper" type="Node3D" parent="SubViewportContainer/SubViewport"]
+transform = Transform3D(0.906308, 0, 0.422618, 0, 1, 0, -0.422618, 0, 0.906308, -1.5, 0, 0.65)
+
+[node name="LockBadge" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -40.0
+offset_right = 200.0
+offset_bottom = -12.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_colors/font_outline_color = Color(0.2, 0.1, 0.05, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 18
+text = "🔒 試着中"
+visible = false

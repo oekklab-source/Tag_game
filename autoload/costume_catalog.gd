@@ -19,8 +19,8 @@ const PART_SURFACES := {"Body": 1, "Costume": 5, "Face": 2}
 ## preview_colors: ショップの試着プレビューで使う見本の色（省略時は default_colors()）。
 ##   体(Body)の大部分は全コスチューム共通でユーザー選択色(slot 0)なので、全部同じ既定色で
 ##   試着させると違いがお腹・爪・トゲだけになり、小さなカードでは全部同じに見える
-##   (2026-10-02 に実際に報告された)。見本はきせかえ画面の PALETTE_COLORS
-##   (costume_screen.gd) から選ぶこと。購入後に実際に選べない色で見せると誇大表示になる
+##   (2026-10-02 に実際に報告された)。見本はきせかえ画面と共通のパレット
+##   (OutfitCards.PALETTE_COLORS) から選ぶこと。購入後に実際に選べない色で見せると誇大表示になる
 ## surfaces: 各要素は {"part", "index", 他}
 ##   - "slot" があれば costume_colors[slot] をその面の albedo として使う（ユーザー選択色）
 ##   - "albedo" があれば固定色（ユーザーは変更不可）
