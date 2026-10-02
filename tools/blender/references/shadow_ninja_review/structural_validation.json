@@ -1,0 +1,27 @@
+{
+  "tail_component_vertices_preserved": 98,
+  "face_vertices_preserved": 1282,
+  "rest_bones_preserved": 16,
+  "animation_names_preserved": [
+    "Come",
+    "ComeCool",
+    "ComeHip",
+    "Dive",
+    "Idle",
+    "Jump",
+    "Nice",
+    "RespawnDizzy",
+    "Run",
+    "SlideEnter",
+    "SlideProne",
+    "SlideRecover",
+    "SlideReverseFall",
+    "SlideSit",
+    "Slip"
+  ],
+  "garment_weights_normalized": true,
+  "original_character_weights_preserved": true,
+  "animation_keyframes_and_nla_timing_preserved": true,
+  "dorsal_spike_components_preserved": 8,
+  "dorsal_spike_vertices_preserved": 496
+}

@@ -53,7 +53,7 @@ func _physics_process(_delta: float) -> void:
 			continue
 		var pitch := atan2(-d.y, run)
 		body.apply_slide(flat / run, GRAVITY * sin(pitch) * GRAVITY_SCALE, cap,
-			pitch, run - along < 2.0, get_instance_id())
+			pitch, run - along, along, get_instance_id())
 
 
 ## 体の真下のセグメントを線分への射影距離で選ぶ。

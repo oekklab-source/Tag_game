@@ -55,11 +55,12 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## v10: 結果画面の「スキップ」操作用に request_skip_result RPCを追加したため(M-14)
 ## v11: ホストの試合結果報告(rating-api /report-match)とレート補正RPC
 ## (rating_report.gd の _apply_rating_correction)を追加したため(C-03 R-3)
+## v12: 滑走接触した設置ブロックの5秒消滅RPCを追加した
 ##
 ## ストア向けの製品版数は project.godot の application/config/version(現在0.1.0)。
 ## これとは別物であり、連動させない(RPCを変えていないのにストア更新のたびに
 ## PROTOCOL_VERSIONを上げる、といった事故を防ぐため)。
-const PROTOCOL_VERSION := 11
+const PROTOCOL_VERSION := 12
 
 const ROUND_TIME := 180.0
 const RESULT_TIME := 5.0
