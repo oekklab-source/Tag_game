@@ -399,10 +399,17 @@ func get_lobby_data(lobby_id: String, key: String) -> String:
 ## である可能性があるため、非空というだけでは確定と見なさない。ホスト名（IPでない
 ## 文字列）が来るまで待ち、来なければ最後に見えていた値(LAN内IPでも)で妥協する。
 ## retries*interval はホスト側の待ち時間(NetworkManager.TUNNEL_POLL_TIMEOUT=30秒)と揃えてある
-func await_host_addr(lobby_id: String, retries: int = 60, interval: float = 0.5) -> String:
+##
+## ignore_addr: この値は「まだ来ていない」とみなす。⑨ホストマイグレーション直後のロビー属性には
+## 落ちた旧ホストのトンネル名がまだ残っており、それを確定値として返すと死んだアドレスへ
+## 即座に接続しに行ってしまうため、旧ホストのアドレスを渡して読み飛ばさせる
+func await_host_addr(lobby_id: String, retries: int = 60, interval: float = 0.5,
+		ignore_addr: String = "") -> String:
 	var last_addr := ""
 	for i in retries:
 		var addr := get_lobby_data(lobby_id, "host_addr")
+		if not ignore_addr.is_empty() and addr == ignore_addr:
+			addr = ""
 		if not addr.is_empty():
 			last_addr = addr
 			if not addr.is_valid_ip_address():
@@ -459,6 +466,15 @@ func _on_lobby_owner_changed() -> void:
 	if is_host and not NetworkManager.public_address_ready.is_connected(_on_public_address_ready):
 		NetworkManager.public_address_ready.connect(_on_public_address_ready)
 	host_migrated.emit(_current_lobby.owner_product_user_id, is_host)
+
+
+## 今のロビーのオーナーのproduct_user_id(ロビー未所持なら空文字)。
+## ⑨NetworkManagerが、ゲーム通信の切断に気づいた時点で「EOS側ではもう昇格が済んでいるか」を
+## 確かめるのに使う(昇格通知が切断検知より先に届くと、その通知は捨てられているため)
+func current_owner_puid() -> String:
+	if _current_lobby == null:
+		return ""
+	return _current_lobby.owner_product_user_id
 
 
 ## 指定したメンバーがホストになれる(can_host=1を公開済み)かどうか
