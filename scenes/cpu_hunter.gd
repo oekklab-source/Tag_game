@@ -113,6 +113,7 @@ var warp_grace := 0.0
 var diving := false
 var dive_recover := 0.0
 var dive_cooldown := 0.0
+var _slide_dive_recover_pending := false
 
 var stamina := STAMINA_MAX
 var exhausted := false
@@ -287,7 +288,8 @@ func _physics_process(delta: float) -> void:
 			_try_use_item(to_runner, h_dist)
 			# 見えている逃走者が手頃な距離にいたら飛びかかる。
 			# プレイヤーと同じくダイブ中は操作できず、外せば起き上がりの隙を晒す
-			if (_mind == Mind.CHASE and grounded and not slide_ride.active() and dive_cooldown <= 0.0
+			if (_mind == Mind.CHASE and grounded and not slide_ride.active()
+					and dive_cooldown <= 0.0
 					and h_dist > DIVE_MIN and h_dist < DIVE_MAX and absf(to_runner.y) < 2.0):
 				_start_dive(Vector3(to_runner.x, 0.0, to_runner.z))
 
@@ -518,12 +520,16 @@ func _drop_behind(kind: int, back_dist: float) -> void:
 func _tick_dive(delta: float) -> void:
 	if not diving:
 		return
+	if slide_ride.sliding_dive():
+		dive_recover = 0.0
+		return
 	if dive_recover > 0.0:
 		dive_recover = maxf(dive_recover - delta, 0.0)
 		if dive_recover <= 0.0:
 			diving = false
 	elif is_on_floor():
-		dive_recover = DIVE_RECOVER
+		dive_recover = Player.DIVE_SLIDE_RECOVER if _slide_dive_recover_pending else DIVE_RECOVER
+		_slide_dive_recover_pending = false
 
 
 func _start_dive(toward: Vector3) -> void:
@@ -533,6 +539,7 @@ func _start_dive(toward: Vector3) -> void:
 	diving = true
 	dive_recover = 0.0
 	dive_cooldown = DIVE_COOLDOWN
+	_slide_dive_recover_pending = false
 
 
 ## 目的地があるのに進めていないとき、まず直前の衝突法線から抜け出す向きへ
@@ -601,6 +608,7 @@ func teleport(pos: Vector3) -> void:
 	diving = false
 	dive_recover = 0.0
 	dive_cooldown = 0.0
+	_slide_dive_recover_pending = false
 	_repath_timer = 0.0
 	_goal_timer = 0.0
 	_stuck_kick_left = 0.0
@@ -648,19 +656,26 @@ func add_carry(v: Vector3) -> void:
 
 
 func apply_slide(dir: Vector3, accel: float, cap: float, pitch := 0.0,
-		near_bottom := false, source_id := 0) -> void:
+		distance_from_bottom := INF, distance_from_top := INF, source_id := 0) -> void:
 	if sync_respawn_left > 0.0 or stunned or warp_grace > 0.0 or bumper_bounce_left > 0.0:
 		return
-	diving = false
-	dive_recover = 0.0
-	slide_ride.contact(source_id, dir, pitch, accel, cap, near_bottom, velocity)
+	var dive_entry := diving
+	if dive_entry:
+		dive_recover = 0.0
+		_slide_dive_recover_pending = false
+		velocity.y = minf(velocity.y, 0.0)
+	slide_ride.contact(source_id, dir, pitch, accel, cap, distance_from_bottom,
+		distance_from_top, velocity, dive_entry)
 
 
 func release_slide(source_id: int) -> void:
+	var was_dive_sliding := slide_ride.sliding_dive()
 	if slide_ride.active():
 		_repath_timer = 0.0
 		_goal_timer = 0.0
 	slide_ride.release(source_id)
+	if was_dive_sliding and not slide_ride.sliding_dive():
+		_slide_dive_recover_pending = true
 	sync_slide = slide_ride.visual()
 
 

@@ -70,6 +70,8 @@ const SKINS := [
 	{"name": "きょうりゅう", "path": "res://assets/character/fallguy.glb"},
 	{"name": "しのび", "path": "res://assets/character/ninja.glb"},
 	{"name": "バスケ08", "path": "res://assets/character/outfits/basketball_prototype.glb"},
+	{"name": "オーバーオール", "path": "res://assets/character/outfits/overalls.glb"},
+	{"name": "黒影忍者", "path": "res://assets/character/outfits/shadow_ninja.glb"},
 ]
 ## Blender では -Y を正面にモデリングしたが、glTF(+Y up) 変換でそれが +Z に来るため
 ## 180度回して Godot の正面（-Z）に合わせる（元は humanoid.tscn の Model にあった）

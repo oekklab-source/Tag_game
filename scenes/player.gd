@@ -34,6 +34,8 @@ const DIVE_SPEED := 12.0      # ダッシュ(10.5)より速く、滑走(18)よ�
 ## わずかに浮くだけ。到達高度は 0.46m で、これで越えられる段差は作っていない
 const DIVE_UP := 3.0
 const DIVE_RECOVER := 0.55    # 着地後の起き上がり。空振りしたときのリスクがこれ
+## 滑り台を最後まで滑った後は、通常の空振りより早く操作へ戻す。
+const DIVE_SLIDE_RECOVER := DIVE_RECOVER * 0.5
 const DIVE_COOLDOWN := 0.9    # 連打してただの移動手段にさせない
 ## 見た目の前傾（rad）。前方は -Z なので、X軸まわりは負回転が前倒しになる
 const DIVE_PITCH := -1.2
@@ -144,6 +146,9 @@ var slide_ride := SlideRide.new()
 var diving := false
 var dive_recover := 0.0
 var dive_cooldown := 0.0
+var _slide_dive_recover_pending := false
+## ダイブ開始時の世界座標Y角。カメラ操作でPlayer本体が回っても変えない。
+var _dive_world_yaw := 0.0
 var warp_lock := 0.0                # マンホールの往復ワープ防止
 var warp_grace := 0.0               # ワープ直後、is_on_floor() の古い値を無視する猶予
 var item: int = Item.NONE
@@ -251,8 +256,14 @@ func _process(delta: float) -> void:
 	humanoid.set_stunned(stunned)
 	humanoid.set_respawn(sync_respawn_left)
 	humanoid.set_emote(sync_emote)
-	var special_pose := diving or stunned or sync_respawn_left > 0.0
-	var facing_yaw := 0.0 if special_pose else sync_facing_yaw
+	# ダイブ中は開始時の見た目の向きを固定する。従来の 0.0 へ戻す処理では、
+	# 横や手前を向いていてもカメラ奥へ向き直って見えていた。
+	if diving and is_multiplayer_authority():
+		sync_facing_yaw = wrapf(_dive_world_yaw - global_rotation.y, -PI, PI)
+	var facing_yaw := 0.0 if stunned or sync_respawn_left > 0.0 else sync_facing_yaw
+	if diving:
+		# カメラを急回転した1フレームだけ姿勢が追従することも避ける。
+		humanoid.rotation.y = facing_yaw
 	humanoid.set_slide(sync_slide, global_rotation.y, delta, facing_yaw, FACING_TURN_SPEED)
 	humanoid.update_motion(sync_speed, not sync_air, delta)
 	# ダイブ中は前へ倒れ込む。diving はレプリケートされるので他ピアからも見える
@@ -327,7 +338,11 @@ func _physics_process(delta: float) -> void:
 
 	if warp_grace > 0.0 or not grounded:
 		velocity += get_gravity() * delta
-	elif not frozen and not slide_ride.active() and dive_cooldown <= 0.0 and Input.is_action_just_pressed("dive"):
+	# 斜面下端の逆走アプローチ中は is_on_floor() が一時的に false でも
+	# 実際に滑り台と接触中なので、ダイブの踏み切りを許可する。
+	if (warp_grace <= 0.0 and (grounded or slide_ride.approaching_reverse())
+			and not frozen and not slide_ride.active()
+			and dive_cooldown <= 0.0 and Input.is_action_just_pressed("dive")):
 		_start_dive()
 
 	var input_dir := Vector2.ZERO
@@ -425,23 +440,39 @@ func _physics_process(delta: float) -> void:
 func _tick_dive(delta: float) -> void:
 	if not diving:
 		return
+	# 滑り台上ではダイブを解除せず、出口へ出てから起き上がりを始める。
+	if slide_ride.sliding_dive():
+		dive_recover = 0.0
+		return
 	if dive_recover > 0.0:
 		dive_recover = maxf(dive_recover - delta, 0.0)
 		if dive_recover <= 0.0:
 			diving = false
 	elif is_on_floor():
-		dive_recover = DIVE_RECOVER
+		dive_recover = DIVE_SLIDE_RECOVER if _slide_dive_recover_pending else DIVE_RECOVER
+		_slide_dive_recover_pending = false
 
 
 ## 前方へ低く飛び込む。踏み切った後は操作できない（frozen 扱い）ので、
 ## 着地までの軌道が読まれると空振りする
 func _start_dive() -> void:
-	var fwd := -global_transform.basis.z
-	velocity = Vector3(fwd.x, 0.0, fwd.z).normalized() * DIVE_SPEED
+	# Player本体はカメラ基準で固定されるため、その正面ではなく、画面上で
+	# 実際に向いている Humanoid の正面をダイブ方向として固定する。
+	sync_facing_yaw = humanoid.rotation.y
+	var fwd := -humanoid.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	_dive_world_yaw = atan2(-fwd.x, -fwd.z)
+	sync_facing_yaw = wrapf(_dive_world_yaw - global_rotation.y, -PI, PI)
+	velocity = fwd * DIVE_SPEED
 	velocity.y = DIVE_UP
 	diving = true
 	dive_recover = 0.0
 	dive_cooldown = DIVE_COOLDOWN
+	_slide_dive_recover_pending = false
+	if slide_ride.begin_dive_from_approach(velocity):
+		# 斜面との接触は維持し、水平の飛び込み速度だけを滑走へ渡す。
+		velocity.y = 0.0
 
 
 ## --- エモート -----------------------------------------------------------
@@ -533,19 +564,23 @@ func _update_stuck(delta: float, direction: Vector3, grounded: bool, frozen: boo
 ## 代わりに設置ブロックとの接触が残っている間だけ、滑り台を横切る入力へ
 ## 最低速度を与える。左右を選ぶのはプレイヤーで、自動回避は行わない。
 func _assist_slide_block_escape(v: Vector3, input_direction: Vector3) -> Vector3:
+	var touching_block: Node = null
+	for i in get_slide_collision_count():
+		var collider := get_slide_collision(i).get_collider() as Node
+		if collider != null and collider.is_in_group("placed_blocks"):
+			touching_block = collider
+			break
+	if touching_block == null:
+		return v
+	# 左右入力が無い場合も「挟まって接触中」を検知し、最初の接触から
+	# 5秒以内にサーバが通常と同じフェードで消す。
+	if touching_block.has_method("report_slide_collision"):
+		touching_block.report_slide_collision()
 	if input_direction == Vector3.ZERO:
 		return v
 	var side := Vector3.UP.cross(slide_ride.direction).normalized()
 	var side_input := input_direction.dot(side)
 	if absf(side_input) < 0.1:
-		return v
-	var touching_block := false
-	for i in get_slide_collision_count():
-		var collider := get_slide_collision(i).get_collider() as Node
-		if collider != null and collider.is_in_group("placed_blocks"):
-			touching_block = true
-			break
-	if not touching_block:
 		return v
 	var target_side := signf(side_input) * SLIDE_BLOCK_SIDE_SPEED
 	var current_side := v.dot(side)
@@ -592,6 +627,8 @@ func teleport(pos: Vector3) -> void:
 	diving = false
 	dive_recover = 0.0
 	dive_cooldown = 0.0
+	_slide_dive_recover_pending = false
+	_dive_world_yaw = 0.0
 	stun_left = 0.0
 	stunned = false
 	item = Item.NONE
@@ -796,17 +833,27 @@ func add_carry(v: Vector3) -> void:
 ## 接地していても通常の移動制御（目標速度への上書き）を止める。
 ## 権威チェックは add_carry() と同じく呼び出し側（Area）が行う
 func apply_slide(dir: Vector3, accel: float, cap: float, pitch := 0.0,
-		near_bottom := false, source_id := 0) -> void:
+		distance_from_bottom := INF, distance_from_top := INF, source_id := 0) -> void:
 	if sync_respawn_left > 0.0 or stunned or warp_grace > 0.0 or bumper_bounce_left > 0.0:
 		return
-	# 下からダイブして入っても、一方通行を飛びつきで突破させない。
-	diving = false
-	dive_recover = 0.0
-	slide_ride.contact(source_id, dir, pitch, accel, cap, near_bottom, velocity)
+	# ダイブ中に滑り台へ入ったら、高さや進入方向に関係なく
+	# diving と進入時の向きは維持し、水平速度だけを下向きにする。
+	var dive_entry := diving
+	if dive_entry:
+		dive_recover = 0.0
+		_slide_dive_recover_pending = false
+		# 斜面へ接触した後も DIVE_UP を残すと Area から浮いて再進入する。
+		# 飛び込みの水平勢いは SlideRide 側で残し、垂直上昇だけ止める。
+		velocity.y = minf(velocity.y, 0.0)
+	slide_ride.contact(source_id, dir, pitch, accel, cap, distance_from_bottom,
+		distance_from_top, velocity, dive_entry)
 
 
 func release_slide(source_id: int) -> void:
+	var was_dive_sliding := slide_ride.sliding_dive()
 	slide_ride.release(source_id)
+	if was_dive_sliding and not slide_ride.sliding_dive():
+		_slide_dive_recover_pending = true
 	sync_slide = slide_ride.visual()
 
 

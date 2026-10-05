@@ -32,6 +32,7 @@ const SKIN_SWATCHES: Array[Color] = [
 	Color(0.35, 0.85, 0.55), # きょうりゅう
 	Color(0.22, 0.30, 0.42), # しのび
 	Color(0.95, 0.35, 0.35), # バスケ08（コーラル）
+	Color(0.24, 0.40, 0.62), # オーバーオール（デニム）
 ]
 
 const CARD_SIZE := Vector2(148, 108)
