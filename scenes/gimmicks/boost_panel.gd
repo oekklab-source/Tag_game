@@ -55,9 +55,20 @@ var _spark_mats: Array[ShaderMaterial] = []
 var _spark_homes: Array[Transform3D] = []
 var _spark_tween: Tween
 
+## スマホだけ、画面に映っていない間は虹の波を止める(発熱対策。PC では null のまま毎フレーム回す)。
+## 8枚 x 9マテリアルを毎フレーム書き換えていて、画面外でも止まらなかった。
+## 波の位相は毎回 world_time から計算していて状態を持たないので、画面に戻った瞬間から
+## 正しい位置で光る(止めていた間の分が遅れて見えることはない)
+var _on_screen: VisibleOnScreenNotifier3D
+
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
+	if PhonePerf.enabled():
+		_on_screen = VisibleOnScreenNotifier3D.new()
+		# 板(8m 角)に、踏んだときに舞い上がる火花のぶんの高さを足した箱
+		_on_screen.aabb = AABB(Vector3(-4.5, -0.2, -4.5), Vector3(9.0, 2.6, 9.0))
+		add_child(_on_screen)
 	var model: Node3D = $Mesh/DashPadModel/DashPad
 	# 脈動は共有リソースを避けてインスタンス固有のマテリアルで行う
 	# （同じ glb を読む他のパネルまで一緒に光ってしまうため）
@@ -113,6 +124,8 @@ func _glow(node: GeometryInstance3D, energy: float,
 
 
 func _process(_delta: float) -> void:
+	if _on_screen != null and not _on_screen.is_on_screen():
+		return
 	# 位相は GameManager.world_time から取る。ラウンド開始で全ピア同時にリセットされるため、
 	# どの画面でも波が同じ位置に見える（Time.get_ticks_msec() だと peer ごとにずれる）
 	var t: float = GameManager.world_time * WAVE_SPEED
