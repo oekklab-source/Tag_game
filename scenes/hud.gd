@@ -88,6 +88,9 @@ var _overlay_full_notified := false
 var _shown_item: int = Player.Item.NONE
 var _shown_alpha := 1.0
 var _icon_tween: Tween
+## スマホでミニマップを描き直す間隔(秒)。_update_tracking を参照
+const MAP_REDRAW_INTERVAL_PHONE := 1.0 / 15.0
+var _map_redraw_wait := 0.0
 
 @onready var vignette: TextureRect = $Vignette
 @onready var role_badge: PanelContainer = $RoleBadge
@@ -243,7 +246,7 @@ func _process(delta: float) -> void:
 	_update_stamina(player)
 	_update_item(player, delta)
 	_update_buffs(player)
-	_update_tracking(player)
+	_update_tracking(player, delta)
 	timer_ring.queue_redraw()
 	stamina_bar.queue_redraw()
 
@@ -284,6 +287,10 @@ func _update_labels() -> void:
 	lobby.update_lobby(_overlay_instance != null)
 	_check_overlay_room_full(GameManager.player_ids().size(), multiplayer.is_server())
 
+	# タッチ操作のときは非表示(_ready の C-07 T-6)。見えない文字列を毎フレーム組み立てない
+	# (スマホの発熱対策。PC は既定で表示しているので、PC の処理は変わらない)
+	if not info_label.visible:
+		return
 	var lines := PackedStringArray()
 	if GameManager.state == GameManager.State.WAITING:
 		lines.append(tr("Esc: メニュー（マウスも離れる） / F: ナイス！"))
@@ -711,14 +718,19 @@ func _make_buff_chip(key: StringName) -> Control:
 ## コンパスとヴィネットは同じ「最寄りの鬼との距離」を使うので、二重に計算しない
 ## よう minimap.gd の update_compass() が最寄りの鬼(または null)を返す
 
-func _update_tracking(player: Player) -> void:
+func _update_tracking(player: Player, delta: float) -> void:
 	var playing := GameManager.state == GameManager.State.PLAYING and player != null
 	var is_runner := playing and multiplayer.get_unique_id() == GameManager.runner_id
 	# マップは両陣営に出す。鬼の画面には味方の鬼と自分しか描かれないので
 	# （minimap.gd の _on_map_draw を参照）、逃走者の位置が漏れることはない
 	map_panel.visible = playing
 	if playing:
-		map_panel.queue_redraw()
+		# スマホだけ描き直しを間引く(発熱対策)。毎回全マーカーを描き直しており、
+		# 小さな地図の点が 1/15 秒ごとに動いても見た目は変わらない。PC は今までどおり毎フレーム
+		_map_redraw_wait -= delta
+		if not PhonePerf.enabled() or _map_redraw_wait <= 0.0:
+			_map_redraw_wait = MAP_REDRAW_INTERVAL_PHONE
+			map_panel.queue_redraw()
 
 	var target: Node3D = map_panel.update_compass(player, is_runner)
 	if target == null:

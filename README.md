@@ -881,6 +881,40 @@ godot --headless --path . res://scenes/world.tscn -- client 127.0.0.1
 一番効く。次が `Sun` の `shadow_enabled`。頂点が重い時は
 `world_builder.gd` の `MESH_SEGMENT_M` を上げる（下の「巨大な面は分割する」を参照）。
 
+### スマホでの軽量化（PC には効かない）
+
+2026-10-05、iPhone 15 Pro Max で「本体が熱くなる」との報告を受けて、
+**スマホのブラウザだけ**描画と処理を軽くした（[scenes/hud/phone_perf.gd](scenes/hud/phone_perf.gd)）。
+PC 版（exe・PC のブラウザ）では困っていないので、PC の見た目と挙動は変えない。
+軽量化はすべて `PhonePerf.enabled()` が true のときだけ行う。
+
+**なぜ必要だったか**: `project.godot` は描画設定を何も上書きしていないので、Web 版はエンジンの
+既定のまま動いていた。hiDPI が有効なので、3D を端末の実ピクセルで描いていた
+（iPhone 15 Pro Max の横持ちで約 2796x1290）。フレームレートの上限も無かった。
+Godot 自身のスマホ向け既定値（project.godot の `.mobile` 上書き）は、ネイティブの Android/iOS
+書き出しにしか効かない。ブラウザで開いたスマホは「PC と同じ既定値」になる。
+
+**判定**: Web で動いていて、Godot の機能タグ `web_ios` / `web_android` が立っているとき
+（`navigator.userAgent` の部分一致）。iPadOS の Safari は既定で Mac の UA を名乗るので、
+`web_macos` かつタッチ画面がある場合も含める（Mac にタッチ画面は無い）。
+
+| 何を | スマホでの値 | 理由 |
+| --- | --- | --- |
+| 3D の解像度 | 画面の短い辺を 720px に（倍率の下限 0.5） | 一番効く。iPhone 15 Pro Max では描く画素が約 1/3 になる。UI は別に実解像度で描くので、文字はぼやけない。画面を回したら計算し直す |
+| フレームレート | 30fps（`Engine.max_fps`） | 描画回数が半分になる。**物理の刻み（60Hz）は変えない**（下の「権威モデル」の、物理 delta が全ピアで固定値という前提） |
+| グロー | 切る | 上の「最初に切る」。ネオン材のにじみは消えるが、色と明るさは残る |
+| 影 | 解像度 2048・縁はハード | Godot のスマホ向け既定値と同じ。影そのものは残す（長い影が距離感の手がかり） |
+| ミニマップ | 1/15 秒ごとに描き直す | 毎フレーム全マーカーを描き直していた |
+| ダッシュパネル | 画面外では虹の波を止める | 8 枚 x 9 マテリアルを毎フレーム書き換えていた。位相は `world_time` から計算するので、画面に戻った瞬間から正しく光る |
+| ロビー一覧のプレビュー | 1 枚描いたらアニメを止める | 試合中は隠れたまま残っていて、骨の計算だけ回り続けていた |
+
+スマホはホストになれない（ブラウザでは待ち受けられない）ので、CPU AI・視界判定・ナビは元々スマホでは動いていない。
+
+**PC から確かめる**: ユーザー引数 `--phone-perf` を付けると、PC でもスマホ扱いになる
+（`godot --path . res://scenes/world.tscn -- --phone-perf`）。自動テストは `tests/phone_perf.tscn`。
+
+まだ熱いときの次の手は、影を切る（`Sun` の `shadow_enabled`）か、`TARGET_3D_HEIGHT` を下げること。
+
 ドローコールは `tests/screenshot.tscn` が固定アングルで実測する
 （`Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME`）。ゾーンをテーマ化した際の実測値:
 
@@ -1372,6 +1406,7 @@ scenes/hud/minimap.gd         hud.tscnの$MapPanel。9ゾーンミニマップ�
 scenes/hud/lobby_panel.gd     hud.tscnの$Lobby。ロビー名簿・定員変更・役割選択ボタン
 scenes/hud/touch_controls.tscn(.gd) スマホのタッチ操作(追従スティック・ボタン・視点ドラッグ)。大きさはdpで決める
 scenes/hud/web_screen.gd      Web版の画面まわり(全画面・ホーム画面起動の判定・safe area・dp換算)
+scenes/hud/phone_perf.gd      スマホのブラウザだけの軽量化(3D解像度・30fps・グロー・影)。PCには効かない
 web/                          GitHub Pagesにだけ置くファイル(ホーム画面追加用のmanifestとアイコン)
 ui/pop_theme.tres             全体に適用される POP テーマ
 locale/en.po                  英語の翻訳（msgid は日本語の原文。書き方は「表示言語」節）
@@ -1405,6 +1440,11 @@ autoload/costume_catalog.gd   ④コスチューム（部位の塗り分けレ�
 autoload/hat_catalog.gd       ⑤帽子（新規ジオメトリの部位）の定義データ。CostumeCatalog と対
 scenes/costume_preview.tscn(.gd) プロフィール設定の3Dプレビュー（ターンテーブル、SubViewport）
 scenes/costume_screen.tscn(.gd)  プロフィール設定（名前・キャラクター/スキン柄/カラー/帽子・戦績）
+scenes/outfit_cards.gd        きせかえ画面とショップで共通のカード部品・色パレット（OutfitCards）
+scenes/shop_screen.tscn(.gd)  ショップ。試着しながらコーデを組み、未所持の物をまとめて買ってそのまま着る
+scenes/shop_stage.tscn(.gd)   ショップの3D舞台（店内・試着台・カウンターの店員さん。店員さんは試着されると
+                              接客位置まで出てきてアバターを見て反応し、普段はお客さん(カメラ)を向く）
+tools/blender/references/SHOP_ART_PROMPTS.md  店員さん・店内の絵を Gemini で起こすためのプロンプト（3D化の元絵）
 tests/map_connectivity.tscn   ナビメッシュの連結性・滑り台の一方通行・走路の貫通の検証
 tests/item_drop.tscn          アイテムがラウンド外でも置けることの検証
 tests/bumper.tscn             バンパーが四方と真上から弾き返すことの検証
@@ -1423,9 +1463,12 @@ tests/net_roles.tscn          2ピアで役割選択と湧き位置の分散を�
 tests/net_live.tscn           実際の起動経路と実キー入力で通信対戦が始まるかの検証
 tests/uishot.tscn             UI（タイトル/ロビー/対戦中/リザルト/各画面）を PNG 書き出し（--headless 不可、--locale en で英語）
 tests/quit_menu.tscn          Esc の終了確認メニューの開閉・既定フォーカス・キーリピートの検証
+tests/phone_perf.tscn         スマホ向け軽量化の判定・適用と、PC では何も変わらないことの検証
 tests/test_i18n.tscn          翻訳の整合性（未登録 msgid・訳し忘れ・書式指定・フォントの字形・言語設定）の検証
 tests/host_conflict.tscn      ポートが埋まっているときホストを弾いて理由を出すかの検証
 tests/costume_model.tscn      ④コスチューム・⑤帽子のデータモデル（所持・移行・整合性）を検証
+tests/shop_fitting.tscn       ショップの試着・まとめ買い・着替え・元に戻す・プレゼント可否の検証
+tests/shop_clerk.tscn         ショップの店員さんの動き（見る相手・歩く・反応・吹き出しの追従）の検証
 tests/test_eos_credentials_check.tscn eos_credentials.cfg の検証ロジック（起動可否と出荷可否の境界）
 tests/hat_placement.gd        ⑤帽子の装着位置（Chestボーン基準オフセット）を目視調整するスクリプト
                               （godot --path . --script res://tests/hat_placement.gd -- <出力先>）

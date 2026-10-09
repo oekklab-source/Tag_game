@@ -16,6 +16,11 @@ const PART_SURFACES := {"Body": 1, "Costume": 5, "Face": 2}
 ## rarity: common / rare / epic / legendary（将来のショップ表示用）
 ## unlock: default(最初から所持) / rating(到達レート報酬) / shop(課金/購入) / event(配布)
 ## color_slots: プレイヤーが選べる色の数（costume_colors 配列の要素数と対応）
+## preview_colors: ショップの試着プレビューで使う見本の色（省略時は default_colors()）。
+##   体(Body)の大部分は全コスチューム共通でユーザー選択色(slot 0)なので、全部同じ既定色で
+##   試着させると違いがお腹・爪・トゲだけになり、小さなカードでは全部同じに見える
+##   (2026-10-02 に実際に報告された)。見本はきせかえ画面と共通のパレット
+##   (OutfitCards.PALETTE_COLORS) から選ぶこと。購入後に実際に選べない色で見せると誇大表示になる
 ## surfaces: 各要素は {"part", "index", 他}
 ##   - "slot" があれば costume_colors[slot] をその面の albedo として使う（ユーザー選択色）
 ##   - "albedo" があれば固定色（ユーザーは変更不可）
@@ -70,6 +75,7 @@ const COSTUMES: Dictionary = {
 		"price": 0,
 		"unlock": &"rating",
 		"color_slots": 2,
+		"preview_colors": [Color(0.20, 0.80, 0.80), Color(1.00, 0.50, 0.75)],  # ターコイズ + ピンク(体をさくらと被らせない)
 		"surfaces": [
 			{"part": "Body", "index": 0, "slot": 0, "role_tint": true},
 			{"part": "Costume", "index": 0, "slot": 1},                          # Skin -> ユーザー色2
@@ -85,6 +91,7 @@ const COSTUMES: Dictionary = {
 		"price": 500,
 		"unlock": &"shop",
 		"color_slots": 1,
+		"preview_colors": [Color(0.98, 0.75, 0.20)],  # サンフラワーイエロー
 		"surfaces": [
 			{"part": "Body", "index": 0, "slot": 0, "role_tint": true},
 			{"part": "Costume", "index": 0, "albedo": Color(0.83, 0.68, 0.21), "metallic": 0.8},
@@ -100,6 +107,7 @@ const COSTUMES: Dictionary = {
 		"price": 0,
 		"unlock": &"rating",
 		"color_slots": 1,
+		"preview_colors": [Color(0.35, 0.85, 0.45)],  # エメラルドグリーン
 		"surfaces": [
 			{"part": "Body", "index": 0, "slot": 0, "role_tint": true},
 			{"part": "Costume", "index": 0, "albedo": Color(0.35, 0.40, 0.22)},  # Skin -> オリーブ
@@ -115,6 +123,7 @@ const COSTUMES: Dictionary = {
 		"price": 300,
 		"unlock": &"shop",
 		"color_slots": 1,
+		"preview_colors": [Color(1.00, 0.50, 0.75)],  # ピンク
 		"surfaces": [
 			{"part": "Body", "index": 0, "slot": 0, "role_tint": true},
 			{"part": "Costume", "index": 0, "albedo": Color(1.0, 0.85, 0.88)},   # Skin -> 淡ピンク
@@ -131,6 +140,7 @@ const COSTUMES: Dictionary = {
 		"price": 400,
 		"unlock": &"shop",
 		"color_slots": 1,
+		"preview_colors": [Color(0.75, 0.40, 0.90)],  # パープル(発光アクセントにも効く)
 		"surfaces": [
 			{"part": "Body", "index": 0, "slot": 0, "role_tint": true},
 			{"part": "Costume", "index": 0, "albedo": Color(0.05, 0.05, 0.07)},  # Skin -> 黒
@@ -155,6 +165,14 @@ static func get_def(id: StringName) -> Dictionary:
 	if COSTUMES.has(id):
 		return COSTUMES[id]
 	return COSTUMES[DEFAULT_ID]
+
+
+## ショップの試着プレビュー用の色（ヘッダの preview_colors 参照）
+static func preview_colors(id: StringName) -> PackedColorArray:
+	var preset: Array = get_def(id).get("preview_colors", [])
+	if preset.is_empty():
+		return default_colors(id)
+	return PackedColorArray(preset)
 
 
 static func default_colors(id: StringName) -> PackedColorArray:

@@ -33,6 +33,11 @@ var _spawn_slot := 0
 func _ready() -> void:
 	# マップは全ピアが同じテーブルから構築する（形状はベイクより先に存在させる）
 	WorldBuilder.build(map, gimmicks, decor)
+	# スマホのブラウザだけ、3D の解像度・グロー・影を軽くする(発熱対策。PC では何もしない)。
+	# 画面を回すと短い辺が変わるので、そのたびに描画倍率を計算し直す。
+	# 接続先はこのノードのメソッドなので、world が消えれば接続も一緒に消えて積み重ならない
+	if PhonePerf.apply_world($WorldEnvironment, get_viewport()):
+		get_viewport().size_changed.connect(_on_viewport_resized)
 	if NetworkManager.mode == NetworkManager.Mode.NONE:
 		# エディタから world.tscn を直接実行した場合はホストとして動かす
 		NetworkManager.mode = NetworkManager.Mode.HOST
@@ -62,6 +67,10 @@ func _ready() -> void:
 			# ⑨マイグレーション中でなければ無害。新ホストへの再接続が確立したので閉じる
 			NetworkManager.finish_migration_if_active()
 		multiplayer.connected_to_server.connect(_on_connected_to_server, CONNECT_ONE_SHOT)
+
+
+func _on_viewport_resized() -> void:
+	PhonePerf.apply_3d_scale(get_viewport())
 
 
 func _unhandled_input(event: InputEvent) -> void:

@@ -40,32 +40,8 @@ signal closed
 @onready var confirm_cancel_btn: Button = $ConfirmOverlay/Panel/VBox/Buttons/CancelButton
 @onready var confirm_discard_btn: Button = $ConfirmOverlay/Panel/VBox/Buttons/DiscardButton
 
-# 色スロット編集用のプリセットパレット（コスチュームの色スロット共通）
-const PALETTE_COLORS: Array[Color] = [
-	Color(0.25, 0.65, 0.95), # スカイブルー
-	Color(0.95, 0.35, 0.35), # コーラルレッド
-	Color(0.35, 0.85, 0.45), # エメラルドグリーン
-	Color(0.98, 0.75, 0.20), # サンフラワーイエロー
-	Color(0.75, 0.40, 0.90), # パープル
-	Color(1.00, 0.50, 0.75), # ピンク
-	Color(0.20, 0.80, 0.80), # ターコイズ
-	Color(0.30, 0.30, 0.35)  # ダークグレー
-]
-
-# レア度ごとの縁取り色（① 大きめカードで所持状況とあわせて見せる）
-const RARITY_COLORS := {
-	&"common": Color(0.6, 0.6, 0.65),
-	&"rare": Color(0.35, 0.7, 1.0),
-	&"epic": Color(0.75, 0.4, 0.95),
-	&"legendary": Color(1.0, 0.75, 0.2),
-}
-
-const SKIN_SWATCHES: Array[Color] = [
-	Color(0.35, 0.85, 0.55), # きょうりゅう
-	Color(0.22, 0.30, 0.42), # しのび
-	Color(0.95, 0.35, 0.35), # バスケ08（コーラル）
-	Color(0.24, 0.40, 0.62), # オーバーオール（デニム）
-]
+## パレット・レア度の縁取り色・キャラの見本色は OutfitCards(scenes/outfit_cards.gd)に
+## 切り出してショップと共有している
 
 var _selected_skin := 0
 var _selected_costume_id: StringName = CostumeCatalog.DEFAULT_ID
@@ -159,38 +135,8 @@ func _setup_skin_grid() -> void:
 
 
 func _build_skin_card(index: int, display_name: String) -> Control:
-	const CARD_SIZE := Vector2(148, 108)
-
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 4)
-
-	var btn := Button.new()
-	btn.custom_minimum_size = CARD_SIZE
-	btn.toggle_mode = true
-	btn.button_pressed = index == _selected_skin
-	btn.text = display_name
-
-	var style := StyleBoxFlat.new()
-	style.bg_color = SKIN_SWATCHES[index] if index < SKIN_SWATCHES.size() else Color(0.4, 0.45, 0.5)
-	style.set_corner_radius_all(14)
-	var border := 4 if index == _selected_skin else 2
-	style.border_width_left = border
-	style.border_width_top = border
-	style.border_width_right = border
-	style.border_width_bottom = border
-	style.border_color = Color(0.95, 0.95, 1.0)
-	btn.add_theme_stylebox_override("normal", style)
-	btn.add_theme_stylebox_override("hover", style)
-	btn.add_theme_stylebox_override("pressed", style)
-	btn.pressed.connect(_on_skin_button_pressed.bind(index))
-	box.add_child(btn)
-
-	var caption := Label.new()
-	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	caption.text = tr("使用できます")
-	caption.add_theme_color_override("font_color", Color(0.5, 0.9, 0.6))
-	box.add_child(caption)
-	return box
+	return OutfitCards.skin_card(index, display_name, index == _selected_skin, tr("使用できます"),
+		_on_skin_button_pressed.bind(index))
 
 
 func _on_skin_button_pressed(index: int) -> void:
@@ -216,7 +162,7 @@ func _update_category_availability() -> void:
 func _ensure_color_slot_count() -> void:
 	var slots: int = int(CostumeCatalog.get_def(_selected_costume_id).get("color_slots", 1))
 	while _selected_colors.size() < slots:
-		_selected_colors.append(PALETTE_COLORS[_selected_colors.size() % PALETTE_COLORS.size()])
+		_selected_colors.append(OutfitCards.PALETTE_COLORS[_selected_colors.size() % OutfitCards.PALETTE_COLORS.size()])
 	if _selected_colors.size() > slots:
 		_selected_colors.resize(slots)
 
@@ -228,71 +174,22 @@ func _setup_costume_grid() -> void:
 	for id in CostumeCatalog.COSTUMES:
 		var def: Dictionary = CostumeCatalog.COSTUMES[id]
 		var owned := ProfileManager.owns_costume(id)
-		costume_grid.add_child(_build_item_card(id, def, owned, _selected_costume_id, _swatch_color(def),
-			_on_costume_button_pressed))
+		costume_grid.add_child(_build_item_card(id, def, owned, _selected_costume_id,
+			OutfitCards.swatch_color(def), _on_costume_button_pressed))
 
 
-## コスチュームのカード見本色（surfaces の最初の固定色 or 先頭スロット色）
-func _swatch_color(def: Dictionary) -> Color:
-	for surf in def.get("surfaces", []):
-		if surf.get("role_tint", false):
-			continue
-		if surf.has("albedo"):
-			return surf["albedo"]
-	return Color(0.4, 0.45, 0.5)
-
-
-## ①大きめのアイテムカードを生成する（コスチューム・帽子で共通）。
-## レア度で縁取り色を変え、未所持は🔒+価格バッジを表示する
+## ①大きめのアイテムカード（コスチューム・帽子で共通）。見た目は OutfitCards が作り、
+## ここは所持状況のキャプション(未所持は🔒+価格バッジ)だけを決める
 func _build_item_card(id: StringName, def: Dictionary, owned: bool, selected_id: StringName,
 		swatch: Color, on_pressed: Callable) -> Control:
-	const CARD_SIZE := Vector2(148, 108)
-
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 4)
-
-	var btn := Button.new()
-	btn.custom_minimum_size = CARD_SIZE
-	btn.toggle_mode = true
-	btn.button_pressed = (id == selected_id)
-	btn.text = tr(String(def.get("name", String(id))))
-
-	var style := StyleBoxFlat.new()
-	style.bg_color = swatch
-	style.set_corner_radius_all(14)
-	var rarity: StringName = def.get("rarity", &"common")
-	var border_color: Color = RARITY_COLORS.get(rarity, Color.WHITE)
-	if id == selected_id:
-		style.border_width_left = 4
-		style.border_width_top = 4
-		style.border_width_right = 4
-		style.border_width_bottom = 4
-	else:
-		style.border_width_left = 2
-		style.border_width_top = 2
-		style.border_width_right = 2
-		style.border_width_bottom = 2
-	style.border_color = border_color
-	btn.modulate = Color(1, 1, 1, 1) if owned else Color(1, 1, 1, 0.55)
-	btn.add_theme_stylebox_override("normal", style)
-	btn.add_theme_stylebox_override("hover", style)
-	btn.add_theme_stylebox_override("pressed", style)
-
-	btn.pressed.connect(on_pressed.bind(id))
-	box.add_child(btn)
-
-	var caption := Label.new()
-	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	if owned:
-		caption.text = tr("所持済み")
-		caption.add_theme_color_override("font_color", Color(0.5, 0.9, 0.6))
-	else:
+	var caption := tr("所持済み")
+	var caption_color := Color(0.5, 0.9, 0.6)
+	if not owned:
 		var price := int(def.get("price", 0))
-		caption.text = tr("🔒 未所持") if price <= 0 else "🔒 💎%d" % price
-		caption.add_theme_color_override("font_color", Color(0.9, 0.75, 0.4))
-	box.add_child(caption)
-
-	return box
+		caption = tr("🔒 未所持") if price <= 0 else "🔒 💎%d" % price
+		caption_color = Color(0.9, 0.75, 0.4)
+	return OutfitCards.item_card(tr(String(def.get("name", String(id)))), def.get("rarity", &"common"),
+		swatch, id == selected_id, owned, caption, caption_color, on_pressed.bind(id))
 
 
 ## 未所持でも選択・試着はできる（3Dプレビューに反映するだけ）。保存できるかは
@@ -310,37 +207,10 @@ func _setup_color_slots() -> void:
 	for child in slots_container.get_children():
 		child.queue_free()
 
+	var labels: Array[String] = []
 	for slot in range(_selected_colors.size()):
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
-
-		var label := Label.new()
-		label.text = tr("色 %d:") % (slot + 1)
-		label.custom_minimum_size = Vector2(60, 0)
-		row.add_child(label)
-
-		var palette := HBoxContainer.new()
-		palette.add_theme_constant_override("separation", 8)
-		for c in PALETTE_COLORS:
-			var btn := Button.new()
-			btn.custom_minimum_size = Vector2(36, 36)
-			btn.text = ""
-
-			var style := StyleBoxFlat.new()
-			style.bg_color = c
-			style.set_corner_radius_all(18)
-			style.border_width_left = 2
-			style.border_width_top = 2
-			style.border_width_right = 2
-			style.border_width_bottom = 2
-			style.border_color = Color.WHITE
-			btn.add_theme_stylebox_override("normal", style)
-			btn.add_theme_stylebox_override("hover", style)
-			btn.add_theme_stylebox_override("pressed", style)
-
-			btn.pressed.connect(_on_slot_color_pressed.bind(slot, c))
-			palette.add_child(btn)
-		row.add_child(palette)
+		labels.append(tr("色 %d:") % (slot + 1))
+	for row in OutfitCards.color_slot_rows(labels, _on_slot_color_pressed):
 		slots_container.add_child(row)
 
 
@@ -358,7 +228,7 @@ func _setup_hat_grid() -> void:
 	for id in HatCatalog.HATS:
 		var def: Dictionary = HatCatalog.HATS[id]
 		var owned := ProfileManager.owns_hat(id)
-		hat_grid.add_child(_build_item_card(id, def, owned, _selected_hat_id, Color(0.4, 0.45, 0.5),
+		hat_grid.add_child(_build_item_card(id, def, owned, _selected_hat_id, OutfitCards.HAT_SWATCH,
 			_on_hat_button_pressed))
 
 

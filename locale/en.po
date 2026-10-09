@@ -484,6 +484,12 @@ msgstr "Ninja"
 msgid "バスケ08"
 msgstr "Hoops 08"
 
+msgid "オーバーオール"
+msgstr "Overalls"
+
+msgid "黒影忍者"
+msgstr "Shadow Ninja"
+
 # --- ゾーン名 (scenes/world_data) ---
 msgid "くもの展望台"
 msgstr "Cloud Lookout"
@@ -1155,3 +1161,64 @@ msgstr "Paste invite link to join"
 
 msgid "招待リンクを貼り付けてください"
 msgstr "Paste the invite link"
+
+
+msgid "元に戻す"
+msgstr "Undo changes"
+
+msgid "いま試着しているコーデ"
+msgstr "Outfit you're trying on"
+
+msgid "いらっしゃいませ！ 気になるものは、なんでも試着してみてくださいね♪"
+msgstr "Welcome! Feel free to try on anything you like♪"
+
+msgid "無料"
+msgstr "Free"
+
+msgid "スキン柄はきょうりゅう専用なので、きょうりゅうで試着しますね"
+msgstr "Skins are dino-only, so let's try it on the dino!"
+
+msgid "「%s」はもうお持ちですね。いろいろ合わせてみましょう！"
+msgstr "You already have \"%s\". Let's mix and match!"
+
+msgid "「%s」、人気なんですよ♪"
+msgstr "\"%s\" is really popular♪"
+
+msgid "「%s」、とってもお似合いです！"
+msgstr "\"%s\" looks great on you!"
+
+msgid "このコーデで買う（💎%d）"
+msgstr "Buy this outfit (💎%d)"
+
+msgid "このコーデに着替える"
+msgstr "Wear this outfit"
+
+msgid "いまのコーデです"
+msgstr "Current outfit"
+
+msgid "おきがえ完了です！ よくお似合いです♪"
+msgstr "All changed! It really suits you♪"
+
+msgid "ジェムが少し足りないみたいです…"
+msgstr "Looks like you're a little short on gems…"
+
+msgid "次のアイテムを購入して、このコーデに着替えます。"
+msgstr "You'll buy these items and change into this outfit."
+
+msgid "合計 💎%d（購入後の残高: 💎%d）"
+msgstr "Total 💎%d (balance after purchase: 💎%d)"
+
+msgid "%d点のアイテムを購入して着替えました！"
+msgstr "Bought %d item(s) and changed outfits!"
+
+msgid "お買い上げありがとうございます！ そのまま着ていってくださいね♪"
+msgstr "Thank you for your purchase! Go ahead and wear it out♪"
+
+msgid "「%s」をフレンドに贈ります"
+msgstr "Send \"%s\" to a friend"
+
+msgid "贈りたい有料のアイテムを選んでください"
+msgstr "Select a paid item to send as a gift"
+
+msgid "プレゼント、きっと喜ばれますよ♪"
+msgstr "I'm sure they'll love your gift♪"
