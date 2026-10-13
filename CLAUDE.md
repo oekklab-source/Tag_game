@@ -5,6 +5,20 @@
 高確率で壊す。このリポジトリはコードコメントも実質の設計書なので、既存のコメントは削除せず、
 「なぜそうなっているか（WHY）」が書かれているコメントは特に維持すること。
 
+## 進捗管理（Jira / Confluence）
+
+- **作業の状態の正は Jira KAN**（oekklab.atlassian.net、Atlassian MCP で読み書きできる）。
+  計画・判断記録・運用ルールは Confluence の「Tag Game ホーム」配下（入口は
+  「はじめに（人とAIの読み順）」、page id 491543）。リポジトリの文書には状態（済み・未了）を書かない。
+- セッション開始時は次の JQL で Claude が関わる未完了チケットを取り、issuelinks の
+  「is blocked by」が全部完了しているものだけを候補にする:
+  `project = KAN AND labels = rel-itch-1.0 AND statusCategory != Done AND labels in (who-claude, who-pair) AND issuetype != Epic ORDER BY key ASC`
+- チケット本文の見出し（目的 / 完了条件 / 手順・参照 / 終わったら / 由来）とラベル
+  （`rel-*` / `who-*` / `gate-*` / `kind-decision`）は Confluence の「チケットの書き方」「ラベル辞書」に従う。
+  新しい作業を見つけたら同じ形で起票し、勝手に範囲を広げない。人の判断が要るなら kind-decision で起票して止まる。
+- 終了時は完了条件を確かめてから「完了」にし、コメントを
+  `[Claude] YYYY-MM-DD <何をしたか> / 証跡: <commit等> / 次: <誰が何を>` で残す。コミットメッセージに `KAN-xx` を入れる。
+
 ## テストの流し方
 
 **推奨: `tools/run_headless_test.ps1` を使う**（下記の罠を機械的に回避し、ハング時は
