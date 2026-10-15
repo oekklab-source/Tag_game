@@ -1,20 +1,21 @@
 extends Node
 
-## ダッシュパネル（レインボーロードのダッシュ板）のモデル構造・虹の波・
+## ダッシュパネル（マリオカート ワールド風のダッシュ板）のモデル構造・山型の流れ・
 ## 全方向からの通り抜け・配置を総合検証する。
 ##
 ##   godot --headless --path . res://tests/boost_panel.tscn
 ##
 ## 見るところは6つ:
-##   1. glb の台座と虹の段が名前どおり取れて、根が回っていないこと
+##   1. glb の枠 Frame と板 Plate が名前どおり取れて、板のテクスチャが
+##      シェーダまで届き、根が回っていないこと
 ##   2. **段差にならない高さに収まっていること**。ベルトコンベアだった頃の
 ##      側枠（0.50m）が残っていると、横から乗るときに引っかかる
 ##   3. 蹴り出す向きが「踏んだ人の進行方向」であること。
 ##      パネル自身の向きに引きずられたらここで落ちる
 ##   4. **四方どの向きからでも通り抜けられ、どれでもバフが出ること**。
 ##      ベルトだった頃は逆走できないのが仕様だったので、ここが逆転している
-##   5. 虹の段のマテリアルがパネルごとに独立していること
-##      （共有のままだと1枚踏むたびに全パネルが一緒に光る）
+##   5. 板のマテリアルがパネルごとに独立していること、
+##      山型の流れる向きが正であること（負だと山型が後ろへ流れる）
 ##   6. 火花3色がふだんは出ておらず、当たり判定に関わらない飾りであること
 
 const BOOST := preload("res://scenes/gimmicks/boost_panel.tscn")
@@ -26,7 +27,7 @@ var _fail := 0
 
 
 func _ready() -> void:
-	print("=== ダッシュパネル（レインボーロードのダッシュ板）の総合検証 ===")
+	print("=== ダッシュパネル（ワールド風のダッシュ板）の総合検証 ===")
 	_check_model()
 	_check_flat()
 	_check_effects()
@@ -59,21 +60,24 @@ func _check_model() -> void:
 	if model == null:
 		panel.queue_free()
 		return
-	_ok("台座 Base", model.get_node_or_null("Base") != null)
-	_ok("虹が6段", panel._waves.size() == 6, "%d 段" % panel._waves.size())
-	_ok("風の筋が3組", panel._winds.size() == 3, "%d 組" % panel._winds.size())
-	# 虹の段のローカル座標をそのまま使うので、モデルの根が回転していないことが前提
+	_ok("枠 Frame", model.get_node_or_null("Frame") != null)
+	_ok("板 Plate", model.get_node_or_null("Plate") != null)
+	_ok("板のシェーダマテリアルが作られている", panel._plate != null)
+	if panel._plate != null:
+		# テクスチャは glb が正。取り損ねると板が真っ白（未設定のサンプラ）になる
+		_ok("板のテクスチャが glb から取れている",
+			panel._plate.get_shader_parameter("tile") != null)
+	# 板のローカル座標をそのまま使うので、モデルの根が回転していないことが前提
 	_ok("モデルの根が無回転", model.transform.basis.is_equal_approx(Basis.IDENTITY),
 		str(model.transform.basis.get_euler()))
 
-	# 5. マテリアルはパネルごとに複製されていること
+	# 5. マテリアルはパネルごとに別インスタンスであること
 	var other: Area3D = BOOST.instantiate()
 	add_child(other)
-	_ok("虹の段のマテリアルがパネルごとに独立",
-		panel._waves[0] != other._waves[0])
-	# 波が外向きに流れること。位相を段の番号ぶん遅らせるので正でなければならない
-	_ok("光の波が中心から四方へ流れる", panel.WAVE_STEP > 0.0,
-		"位相差 %+.2f rad/段" % panel.WAVE_STEP)
+	_ok("板のマテリアルがパネルごとに独立", panel._plate != other._plate)
+	# 山型が前へ流れること。負にすると後ろへ流れて「戻される板」に見える
+	_ok("山型が前へ流れる", panel.SCROLL_SPEED > 0.0,
+		"%+.2f タイル/秒" % panel.SCROLL_SPEED)
 	other.queue_free()
 	panel.queue_free()
 

@@ -1,6 +1,6 @@
 extends Area3D
 
-## ダッシュパネル（レインボーロードのダッシュ板）。8m 角の正方形。
+## ダッシュパネル（マリオカート ワールド風のダッシュ板）。8m 角の正方形。
 ## 踏むと**その人自身の進行方向へ**蹴り出し、一定時間のスピードアップを与える。
 ##
 ## ベルトコンベアだった頃は搬送方向が固定で、逆から入ると押し戻されて
@@ -9,13 +9,15 @@ extends Area3D
 ## パネル自身の向き（-Z）は、止まったまま乗られた時の最後の保険にしか使わない。
 ## 逃走者も鬼も同じように使える対称ギミック。
 ##
-## **正方形で、山型（シェブロン）も四方ぶん置いてある**のはこのため。
-## 5m x 10m の長方形だと「長い方が正面」に見えて仕様と食い違う。
-## 片方向の矢印にすると、逆から乗った人が「矢印と逆へ加速する」ことになり、
-## 見た目が仕様に嘘をつく。
+## **正方形**なのはこのため。5m x 10m の長方形だと「長い方が正面」に見えて仕様と食い違う。
+##
+## 山型（シェブロン）は一方向だが、**蹴る向きは踏んだ人の進行方向のまま**。
+## 山型は向きの指示ではなく「加速する板」の記号として扱う。
+## 以前は「片方向の矢印だと逆から乗った人が矢印と逆へ加速して見た目が仕様に嘘をつく」
+## として四方ぶん置いていたが、2026-10-04 に本家の見た目を優先して一方向にした。
 ##
 ## body_entered は全ピアで発火するため、効果の適用は必ず
-## 「そのボディの権威ピア」に限定する（見た目の脈動と火花は全ピアで動かす）。
+## 「そのボディの権威ピア」に限定する（見た目の流れと火花は全ピアで動かす）。
 
 const BOOST_MULT := 2.0
 const BOOST_TIME := 3.0
@@ -26,29 +28,24 @@ const MIN_SPEED := 1.0
 
 const BEACON_SHADER := preload("res://scenes/beacon.gdshader")
 
-## 虹の段は中心（Wave0）から外側へ番号が振ってある。
-## 段は中心の板 → 四方の山型4段 → 外周の枠、と形が変わるが、
-## **番号 = 中心からの距離**なので、位相を番号ぶん遅らせれば
-## 光の波が中心から四方へ同時に広がる。
-## 「どちらへ蹴るか」を持たない見た目にするための形で、
-## ここを負にすると波が内向きになり、吸い込まれる板に見えてしまう
-const WAVE_SPEED := 6.0
-const WAVE_STEP := 0.85
-const PULSE_MIN := 0.25
-const PULSE_MAX := 1.60
-## 風の筋は虹の段の半歩ぶん先を走らせる。同位相だと段に埋もれて見えない
-const WIND_LEAD := 0.55
-const WIND_MIN := 0.18
-const WIND_MAX := 1.00
+const PLATE_SHADER := preload("res://scenes/gimmicks/boost_panel.gdshader")
+
+## 山型が流れる速さ（タイル/秒。タイル1枚 = 3.84m）。
+## **正であること。** 絵は UV.y に足した分だけ Blender の +Y（= Godot の -Z = パネルの前）へ
+## 流れるので、負にすると山型が後ろへ流れて「戻される板」に見える
+const SCROLL_SPEED := 1.2
+## 光沢の帯が板の端から端まで流れる速さ（周/秒）。山型より遅くして、別の動きとして見せる
+const SHEEN_SPEED := 0.45
 ## 火花が噴いて消えきるまで
 const BURST_TIME := 0.45
 
-var _waves: Array[BaseMaterial3D] = []
-var _winds: Array[ShaderMaterial] = []
+## 板（Plate）の描画。パネルごとに新しく作る。シェーダパラメータはマテリアルごとの値なので、
+## 共有すると1枚のパネルの位相や光沢を変えたとき同じ glb を読む全パネルが巻き込まれる
+var _plate: ShaderMaterial
 
 ## 踏んだ瞬間だけ噴く火花。glb 同梱の静的メッシュで、ふだんは隠してある
 ## （このプロジェクトはパーティクルを使わず、加算合成の飾りを Tween で動かす）。
-## 金・シアン・マゼンタの3色ぶんに分かれているのは、1メッシュに1マテリアルしか
+## 金・ピンク・白の3色ぶんに分かれているのは、1メッシュに1マテリアルしか
 ## 持たせない流儀のため。3つまとめて同じ Tween で動かす
 var _sparks: Array[GeometryInstance3D] = []
 var _spark_mats: Array[ShaderMaterial] = []
@@ -59,26 +56,16 @@ var _spark_tween: Tween
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	var model: Node3D = $Mesh/DashPadModel/DashPad
-	# 脈動は共有リソースを避けてインスタンス固有のマテリアルで行う
-	# （同じ glb を読む他のパネルまで一緒に光ってしまうため）
+	# 板の絵（山型・グラデーション）は glb のマテリアルが持つ。ここで画像を持つと
+	# Blender 側と二重管理になり、片方だけ直したときに黙ってずれる（_glow() と同じ流儀）。
+	# マテリアルはパネルごとに新しく作る
+	var plate := model.get_node("Plate") as MeshInstance3D
+	var src := plate.mesh.surface_get_material(0) as BaseMaterial3D
+	_plate = ShaderMaterial.new()
+	_plate.shader = PLATE_SHADER
+	_plate.set_shader_parameter("tile", src.albedo_texture if src != null else null)
+	plate.material_override = _plate
 	var i := 0
-	while true:
-		var wave: MeshInstance3D = model.get_node_or_null("Wave%d" % i)
-		if wave == null:
-			break
-		var mat: BaseMaterial3D = wave.mesh.surface_get_material(0).duplicate()
-		wave.set_surface_override_material(0, mat)
-		_waves.append(mat)
-		i += 1
-	i = 0
-	while true:
-		var wind := model.get_node_or_null("Wind%d" % i) as GeometryInstance3D
-		if wind == null:
-			break
-		# 風の筋は板1枚なので揺らさない。明滅の速さだけで流れて見せる
-		_winds.append(_glow(wind, 1.1, 0.0, true))
-		i += 1
-	i = 0
 	while true:
 		var spark := model.get_node_or_null("Spark%d" % i) as GeometryInstance3D
 		if spark == null:
@@ -114,14 +101,10 @@ func _glow(node: GeometryInstance3D, energy: float,
 
 func _process(_delta: float) -> void:
 	# 位相は GameManager.world_time から取る。ラウンド開始で全ピア同時にリセットされるため、
-	# どの画面でも波が同じ位置に見える（Time.get_ticks_msec() だと peer ごとにずれる）
-	var t: float = GameManager.world_time * WAVE_SPEED
-	for i in _waves.size():
-		_waves[i].emission_energy_multiplier = lerpf(PULSE_MIN, PULSE_MAX,
-			0.5 + 0.5 * sin(t - i * WAVE_STEP))
-	for i in _winds.size():
-		_winds[i].set_shader_parameter("fade", lerpf(WIND_MIN, WIND_MAX,
-			0.5 + 0.5 * sin(t - i * WAVE_STEP + WIND_LEAD)))
+	# どの画面でも山型が同じ位置に見える（Time.get_ticks_msec() だと peer ごとにずれる）
+	var t: float = GameManager.world_time
+	_plate.set_shader_parameter("scroll", fposmod(t * SCROLL_SPEED, 1.0))
+	_plate.set_shader_parameter("sheen", fposmod(t * SHEEN_SPEED, 1.0))
 
 
 func _on_body_entered(body: Node3D) -> void:

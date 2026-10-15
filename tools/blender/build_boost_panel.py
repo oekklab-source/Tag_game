@@ -1,31 +1,33 @@
-"""ダッシュパネル（レインボーロードのダッシュ板）を一から組み立てて glTF に書き出す。
+"""ダッシュパネル（マリオカート ワールド風のダッシュ板）を一から組み立てて glTF に書き出す。
 
     blender -b -P tools/blender/build_boost_panel.py -- [--render <出力ディレクトリ>]
 
 出力:
-    tools/blender/boost_panel.blend   編集元（.gdignore で Godot のインポート対象外）
-    assets/gimmicks/boost_panel.glb   Godot が読むモデル
+    tools/blender/boost_panel.blend      編集元（.gdignore で Godot のインポート対象外）
+    tools/blender/boost_panel_tile.png   板の絵（タイル1枚）。glb に埋め込まれる
+    assets/gimmicks/boost_panel.glb      Godot が読むモデル
 
-**8m 角の正方形で、90度回しても同じ形（4回対称）。** ベルトコンベアだった頃は
-搬送方向に逆らうと通り抜けられなかったが、今は踏んだ人自身の進行方向へ蹴り出すので
-四方から乗れる（boost_panel.gd を参照）。5m x 10m の長方形だと
-「長い方が正面」に見えて仕様と食い違うので、正方形にして四方を等価にしてある。
-山型も4方向ぶん置く。片方向の矢印にすると、逆から乗った人が
-「矢印と逆へ加速する」ことになり、見た目が仕様に嘘をつく。
+**8m 角の正方形。** ベルトコンベアだった頃は搬送方向に逆らうと通り抜けられなかったが、
+今は踏んだ人自身の進行方向へ蹴り出すので四方から乗れる（boost_panel.gd を参照）。
+5m x 10m の長方形だと「長い方が正面」に見えて仕様と食い違うので、
+正方形にして四方を等価にしてある。
 
-配色は中心から外へ 1周ぶんの虹:
-    Wave0 中心の板（マゼンタ）
-    Wave1..4 四方へ向かう山型（赤・橙・黄・緑）
-    Wave5 外周の枠（シアン）
-番号 = 中心からの距離。boost_panel.gd が番号順に位相を遅らせるので、
-光の波が中心から四方へ同時に広がる
-（このプロジェクトのギミックはアニメーションを焼かずスクリプトで動かす）。
+**山型は一方向（本家どおり）にした。** 以前は「片方向の矢印にすると逆から乗った人が
+矢印と逆へ加速することになり、見た目が仕様に嘘をつく」として四方ぶん置いていたが、
+2026-10-04 に本家の見た目を優先する判断で意図的に外した。
+挙動は変えていない: 蹴り出す向きは今も踏んだ人の進行方向で、
+山型は向きの指示ではなく「加速する板」の記号として扱う。
 
-輪郭はぜんぶ「同じ芯を太さ違いで膨らませると点が同じ順序・同じ個数で並ぶ」性質
-（ミンコフスキー和）だけで作ってある。square_loop は正方形を、chevron_loop は
-V字の折れ線を膨らませたもので、どちらも太さを変えるだけで平行な内側の輪郭が
-そのまま得られる。おかげで細くした輪郭を天面に重ねるだけで面取りになり、
-bevel を掛けずに丸みが出る。
+構成（root は Empty の DashPad、全部その子）:
+    Frame   銀色の細い枠 + 四隅のボルト
+    Plate   平らな四角1枚。ピンク→橙→黄のグラデーション地（結晶モザイク）+ 白い山型の
+            テクスチャを貼る。山型は Blender の +Y（= Godot の -Z = パネルの前）を向く
+    Spark0..2 踏んだ瞬間に噴く火花（金・ピンク・白）
+
+**絵はテクスチャ、流すのは Godot。** 山型の流れは Plate の UV を Godot のシェーダ
+（boost_panel.gdshader）がずらして作る。Blender 側で段ごとの部品に分けて光らせる
+作りだと、見た目が部品の数で決まってしまい、本家のような「1枚の板を山型が流れる」絵にならない。
+タイルは縦に継ぎ目なく並ぶように作ってあるので、ずらし続けても切れ目が出ない。
 
 全高は 0.12m に抑える。乗り越える段差ではなく床の意匠として扱わせるため、
 ここを上げると「全方向から入れる」が壊れる（tests/boost_panel.gd が 0.2m で見張っている）。
@@ -39,56 +41,46 @@ import sys
 import bmesh
 import bpy
 import mathutils
+import numpy as np
 
 PROJECT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 BLEND_PATH = os.path.join(PROJECT, "tools", "blender", "boost_panel.blend")
 GLB_PATH = os.path.join(PROJECT, "assets", "gimmicks", "boost_panel.glb")
+# tools/blender/ は .gdignore で Godot のインポート対象外。絵はここへ置いて glTF エクスポータに
+# GLB へ埋め込ませるので、assets/ に PNG は増えない
+TILE_PATH = os.path.join(PROJECT, "tools", "blender", "boost_panel_tile.png")
 
 # ---- 寸法（当たり判定 BoxShape3D(8, 1.6, 8) に合わせる。Blender は Z-up・単位 m・地面 z=0）----
 SIDE = 8.0
 HALF = SIDE / 2                  # 4.00
-CORNER_R = 0.90                  # 角の丸み
-CORE_SQ = HALF - CORNER_R        # 芯の正方形の半辺 3.10。膨らませる前の骨格
+CORNER_R = 0.30                  # 枠の外側の角の丸み
+CORE_SQ = HALF - CORNER_R        # 芯の正方形の半辺 3.70。膨らませる前の骨格
 CORNER_SEG = 6                   # 角1つあたりの分割数
 
-BASE_TOP = 0.06                  # 台座の天面
-WAVE_BOTTOM = 0.04               # 意匠は台座に少し食い込ませる（z ファイティング避け）
-WAVE_SHOULDER = 0.09             # ここから上が面取り
-WAVE_TOP = 0.12                  # 全高。段差にならない高さに留めること
-CHAMFER = 0.030                  # 天面を細める量
+FRAME_BAND = 0.20                # 枠の幅。外半辺 4.00 / 内半辺 3.80
+FRAME_TOP = 0.10                 # 枠の天面。最下面は z=0（床から浮かせない）
+BOLT_R = 0.07                    # 四隅のボルト。枠の幅 0.20 の中に収まる太さ
+BOLT_TOP = 0.12                  # 全高。段差にならない高さに留めること
+BOLT_SEG = 12
 
-FRAME_OUTER = CORNER_R - 0.06    # 外周の枠。台座の縁を細く残す（半辺 3.94）
-FRAME_BAND = 0.20
-FRAME_INNER = FRAME_OUTER - FRAME_BAND  # 半辺 3.74。山型はこの内側に収めること
+PLATE_HALF = 3.84                # 板の半辺。枠の内半辺 3.80 より 0.04 大きく、枠の下へ潜らせて隙間を作らない
+PLATE_Z = 0.06                   # 板の高さ（枠の天面 0.10 より低い＝枠が縁取りに見える）
+V_TILES = 2                      # 板の縦に並ぶタイル枚数。boost_panel.gdshader の tiles と揃えること
 
-CENTER_CORE = 0.45               # 中心の板。芯 0.45 + 丸み 0.27 = 半辺 0.72
-CENTER_R = 0.27
-
-# 山型。**4方向ぶん置くので、隣の向きの山型と対角線上でぶつからないことが効く。**
-# 先端の中心 (w, apex - sweep) から対角線 y=x までの距離は
-# (apex - sweep - w)/√2 なので、これが CHEV_HALF + 余白 を超える w しか取れない。
-# 腕を45度にすると w < (apex - 余白)/2 まで痩せて、正方形の縁が大きく余る。
-# **浅い腕（sweep = 0.62w）にすると同じ apex で 1.6 倍幅が取れる**ので、
-# 板いっぱいに広がる山型になる（マリオカートのダッシュ板も浅く広い）
-CHEV_SWEEP = 0.62                # 腕の後退量 / 幅。小さいほど浅く広い山型になる
-CHEV_HALF = 0.20                 # 帯の半分の太さ（= 0.40m）
-CHEVRONS = [
-    (1.30, 0.46),  # (頂点の y, 腕の半分の幅)
-    (2.02, 0.90),
-    (2.75, 1.34),
-    (3.47, 1.78),
+# ---- 板の絵（タイル1枚 = 板の幅いっぱい 7.68m x 縦の1周期 3.84m）----
+TEX_W, TEX_H = 1024, 512         # 幅 x 高さ。1px = 0.0075m（縦横同じ）
+TILE_W = PLATE_HALF * 2          # 7.68m
+TILE_H = TILE_W / V_TILES        # 3.84m
+CELLS_X, CELLS_Y = 20, 10        # 結晶モザイクの格子。1セル = 0.384m 角
+CHEV_COLUMNS = [                 # (中心 X, 頂点 Y)。両脇と中央は半周期ずらして互い違いに流す
+    (TILE_W / 6, 0.30 * TILE_H),
+    (TILE_W / 2, 0.80 * TILE_H),
+    (TILE_W * 5 / 6, 0.30 * TILE_H),
 ]
-
-# 風の軌跡。山型は四方を向いているので**対角線の楔だけが空く**。
-# そこへ外向きの流線を並べると、角へ吹き抜ける速度線になる
-WIND_Z = 0.075                   # 台座のすぐ上に敷く（山型より低く）
-WIND_HALF = 0.10
-WIND_SEG = 8
-WINDS = [                        # (対角線に沿った始点, 終点)
-    (2.80, 3.35),
-    (3.50, 4.05),
-    (4.20, 4.75),
-]
+CHEV_HALF_W = 0.95               # 山型の半幅
+CHEV_SLOPE = 0.85                # 腕の傾き（頂点から横へ 1m 行くと 0.85m 下がる）
+CHEV_THICK = 0.62                # 帯の縦の太さ
+EDGE_AA = 1.5 * (TILE_W / TEX_W)  # 縁のにじみ幅（1.5px ぶん）
 
 SPARK_COUNT = 24
 SPARK_SIZE = (0.18, 0.18, 0.022)
@@ -102,35 +94,28 @@ def srgb(r, g, b):
     リニアなので、Godot は読み込んだ値を sRGB へ encode して albedo_color にする。
     world_data.gd の ZONE_COLORS（Godot の Color = sRGB）と同じ数字を
     そのまま書くと、ビビッドオレンジのつもりが薄い山吹になる。
+    （板のテクスチャは画像なので逆に srgb() を通さない。make_plate_texture を参照）
     """
     return tuple(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
                  for c in (r, g, b))
 
 
 # ---- 配色（**すべて sRGB で書く**。world_data.gd の ZONE_COLORS と直接見比べられる） ----
-# 中心から外へ色相を1周ぶん回す。順番を入れ替えると虹に見えなくなるので、
-# 段ごとの色は「中心からの距離」の順に並べたまま触ること
-BASE_COLOR = srgb(0.08, 0.05, 0.16)  # 濃紺紫。虹を最大に立たせる下地
-WAVE_COLORS = [
-    srgb(1.00, 0.24, 0.86),  # Wave0 中心の板: マゼンタ
-    srgb(1.00, 0.16, 0.20),  # Wave1 山型: 赤
-    srgb(1.00, 0.52, 0.04),  # Wave2 山型: 橙
-    srgb(1.00, 0.88, 0.12),  # Wave3 山型: 黄
-    srgb(0.32, 0.94, 0.24),  # Wave4 山型: 緑
-    srgb(0.12, 0.82, 1.00),  # Wave5 外周の枠: シアン（HUD の「ブースト！」色）
-]
-# 風は無彩色に近い白青。虹の中で色を主張させると段が1本増えたようにしか見えない
-WIND_COLOR = srgb(0.85, 0.96, 1.00)
-# 火花は3色。1メッシュに1マテリアルしか持たせない流儀なので、色ごとにメッシュを分ける
+# 枠は銀色。金属らしさは控えめにして、環境光の少ない場所でも暗く沈ませない
+FRAME_COLOR = srgb(0.80, 0.82, 0.86)
+FRAME_EMISSION = 0.05
+# 地のグラデーション（テクスチャ側の色。画像は sRGB のまま書くので srgb() を通さない）
+GRAD_PINK = (1.00, 0.36, 0.72)
+GRAD_ORANGE = (1.00, 0.58, 0.24)
+GRAD_YELLOW = (1.00, 0.88, 0.32)
+# 火花は3色。1メッシュに1マテリアルしか持たせない流儀なので、色ごとにメッシュを分ける。
+# 地（ピンク〜黄）の上で埋もれないよう、地と同系の色を避けて金・ピンク・白にしてある
 SPARK_COLORS = [
     srgb(1.00, 0.86, 0.30),  # 金
-    srgb(0.30, 0.95, 1.00),  # シアン
-    srgb(1.00, 0.36, 0.86),  # マゼンタ
+    srgb(1.00, 0.40, 0.78),  # ピンク
+    srgb(1.00, 1.00, 1.00),  # 白
 ]
-# glb 側の自己発光は控えめにしておく。実際の明るさは Godot が波として上書きする
-WAVE_EMISSION = 0.5
-BASE_EMISSION = 0.03
-# 風と火花は Godot 側で beacon.gdshader（加算合成）に差し替わる。
+# 火花は Godot 側で beacon.gdshader（加算合成）に差し替わる。
 # ここの値は Blender プレビューと、シェーダを当て損ねた時の保険にしか効かない
 GLOW_EMISSION = 1.0
 
@@ -185,12 +170,6 @@ def arc(center, r, a0, a1, seg, ends=False):
             for i in range(lo, hi)]
 
 
-def rotate(pts, deg):
-    a = math.radians(deg)
-    ca, sa = math.cos(a), math.sin(a)
-    return [(x * ca - y * sa, x * sa + y * ca) for (x, y) in pts]
-
-
 def square_loop(core, r):
     """半辺 core の正方形を半径 r で膨らませた角丸正方形の輪郭（半辺は core + r）。
 
@@ -207,56 +186,10 @@ def square_loop(core, r):
     return pts
 
 
-def chevron_loop(apex, w, half, quarter=0):
-    """山型の帯1本の輪郭。頂点 (0, apex) から (±w, apex - CHEV_SWEEP*w) へ下る V を太さ half で膨らませる。
-
-    **square_loop と同じ性質を持たせてある。** half を変えても点の順序・個数・
-    対応が変わらないので、細くした輪郭を天面に重ねるだけで面取りになる。
-    頂点の折れは2辺の法線の和（真上）へ、寄り角のぶん伸ばした距離で継ぐ（マイター）。
-    先端は半円で丸める（ポップな当たりにするため）。
-
-    quarter は 90 度単位の回し。0..3 で四方ぶんの山型になる。
-    """
-    sweep = CHEV_SWEEP * w
-    arm = math.hypot(w, sweep)
-    n_right = (sweep / arm, w / arm)  # 右腕の外向き法線
-    n_left = (-sweep / arm, w / arm)  # 左腕の外向き法線
-    miter = half * arm / w            # 頂点で真上へ伸ばす距離
-    left = (-w, apex - sweep)
-    right = (w, apex - sweep)
-    a_right = math.atan2(w, sweep)          # 右先端キャップの開始角（= n_right の向き）
-    a_left = math.atan2(w, -sweep)          # 左先端キャップの終了角（= n_left の向き）
-    pts = [
-        (left[0] + n_left[0] * half, left[1] + n_left[1] * half),
-        (0.0, apex + miter),
-        (right[0] + n_right[0] * half, right[1] + n_right[1] * half),
-    ]
-    pts += arc(right, half, a_right, a_right - math.pi, CORNER_SEG)
-    pts += [
-        (right[0] - n_right[0] * half, right[1] - n_right[1] * half),
-        (0.0, apex - miter),
-        (left[0] - n_left[0] * half, left[1] - n_left[1] * half),
-    ]
-    pts += arc(left, half, a_left + math.pi, a_left, CORNER_SEG)
-    return rotate(pts, 90.0 * quarter)
-
-
-def streak_loop(r0, r1, half, deg):
-    """両端が尖った紡錘形の流線。deg 方向の半直線上に、r0 から r1 まで伸びる。"""
-    pts = [(r0, 0.0)]
-    pts += [(r0 + (r1 - r0) * i / WIND_SEG,
-             math.sin(math.pi * i / WIND_SEG) * half) for i in range(1, WIND_SEG)]
-    pts += [(r1, 0.0)]
-    pts += [(r0 + (r1 - r0) * i / WIND_SEG,
-             -math.sin(math.pi * i / WIND_SEG) * half)
-            for i in range(WIND_SEG - 1, 0, -1)]
-    return rotate(pts, deg)
-
-
 def add_band(bm, loops):
     """[(輪郭, z), ...] を下から順に橋渡しして、上下を塞いだ閉じた帯を足す。
 
-    輪郭はすべて同じ個数・同じ対応であることが前提（square_loop / chevron_loop の性質）。
+    輪郭はすべて同じ個数・同じ対応であることが前提（square_loop の性質）。
     """
     rings = [[bm.verts.new((x, y, z)) for (x, y) in pts] for (pts, z) in loops]
     n = len(rings[0])
@@ -265,7 +198,7 @@ def add_band(bm, loops):
             j = (i + 1) % n
             bm.faces.new((lo[i], lo[j], hi[j], hi[i]))
     bm.faces.new(list(reversed(rings[0])))
-    bm.faces.new(rings[-1])  # 山型の天面は凹だが、n-gon のまま書き出しても分割は乱れない
+    bm.faces.new(rings[-1])
 
 
 def add_ring(bm, outer, inner, z_lo, z_hi):
@@ -281,65 +214,178 @@ def add_ring(bm, outer, inner, z_lo, z_hi):
         bm.faces.new((ob[i], ob[j], ot[j], ot[i]))  # 外壁
         bm.faces.new((it[i], it[j], ib[j], ib[i]))  # 内壁
 
+# =====================================================================
+# 板の絵（テクスチャ）
+# =====================================================================
+
+def _hash(i, j, k):
+    """格子の座標から決まる 0..1 の疑似乱数。乱数モジュールは使わない。
+
+    ビルドを何度回しても同じ glb になるようにするため（build_spark と同じ流儀）。
+    """
+    x = np.sin(i * 127.1 + j * 311.7 + k) * 43758.5453
+    return x - np.floor(x)
+
+
+def _grad_param(u, v):
+    """地のグラデーションのパラメータ g（0..1）。
+
+    横は中央が0・左右の端が1（端へ行くほど黄）、縦は余弦で周期的に 0→1→0。
+    v について周期的なので、縦にタイルしても継ぎ目が出ない。
+    """
+    g = 0.55 * np.abs(2.0 * u - 1.0) ** 1.5 + 0.45 * (0.5 - 0.5 * np.cos(2.0 * np.pi * v))
+    return np.clip(g, 0.0, 1.0)
+
+
+def _gradient(g):
+    """g=0 ピンク → 0.5 橙 → 1 黄 の折れ線補間。g は任意の形の配列。"""
+    g = np.clip(g, 0.0, 1.0)[..., None]
+    a, b, c = (np.array(x) for x in (GRAD_PINK, GRAD_ORANGE, GRAD_YELLOW))
+    t0 = np.clip(g * 2.0, 0.0, 1.0)
+    t1 = np.clip(g * 2.0 - 1.0, 0.0, 1.0)
+    return a + (b - a) * t0 + (c - b) * t1
+
+
+def _smoothstep(e0, e1, x):
+    t = np.clip((x - e0) / (e1 - e0), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def make_plate_texture():
+    """板の絵（タイル1枚）を numpy で作り、(高さ, 幅, 4) の float32 配列で返す。
+
+    1枚 = 板の幅いっぱい（7.68m）x 縦の1周期（3.84m）。**縦は継ぎ目なくタイルする**
+    （横はタイルしない）。地のグラデーションも結晶モザイクも v の周期に合わせてあるので、
+    Godot が UV をずらして流しても切れ目が出ない。
+
+    **ピクセル値は sRGB のまま書く。** 8bit sRGB 画像の pixels は表示値そのもので、
+    srgb()（リニア化）を通すと暗く沈む。srgb() は baseColorFactor のような
+    「数値で渡す色」専用。行 0 が画像の下（Blender の v=0）。
+    """
+    px = (np.arange(TEX_W) + 0.5) / TEX_W
+    py = (np.arange(TEX_H) + 0.5) / TEX_H
+    u, v = np.meshgrid(px, py)              # 形は (TEX_H, TEX_W)。v は上向き
+    X, Y = u * TILE_W, v * TILE_H
+    g = _grad_param(u, v)
+    smooth = _gradient(g)
+
+    # ---- 結晶モザイク: 格子ボロノイ。各セルの種点を揺らし、最寄りの種点の面を塗る ----
+    cw, ch = TILE_W / CELLS_X, TILE_H / CELLS_Y
+    pi = np.clip(np.floor(X / cw).astype(int), 0, CELLS_X - 1)
+    pj = np.floor(Y / ch).astype(int)
+    best = np.full(X.shape, np.inf)
+    seed_i = np.zeros(X.shape, dtype=int)
+    seed_j = np.zeros(X.shape, dtype=int)
+    seed_x = np.zeros(X.shape)
+    seed_y = np.zeros(X.shape)
+    for di in (-1, 0, 1):
+        for dj in (-1, 0, 1):
+            ci = np.clip(pi + di, 0, CELLS_X - 1)   # i は端でクランプ（横はタイルしない）
+            cj = (pj + dj) % CELLS_Y                # j は wrap（縦は継ぎ目なし）
+            sx = (ci + 0.5 + (_hash(ci, cj, 0.0) - 0.5) * 0.8) * cw
+            # 距離は wrap 前の位置で測る（wrap 後だと上下の端で遠い種点を拾う）
+            sy = (pj + dj + 0.5 + (_hash(ci, cj, 1.0) - 0.5) * 0.8) * ch
+            d = (X - sx) ** 2 + (Y - sy) ** 2
+            hit = d < best
+            best = np.where(hit, d, best)
+            seed_i = np.where(hit, ci, seed_i)
+            seed_j = np.where(hit, cj, seed_j)
+            seed_x = np.where(hit, sx, seed_x)
+            seed_y = np.where(hit, sy, seed_y)
+    # 面の色は種点の位置のグラデーションを少しずらしたもの。面ごとに明るさも変えて結晶に見せる
+    gs = _grad_param(seed_x / TILE_W, (seed_y / TILE_H) % 1.0)
+    gs = gs + (_hash(seed_i, seed_j, 2.0) - 0.5) * 0.40
+    facet = _gradient(gs) * (0.90 + 0.20 * _hash(seed_i, seed_j, 3.0))[..., None]
+    base = np.clip(facet, 0.0, 1.0) * 0.65 + smooth * 0.35
+
+    # ---- 白い山型: 3列。縦は周期 TILE_H で wrap して判定する ----
+    alpha = np.zeros(X.shape)
+    half = EDGE_AA / 2.0
+    for cx, apex in CHEV_COLUMNS:
+        dx = np.abs(X - cx)
+        center_y = apex - CHEV_SLOPE * dx
+        # 帯は center_y から下へ CHEV_THICK。縁の両側でにじませるので [-P/2, P/2) へ寄せて符号付きで測る
+        d = (center_y - Y + TILE_H / 2.0) % TILE_H - TILE_H / 2.0
+        a = (_smoothstep(-half, half, d)
+             * _smoothstep(-half, half, CHEV_THICK - d)
+             * _smoothstep(-half, half, CHEV_HALF_W - dx))
+        alpha = np.maximum(alpha, a)
+    rgb = base * (1.0 - alpha[..., None]) + alpha[..., None]
+
+    out = np.ones((TEX_H, TEX_W, 4), dtype=np.float32)
+    out[..., :3] = rgb
+    return out
+
+
+def save_png(arr, path, name):
+    """(高さ, 幅, 4) の float 配列を PNG として保存する。保存した画像を返す。"""
+    h, w = arr.shape[:2]
+    old = bpy.data.images.get(name)
+    if old is not None:
+        bpy.data.images.remove(old)
+    img = bpy.data.images.new(name, width=w, height=h, alpha=False)
+    img.pixels.foreach_set(arr.reshape(-1))
+    img.filepath_raw = path
+    img.file_format = "PNG"
+    img.save()
+    return img
+
 
 # =====================================================================
 # パーツ
 # =====================================================================
 
-def build_base():
-    """台座。角丸正方形の押し出し。外周の枠より一回り大きく、縁が細い額縁に見える。"""
-    bm = bmesh.new()
-    add_band(bm, [(square_loop(CORE_SQ, CORNER_R), 0.0),
-                  (square_loop(CORE_SQ, CORNER_R), BASE_TOP)])
-    obj = finish(bm, "Base")
-    return paint(obj, make_mat("PadBase", BASE_COLOR, BASE_EMISSION, roughness=0.5))
+def circle_loop(cx, cy, r):
+    return [(cx + math.cos(2 * math.pi * k / BOLT_SEG) * r,
+             cy + math.sin(2 * math.pi * k / BOLT_SEG) * r) for k in range(BOLT_SEG)]
 
 
-def build_wave(index):
-    """虹の1段。中心からの距離の順に Wave0..5。
+def build_frame():
+    """銀色の細い枠。外輪郭と内輪郭は同じ芯を太さ違いで膨らませたもの（square_loop の性質）。
 
-    形は段によって違う（中心の板・四方の山型・外周の枠）が、
-    **boost_panel.gd は番号順に位相を遅らせるだけ**なので、
-    番号と中心からの距離の対応さえ守れば波は外向きに流れる。
-    ここを裏返すと波が内向きになり、「進め」ではなく「吸い込む板」に見える。
+    四隅のボルトは枠の幅の中心（角の円弧の中心から FRAME_BAND/2 の位置）に置く。
+    枠と同じメッシュへ足すので、マテリアルは1つで済む。
     """
     bm = bmesh.new()
-    if index == 0:
-        # 中心の板。角丸正方形をそのまま押し出す
-        add_band(bm, [(square_loop(CENTER_CORE, CENTER_R), WAVE_BOTTOM),
-                      (square_loop(CENTER_CORE, CENTER_R), WAVE_SHOULDER),
-                      (square_loop(CENTER_CORE, CENTER_R - CHAMFER), WAVE_TOP)])
-    elif index == len(WAVE_COLORS) - 1:
-        # 外周の枠。ここだけ環なので面取りは付けない（縁が細くて効かない）
-        add_ring(bm, square_loop(CORE_SQ, FRAME_OUTER), square_loop(CORE_SQ, FRAME_INNER),
-                 WAVE_BOTTOM, WAVE_SHOULDER)
-    else:
-        apex, w = CHEVRONS[index - 1]
-        for quarter in range(4):
-            add_band(bm, [
-                (chevron_loop(apex, w, CHEV_HALF, quarter), WAVE_BOTTOM),
-                (chevron_loop(apex, w, CHEV_HALF, quarter), WAVE_SHOULDER),
-                (chevron_loop(apex, w, CHEV_HALF - CHAMFER, quarter), WAVE_TOP),
-            ])
-    name = "Wave%d" % index
-    obj = finish(bm, name)
-    return paint(obj, make_mat(name, WAVE_COLORS[index], WAVE_EMISSION, roughness=0.3))
+    add_ring(bm, square_loop(CORE_SQ, CORNER_R), square_loop(CORE_SQ, CORNER_R - FRAME_BAND),
+             0.0, FRAME_TOP)
+    off = (CORNER_R - FRAME_BAND / 2) / math.sqrt(2.0)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            c = (sx * (CORE_SQ + off), sy * (CORE_SQ + off))
+            add_band(bm, [(circle_loop(*c, BOLT_R), FRAME_TOP),
+                          (circle_loop(*c, BOLT_R), BOLT_TOP)])
+    obj = finish(bm, "Frame")
+    return paint(obj, make_mat("PadFrame", FRAME_COLOR, FRAME_EMISSION,
+                               metallic=0.2, roughness=0.35))
 
 
-def build_wind(index):
-    """風の軌跡。対角線の楔に外向きの流線を1本ずつ、四隅ぶん。
+def build_plate(img):
+    """平らな四角1枚。絵はすべてテクスチャで、メッシュに凹凸は無い。
 
-    Godot 側は加算合成の unshaded・cull_disabled で描くので、厚みゼロの板1枚で足りる
-    （build_item_box.py の Burst と同じ考え方）。
+    UV: u は板の幅で 0..1、v は板の縦で 0..V_TILES（タイルが縦に V_TILES 枚並ぶ）。
+    boost_panel.gdshader の tiles と V_TILES を揃えること。
+    頂点は反時計回り（+Z が表）。1面だけなので recalc_face_normals の向き判定に頼らない。
     """
-    r0, r1 = WINDS[index]
     bm = bmesh.new()
-    for k in range(4):
-        pts = streak_loop(r0, r1, WIND_HALF, 45.0 + 90.0 * k)
-        bm.faces.new([bm.verts.new((x, y, WIND_Z)) for (x, y) in pts])
-    name = "Wind%d" % index
-    obj = finish(bm, name)
-    return paint(obj, make_mat(name, WIND_COLOR, GLOW_EMISSION, roughness=1.0))
+    uv = bm.loops.layers.uv.new("UVMap")
+    p = PLATE_HALF
+    face = bm.faces.new([bm.verts.new((x, y, PLATE_Z))
+                         for (x, y) in ((-p, -p), (p, -p), (p, p), (-p, p))])
+    for loop in face.loops:
+        x, y, _ = loop.vert.co
+        loop[uv].uv = ((x + p) / (2 * p), (y + p) / (2 * p) * V_TILES)
+    obj = finish(bm, "Plate")
+    mat = make_mat("PadPlate", (1.0, 1.0, 1.0), 1.0, roughness=0.25)
+    tree = mat.node_tree
+    bsdf = tree.nodes["Principled BSDF"]
+    tex = tree.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    # Base Color と Emission Color の両方へ繋ぐ。Godot は ALBEDO と EMISSION の両方に
+    # この絵を使うので（boost_panel.gdshader）、Blender のプレビューも同じ見え方にする
+    tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+    tree.links.new(tex.outputs["Color"], bsdf.inputs["Emission Color"])
+    return paint(obj, mat)
 
 
 def build_spark(index):
@@ -373,6 +419,7 @@ def build_spark(index):
     return paint(obj, make_mat(name, SPARK_COLORS[index], GLOW_EMISSION, roughness=1.0))
 
 
+
 # =====================================================================
 # 組み立て
 # =====================================================================
@@ -386,9 +433,10 @@ def build():
     root = bpy.data.objects.new("DashPad", None)
     bpy.context.collection.objects.link(root)
 
-    parts = [build_base()]
-    parts += [build_wave(i) for i in range(len(WAVE_COLORS))]
-    parts += [build_wind(i) for i in range(len(WINDS))]
+    tile = make_plate_texture()
+    img = save_png(tile, TILE_PATH, "boost_panel_tile")
+
+    parts = [build_frame(), build_plate(img)]
     parts += [build_spark(i) for i in range(len(SPARK_COLORS))]
 
     for obj in parts:
@@ -397,27 +445,30 @@ def build():
     for obj in bpy.data.objects:
         verts = len(obj.data.vertices) if obj.data else 0
         print("object :", obj.name, "verts", verts)
+    return tile
 
 
 def export():
     os.makedirs(os.path.dirname(GLB_PATH), exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=BLEND_PATH)
+    # export_texcoords=True が必須。False だと UV が書かれず、Plate の絵が貼れない
     bpy.ops.export_scene.gltf(
         filepath=GLB_PATH, export_format="GLB", export_yup=True, export_apply=True,
         export_animations=False, export_skins=False,
         export_cameras=False, export_lights=False,
-        export_materials="EXPORT", export_texcoords=False,
+        export_materials="EXPORT", export_texcoords=True,
         use_visible=False, use_selection=False)
     print("saved  :", BLEND_PATH)
     print("export :", GLB_PATH, os.path.getsize(GLB_PATH), "bytes")
 
 
-def render_previews(out_dir):
-    """形の確認用プレビュー。脈動は Godot 側なので、ここでは静止した虹が写る。"""
+def render_previews(out_dir, tile):
+    """形の確認用プレビュー。流れは Godot 側なので、ここでは静止した絵が写る。"""
     os.makedirs(out_dir, exist_ok=True)
     scene = bpy.context.scene
     scene.render.engine = "BLENDER_WORKBENCH"
-    scene.display.shading.color_type = "MATERIAL"
+    # MATERIAL だとマテリアルの単色（Base Color の既定値）しか写らず、テクスチャが出ない
+    scene.display.shading.color_type = "TEXTURE"
     scene.display.render_aa = "8"
     # **Standard を明示する。** Blender の既定の View Transform（AgX）は
     # 彩度を大きく落とすので、そのままだと配色を判断できない絵が出る
@@ -448,10 +499,16 @@ def render_previews(out_dir):
         bpy.ops.render.render(write_still=True)
         print("render :", scene.render.filepath)
 
+    # タイルを縦に2枚積んだ確認用画像。V_TILES=2 のとき板に貼られる並びと同じで、
+    # 継ぎ目（上下の境）が目視で確かめられる
+    x2 = os.path.join(out_dir, "boost_panel_tile_x2.png")
+    save_png(np.concatenate([tile, tile], axis=0), x2, "boost_panel_tile_x2")
+    print("render :", x2)
+
 
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    build()
+    tile = build()
     export()
     if "--render" in argv:
         # 相対パスはプロジェクト基準で解決する。Blender に渡すとドライブ直下に
@@ -459,7 +516,7 @@ def main():
         out_dir = argv[argv.index("--render") + 1]
         if not os.path.isabs(out_dir):
             out_dir = os.path.join(PROJECT, out_dir)
-        render_previews(out_dir)
+        render_previews(out_dir, tile)
 
 
 main()
