@@ -501,7 +501,7 @@ godot --headless --path . res://tests/emote.tscn -- client 127.0.0.1
 （その後もRPCを追加するたびに上がっており、現在の値は
 [autoload/game_manager.gd](autoload/game_manager.gd) の `PROTOCOL_VERSION` を参照。
 このv3〜v9は当時の履歴であり現在値ではない）。
-現在は、滑走接触した設置ブロックの5秒消滅RPCを追加したため **v12** になっている。
+現在は、ホスト引き継ぎ後のラウンド再開RPCを追加したため **v13** になっている。
 
 ## 高い場所について
 
@@ -1095,7 +1095,8 @@ python -m http.server 8123 --directory export/web
 - **チート対策は無い**。位置の権威はクライアント側にあるので、改造クライアントは
   瞬間移動できる。`GameManager.request_drop` も `any_peer` で回数制限が無い。
   身内で遊ぶ前提の設計
-- ホストPCを落とすとゲームも終わる（専用サーバではない）
+- ホストPCを落とすとゲームも終わる（専用サーバではない）。ただし EOS ロビー経由の部屋は
+  残った人が新ホストを引き継ぐ（招待リンク・IP直結の部屋は終わる）
 
 ## Windows 版のビルドと itch.io への配布
 
@@ -1169,7 +1170,7 @@ butler status <ユーザー名>/<プロジェクト>:windows
 
 | 版数 | 実体 | 上げるタイミング |
 |---|---|---|
-| `PROTOCOL_VERSION` | [autoload/game_manager.gd](autoload/game_manager.gd) の定数（現在12）。ロビー画面の `v12` 表示 | RPC の名前・引数・ノードパスを変えたときだけ（`### 通信の版数` 参照） |
+| `PROTOCOL_VERSION` | [autoload/game_manager.gd](autoload/game_manager.gd) の定数（現在13）。ロビー画面の `v13` 表示 | RPC の名前・引数・ノードパスを変えたときだけ（`### 通信の版数` 参照） |
 | `application/config/version` | `project.godot`（現在 `0.1.0`）。exe のファイルプロパティ、`butler --userversion` | itch.io へ新しいビルドを上げるたびに（見た目だけの修正でも上げる） |
 
 見た目の修正だけをリリースしても `PROTOCOL_VERSION` は変える必要が無く、
@@ -1360,7 +1361,8 @@ autoload/quit_menu.tscn(.gd)  Esc で開く終了確認。ポーズはしない�
 autoload/game_manager.gd      役割抽選・速度補正・タイマー・タッチ判定・共有時計（子ノードへの薄い委譲を含む）
 autoload/game/sight_system.gd    GameManagerの子ノード。視界判定（距離/視野角/情報の寿命）と共有状態
 autoload/game/version_gate.gd    GameManagerの子ノード。接続直後のプロトコル版数照合
-autoload/game/host_migration.gd  GameManagerの子ノード。切断時のCPU代行判定とレーティング・ペナルティ報告
+autoload/game/host_migration.gd  GameManagerの子ノード。切断時のCPU代行判定とレーティング・ペナルティ報告、
+                              ホスト引き継ぎ後の進行中ラウンドの再開(スナップショット・再開RPC)
 autoload/game/rating_report.gd   GameManagerの子ノード。ホスト単独でrating-apiの/report-matchへ
                               試合結果を報告し、_apply_rating_correction RPCで確定値を全ピアへ配布
 autoload/ranking_manager.gd   非対称 Elo レーティング計算・ランキング管理（サーバー確定前の楽観表示）
@@ -1535,6 +1537,19 @@ export_presets.cfg            Web エクスポート設定（CI が使うので�
   （v10→v11はこのRPC追加が理由）
 - 滑走中に接触した設置ブロックの消滅時刻を全ピアで揃えるRPCを追加した
   （v11→v12はこのRPC追加が理由）
+- **ホスト引き継ぎ後の試合再開**（`HostMigration` の `_resume_pending` / `_resume_round` RPC、
+  v12→v13はこのRPC追加が理由）。EOSロビー経由の部屋でホストが落ちると、生存者は切断検知時
+  （`GameManager.reset()` より前）に `snapshot_for_resume()` で進行中のラウンドを
+  `NetworkManager._resume_snapshot` へ確保する（`PLAYING` 以外は空 = 従来どおり準備中から）。
+  新ホストは world 起動後に再開待ち（`resume_pending`、この間 `request_start_round()` は効かない）に入り、
+  生存者の `report_profile` が揃う（または60秒経つ）と `_resume_round` で全ピアへ再開を配る。
+  **peer_id は再接続で変わるので、役割（逃走者）は puid で持ち、再開時に新しい peer_id へ引き直す**
+  （`resolve_resume_runner()`。逃走者が戻らなかった・旧ホストだった場合は最後の位置の CPU 逃走者が代行）。
+  位置の権威は各クライアントなので、自分の位置・向き・スタミナ・アイテムは各ピアが自分の
+  スナップショットから `Player.restore_after_migration()` で戻す。
+  **引き継がないもの**: 置かれたバナナ・ブロック、バフ、？ブロックの復活待ち、CPU の思考状態
+- アプリ終了（終了メニュー・窓の×）は `NetworkManager.quit_app()` を通し、EOSロビーから抜けてから落ちる。
+  抜けずに落ちると残った参加者は EOS の切断検知待ちになり、引き継ぎがタイムアウトする
 - **視界判定はホストが一元的に行う**。CPU 側で個別にレイを飛ばさない
   （`GameManager.hunter_sees_runner()` に問い合わせる）
 - 視線の向きは**カメラではなくボディの -Z**。`player.tscn` が同期するのは

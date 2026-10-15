@@ -641,6 +641,22 @@ func teleport(pos: Vector3) -> void:
 	_stuck_kick_left = 0.0
 
 
+## ホスト引き継ぎ後のラウンド再開で、切断前の自分の状態へ戻す。権威ピア上でのみ有効。
+## teleport() はスタミナ・アイテム等を全部リセットするので、その後に上書きする。
+## 向きは HostMigration.snapshot_for_resume() が読む rotation.y(ボディのヨー)と対で、
+## 他ピアへは sync_yaw で配られる。ダイブ中の見た目などの一時状態は戻さない
+func restore_after_migration(pos: Vector3, yaw: float, stamina_value: float, item_id: int) -> void:
+	if not is_multiplayer_authority():
+		return
+	teleport(pos)
+	rotation.y = yaw
+	sync_yaw = yaw
+	stamina = minf(stamina_value, stamina_max())
+	item = item_id
+	item_lock = 0.0
+	item_changed.emit(item)
+
+
 ## --- 持ち物アイテム -----------------------------------------------------
 
 func _update_debug_item_shortcuts() -> void:
