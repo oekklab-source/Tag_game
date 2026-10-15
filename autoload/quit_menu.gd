@@ -75,7 +75,7 @@ func _on_yes_pressed() -> void:
 	if OS.has_feature("web"):
 		NetworkManager.leave()
 	else:
-		get_tree().quit()
+		NetworkManager.quit_app()
 
 
 ## H-06: アプリは終了せず、試合だけ抜けてタイトルへ戻る

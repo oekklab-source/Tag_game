@@ -56,11 +56,13 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## v11: ホストの試合結果報告(rating-api /report-match)とレート補正RPC
 ## (rating_report.gd の _apply_rating_correction)を追加したため(C-03 R-3)
 ## v12: 滑走接触した設置ブロックの5秒消滅RPCを追加した
+## v13: ホスト引き継ぎ後に進行中のラウンドを再開する _resume_pending / _resume_round RPCを
+## HostMigration に追加したため
 ##
 ## ストア向けの製品版数は project.godot の application/config/version(現在0.1.0)。
 ## これとは別物であり、連動させない(RPCを変えていないのにストア更新のたびに
 ## PROTOCOL_VERSIONを上げる、といった事故を防ぐため)。
-const PROTOCOL_VERSION := 12
+const PROTOCOL_VERSION := 13
 
 const ROUND_TIME := 180.0
 const RESULT_TIME := 5.0
@@ -221,6 +223,7 @@ func reset() -> void:
 	peer_profiles.clear()
 	tier_lock_enabled = false
 	_clear_intel()
+	_host_migration.cancel_resume()
 	if debug_was_enabled:
 		debug_mode_changed.emit(false)
 
@@ -405,7 +408,8 @@ func cycle_wanted_runner() -> void:
 
 
 func request_start_round() -> void:
-	if not multiplayer.is_server() or state == State.PLAYING:
+	# 再開待ちの間は、引き継ぎ前のラウンドを再開する前に新しいラウンドを始めさせない
+	if not multiplayer.is_server() or state == State.PLAYING or _host_migration.resume_pending:
 		return
 	var ids := player_ids()
 	if ids.is_empty():
@@ -712,6 +716,7 @@ func report_profile(payload: Dictionary) -> void:
 			return
 	peer_profiles[id] = payload
 	_sync_profiles.rpc(peer_profiles)
+	_host_migration.on_profile_reported()
 
 
 ## ホスト -> 拒否した参加者。disconnect_peer()より前に呼ぶことで、切断理由を本人にも伝える。
@@ -774,6 +779,23 @@ func on_player_left(peer_id: int, cpu_took_over: bool = false) -> void:
 ## 実装は autoload/game/host_migration.gd(子ノード _host_migration)に集約
 func snapshot_for_host_disconnect_penalty() -> Dictionary:
 	return _host_migration.snapshot_for_host_disconnect_penalty()
+
+
+## ⑨ホスト引き継ぎ後に進行中のラウンドを再開するための、切断時点のスナップショット。
+## 実装は autoload/game/host_migration.gd(子ノード _host_migration)に集約
+func snapshot_for_resume() -> Dictionary:
+	return _host_migration.snapshot_for_resume()
+
+
+## ホストのみ。引き継ぎ後のworld起動完了時に、NetworkManagerが持つスナップショットで再開待ちに入る
+func begin_resume_if_pending() -> void:
+	if multiplayer.is_server():
+		_host_migration.begin_resume(NetworkManager.resume_snapshot())
+
+
+## ホストのみ。接続してきた本人へ再開待ちかどうかを伝える
+func notify_resume_pending(peer_id: int) -> void:
+	_host_migration.notify_peer(peer_id)
 
 
 ## リザルトを見せ終えたら WAITING に戻して**止める**。
