@@ -484,6 +484,12 @@ msgstr "Ninja"
 msgid "バスケ08"
 msgstr "Hoops 08"
 
+msgid "オーバーオール"
+msgstr "Overalls"
+
+msgid "黒影忍者"
+msgstr "Shadow Ninja"
+
 # --- ゾーン名 (scenes/world_data) ---
 msgid "くもの展望台"
 msgstr "Cloud Lookout"
