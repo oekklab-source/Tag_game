@@ -57,6 +57,8 @@ func _ready() -> void:
 		# ⑨ホストマイグレーション中でなければ無害(no-op)。マイグレーション中なら
 		# 新ホストとしてのシーン起動が完了したのでオーバーレイを閉じる
 		NetworkManager.finish_migration_if_active()
+		# ⑨引き継ぎ前のラウンドがあれば、生存者の再接続を待って再開する(無ければno-op)
+		GameManager.begin_resume_if_pending()
 	else:
 		# ②④ 接続が確立してから自分のプロフィール（レート/ティア/コスチューム）を
 		# ホストへ報告する。setup_peer() 直後はまだハンドシェイク中のことがあるため待つ。
@@ -96,6 +98,7 @@ func _on_peer_connected(id: int) -> void:
 	# 選んだ湧き位置は本人にだけ RPC で伝える（理由は _spawn_player を参照）
 	GameManager.place_player.rpc_id(id, pos)
 	GameManager.sync_to_peer(id)
+	GameManager.notify_resume_pending(id)
 
 
 func _on_peer_disconnected(id: int) -> void:

@@ -16,8 +16,11 @@ const TITLE_SCENE := "res://scenes/title.tscn"
 const MIGRATION_OVERLAY_SCENE := "res://scenes/migration_overlay.tscn"
 ## ⑨EOSがオーナー消失を検知して新オーナーを確定させるまでの待ち時間。この間に
 ## host_migratedが来なければ諦める(EOSのハートビート検知は疎通確認ベースで
-## Godot高レベルAPIのTCP切断即時検知より遅れうるため、余裕を持たせる)
-const MIGRATION_OWNER_WAIT_SEC := 15.0
+## Godot高レベルAPIのTCP切断即時検知より遅れうるため、余裕を持たせる)。
+## ホストがアプリを強制終了・クラッシュした場合は leave_lobby() が走らず、EOSの切断検知待ちに
+## なる。15秒では足りずタイムアウトしていた。値は _on_host_migrated() が出す「切断検知からの
+## 経過秒」ログで実測して詰める暫定値
+const MIGRATION_OWNER_WAIT_SEC := 45.0
 ## ⑨新ホストがCloudflare Tunnelを再確立するまでの待ち時間。既存のTUNNEL_POLL_TIMEOUTと揃える
 const MIGRATION_RECONNECT_WAIT_SEC := 30.0
 ## ⑨参加者側が新ホストのhost_addrを待つ時間。新ホストのトンネル確立(最大TUNNEL_POLL_TIMEOUT=30秒)に
@@ -25,6 +28,15 @@ const MIGRATION_RECONNECT_WAIT_SEC := 30.0
 ## 「実際の接続」の両方をまかなっていたため、トンネルが遅いと接続中に、トンネル無し(LANのみ)だと
 ## アドレス待ちを使い切って必ずタイムアウトしていた
 const MIGRATION_ADDR_WAIT_SEC := 40.0
+## ⑨参加者側のアドレス待ちの見張りタイマー。await_host_addr()が MIGRATION_ADDR_WAIT_SEC を使い切って
+## LAN IPで妥協して返る時間を必ず残すため、待ち時間そのものより長くする。同じ値だと
+## トンネル名が来ない構成(LANのみ等)では、返る前にタイマーが先に切れて確定でタイムアウトしていた
+const MIGRATION_ADDR_TIMEOUT_SEC := MIGRATION_ADDR_WAIT_SEC + 5.0
+## ⑨再接続後、他の生存者を待って試合を再開する間の暗転を、再開通知が来なくても外す保険の時間。
+## HostMigration.RESUME_WAIT_SEC(新ホストが待つ上限)より長くする
+const RESUME_OVERLAY_FAILSAFE_SEC := 75.0
+## quit_app()がEOSロビー離脱の完了を待つ上限。leave_async()のコールバックが無応答でも終了は止めない
+const QUIT_LOBBY_LEAVE_WAIT_SEC := 2.0
 ## ⑨アドレスが確定してから新ホストへの接続が確立するまでの待ち時間(段階ごとに張り直す)
 const MIGRATION_CONNECT_WAIT_SEC := 15.0
 ## tools/serve.ps1 がトンネルのホスト名を書き出す先。ホストのゲームプロセスは
@@ -101,13 +113,45 @@ var _pre_migration_host_addr := ""
 ## 再接続待ちが2本並ぶため、古い方が後から start_client() しないよう捨てるのに使う
 ## (_migration_tokenはタイムアウトの張り直しで進むため、こちらとは別に持つ)
 var _reconnect_gen := 0
+## server_disconnected を検知した時刻(Time.get_ticks_msec())。昇格通知までの経過秒のログ用
+var _disconnect_msec := 0
+## 切断検知時点の GameManager.snapshot_for_resume()。Autoloadなので reset() とシーン再読み込みを
+## 越えて残る。空なら進行中のラウンドは無く、従来どおり準備中から始める
+var _resume_snapshot := {}
+## 再開待ちの暗転を外す保険タイマーの世代(_migration_tokenとは別に持つ)
+var _resume_token := 0
+var _quitting := false
 
 
 func _ready() -> void:
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 	EosManager.host_migrated.connect(_on_host_migrated)
+	# 窓の×でも quit_app() を通し、ホストがEOSロビーから抜けてから終了するようにする
+	get_tree().auto_accept_quit = false
 	_apply_cmdline()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		quit_app()
+
+
+## アプリ終了。EOSロビーに居る場合は先に抜ける。抜けないまま落ちると、残った参加者は
+## EOSの切断検知(数十秒かかりうる)まで新ホストへの昇格通知が来ず、引き継ぎがタイムアウトする。
+## leave_lobby() は await しない: leave_async() のコールバックが返らなくても終了を止めないため、
+## current_lobby_id が空になるのを上限付きでポーリングする(request_lobby_list() と同じ流儀)
+func quit_app() -> void:
+	if _quitting:
+		return
+	_quitting = true
+	if EosManager.is_eos_available and not EosManager.current_lobby_id.is_empty():
+		EosManager.leave_lobby()
+		var waited := 0.0
+		while not EosManager.current_lobby_id.is_empty() and waited < QUIT_LOBBY_LEAVE_WAIT_SEC:
+			await get_tree().create_timer(0.1).timeout
+			waited += 0.1
+	get_tree().quit()
 
 
 ## アプリの正常終了（終了メニュー・窓の×・quit()）はすべてここを通る。
@@ -295,10 +339,20 @@ func _launch_tunnel() -> void:
 	# create_process は PID をそのまま返す（失敗時 -1）。辞書ではない
 	# pwsh (PowerShell Core) が入っていない環境向けに、Windows PowerShell へフォールバックする
 	# (tools/serve.ps1 自体はどちらでも動く内容で書かれている)
-	var ps_args := ["-NoProfile", "-File", script_path, "-HostAddrFile", host_file,
+	# -ExecutionPolicy Bypass は -File より前に置かないと効かない（pwsh / powershell 共通）。
+	# Windows クライアントの既定（Restricted）のままだと serve.ps1 が実行されず、何も書き出されない
+	# まま timeout で失敗する。開発機は RemoteSigned 等に変えてあるので、配布先でしか気付けない
+	var ps_args := ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path, "-HostAddrFile", host_file,
 		"-ParentPid", str(OS.get_process_id()),
 		"-PidFile", ProjectSettings.globalize_path(TUNNEL_PID_FILE),
 		"-ErrorFile", ProjectSettings.globalize_path(TUNNEL_ERROR_FILE)]
+	# 配布版は tools/export_windows.ps1 が exe の隣に cloudflared.exe を同梱している。
+	# 配布先には winget で入れた cloudflared が無いので、PATH 任せだと必ず失敗する。
+	# エディタ実行では exe の隣（Godot 本体のフォルダ）に無いので何も渡さず、
+	# serve.ps1 が従来どおり PATH から探す
+	var bundled := OS.get_executable_path().get_base_dir().path_join("cloudflared.exe")
+	if FileAccess.file_exists(bundled):
+		ps_args.append_array(["-CloudflaredExe", bundled])
 	_tunnel_pid = OS.create_process("pwsh", ps_args, false)
 	if _tunnel_pid == -1:
 		_tunnel_pid = OS.create_process("powershell", ps_args, false)
@@ -418,6 +472,8 @@ func leave() -> void:
 	# 呼ばれた場合の後始末(再接続試行中の接続失敗など)。既にクリア済みなら無害
 	is_migrating = false
 	_pending_host_penalty = {}
+	_resume_snapshot = {}
+	_resume_token += 1  # 残っている保険タイマーが、後のセッションの暗転を消さないようにする
 	_pre_migration_host_addr = ""
 	_hide_migration_overlay()
 	mode = Mode.NONE
@@ -449,12 +505,15 @@ func _on_server_disconnected() -> void:
 	# ⑨旧ホスト(peer_id==1)のペナルティ計算に必要な情報は、まだ生きている今のうちに
 	# ローカルのレプリケート済み状態から確保しておく(GameManager.reset()で失われる前)
 	_pending_host_penalty = GameManager.snapshot_for_host_disconnect_penalty()
+	# 進行中のラウンドも同じ理由で今のうちに確保し、引き継ぎ後に役割・残り時間・位置ごと再開する
+	_resume_snapshot = GameManager.snapshot_for_resume()
+	_disconnect_msec = Time.get_ticks_msec()
 	# 旧ホストのpuidも同じ理由で今のうちに確保する(下の「昇格済みか」の判定に使う)
 	var old_host_puid := String(GameManager.peer_profiles.get(1, {}).get("puid", ""))
 	_pre_migration_host_addr = join_address
 	is_migrating = true
 	_show_migration_overlay(tr("ホストとの接続が切れました。引き継ぎ先を確認しています…"))
-	_start_migration_timeout(MIGRATION_OWNER_WAIT_SEC)
+	_start_migration_timeout(MIGRATION_OWNER_WAIT_SEC, "owner_wait")
 	# ⑨EOSの昇格通知(Promoted)は、ゲーム通信の切断検知より先に届くことがある。ホストが
 	# 退出してleave_lobby()すればEOSは即座にオーナーを移すが、参加者はCloudflareトンネル経由の
 	# wssで繋がっているため、切断に気づくのはCloudflareの端点が接続を閉じてからになる。
@@ -490,6 +549,8 @@ func _on_host_migrated(_new_owner_puid: String, i_am_new_host: bool) -> void:
 		print("[NetworkManager] 引き継ぎ中でないので host_migrated を無視: new_owner=%s, i_am_new_host=%s"
 			% [_new_owner_puid, i_am_new_host])
 		return
+	# EOSが異常切断を検知して昇格通知を出すまでの実測用(MIGRATION_OWNER_WAIT_SEC を詰める根拠)
+	print("[NetworkManager] 昇格通知: 切断検知から %.1f秒" % ((Time.get_ticks_msec() - _disconnect_msec) / 1000.0))
 	if i_am_new_host:
 		if EosManager.can_host_of(EosManager.product_user_id):
 			# ⑨自分がホストとして確定した時点でペナルティを報告する
@@ -502,7 +563,7 @@ func _on_host_migrated(_new_owner_puid: String, i_am_new_host: bool) -> void:
 			# Web版等ホストになれない端末が昇格した場合。can_host=1の別メンバーへ委譲済みで、
 			# 再度host_migratedが発火するのを待つ
 			_update_migration_status(tr("別のプレイヤーへホストを引き継いでいます…"))
-			_start_migration_timeout(MIGRATION_OWNER_WAIT_SEC)
+			_start_migration_timeout(MIGRATION_OWNER_WAIT_SEC, "owner_wait")
 		else:
 			_migration_failed(tr("ホストを引き継げるプレイヤーがいませんでした"))
 	else:
@@ -510,7 +571,7 @@ func _on_host_migrated(_new_owner_puid: String, i_am_new_host: bool) -> void:
 		# ⑨オーナー確定待ち(15秒)のタイムアウトがまだ有効なままだと、新ホストの
 		# トンネル確立を待っている最中(最大30秒)に誤って_migration_failed()してしまう。
 		# 世代カウンタを進めて古いタイムアウトを無効化してから再接続待ちに入る
-		_start_migration_timeout(MIGRATION_ADDR_WAIT_SEC)
+		_start_migration_timeout(MIGRATION_ADDR_TIMEOUT_SEC, "addr_wait")
 		_reconnect_as_client()
 
 
@@ -522,7 +583,7 @@ func _promote_self_to_host() -> void:
 	public_address = _resolve_lan_address()
 	if not public_address.is_empty():
 		public_address_ready.emit(public_address)
-	_start_migration_timeout(MIGRATION_RECONNECT_WAIT_SEC)
+	_start_migration_timeout(MIGRATION_RECONNECT_WAIT_SEC, "host_setup")
 	get_tree().change_scene_to_file(WORLD_SCENE)
 
 
@@ -542,7 +603,7 @@ func _reconnect_as_client() -> void:
 		_migration_failed(tr("新しいホストに接続できませんでした"))
 		return
 	# アドレス待ちと接続で別々の時間を割り当てる(MIGRATION_ADDR_WAIT_SEC参照)
-	_start_migration_timeout(MIGRATION_CONNECT_WAIT_SEC)
+	_start_migration_timeout(MIGRATION_CONNECT_WAIT_SEC, "connect")
 	_reset_for_migration()
 	start_client(addr)
 
@@ -591,12 +652,14 @@ func _report_pending_host_penalty() -> void:
 
 ## SceneTreeTimerは後から止められないため、世代カウンタ(_migration_token)で
 ## 「発火時点でまだこの段階を待っているか」を確認してから_migration_failed()を呼ぶ
-func _start_migration_timeout(seconds: float) -> void:
+## stage は切れた段階の名前(どこで詰まったかをログで切り分けるため。UI文言には出さない)
+func _start_migration_timeout(seconds: float, stage: String) -> void:
 	_migration_token += 1
 	var token := _migration_token
 	get_tree().create_timer(seconds).timeout.connect(
 		func() -> void:
 			if is_migrating and token == _migration_token:
+				print("[NetworkManager] 引き継ぎタイムアウト: stage=%s, %.0f秒" % [stage, seconds])
 				_migration_failed(tr("ホストの引き継ぎがタイムアウトしました"))
 	)
 
@@ -628,4 +691,27 @@ func finish_migration_if_active() -> void:
 	if not is_migrating:
 		return
 	is_migrating = false
+	if _resume_snapshot.is_empty():
+		_hide_migration_overlay()
+		return
+	# 進行中のラウンドを再開する場合は、他の生存者の再接続が揃うまで暗転を残す
+	_update_migration_status(tr("ほかのプレイヤーの再接続を待っています…"))
+	_resume_token += 1
+	var token := _resume_token
+	get_tree().create_timer(RESUME_OVERLAY_FAILSAFE_SEC).timeout.connect(
+		func() -> void:
+			if token == _resume_token:
+				finish_resume()
+	)
+
+
+## 切断時点のスナップショット(空なら進行中のラウンドは無かった)。参照を返すだけ
+func resume_snapshot() -> Dictionary:
+	return _resume_snapshot
+
+
+## 再開が終わった(または再開は無いと分かった)。スナップショットを捨て、暗転を消す
+func finish_resume() -> void:
+	_resume_snapshot = {}
 	_hide_migration_overlay()
+	_resume_token += 1
