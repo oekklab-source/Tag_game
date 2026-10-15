@@ -3,6 +3,11 @@
 [ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://scenes/ranking_dialog.gd" id="2_script"]
 [ext_resource type="PackedScene" path="res://scenes/loading_spinner.tscn" id="3_spinner"]
+[ext_resource type="Texture2D" path="res://ui/icons/ranking.png" id="ui_1"]
+[ext_resource type="Texture2D" path="res://ui/icons/refresh.png" id="ui_2"]
+[ext_resource type="Script" path="res://ui/icon_button.gd" id="ui_3"]
+[ext_resource type="Texture2D" path="res://ui/icons/character.png" id="ui_4"]
+[ext_resource type="Texture2D" path="res://ui/icons/cancel.png" id="ui_5"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_modal"]
 bg_color = Color(0.12, 0.12, 0.18, 0.95)
@@ -83,16 +88,23 @@ theme_override_constants/separation = 12
 [node name="TopRow" type="HBoxContainer" parent="Panel/VBox"]
 layout_mode = 2
 
-[node name="Title" type="Label" parent="Panel/VBox/TopRow"]
+[node name="Title" type="TextureRect" parent="Panel/VBox/TopRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
-theme_override_font_sizes/font_size = 26
-text = "グローバルランキング"
+custom_minimum_size = Vector2(64, 64)
+tooltip_text = "グローバルランキング"
+texture = ExtResource("ui_1")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="RefreshButton" type="Button" parent="Panel/VBox/TopRow"]
 layout_mode = 2
-text = "更新"
+custom_minimum_size = Vector2(84, 60)
+tooltip_text = "更新"
+icon = ExtResource("ui_2")
+script = ExtResource("ui_3")
+base_color = Color(1, 1, 1, 1)
+icon_margin = 8
 
 [node name="MyStats" type="PanelContainer" parent="Panel/VBox"]
 layout_mode = 2
@@ -103,10 +115,13 @@ layout_mode = 2
 theme_override_constants/separation = 20
 alignment = 1
 
-[node name="RankLbl" type="Label" parent="Panel/VBox/MyStats/Grid"]
+[node name="RankLbl" type="TextureRect" parent="Panel/VBox/MyStats/Grid"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
-text = "あなたの順位:"
+custom_minimum_size = Vector2(40, 40)
+tooltip_text = "あなたの順位:"
+texture = ExtResource("ui_4")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="MyRankVal" type="Label" parent="Panel/VBox/MyStats/Grid"]
 layout_mode = 2
@@ -159,6 +174,11 @@ layout_mode = 2
 alignment = 1
 
 [node name="CloseButton" type="Button" parent="Panel/VBox/BottomRow"]
-custom_minimum_size = Vector2(140, 0)
 layout_mode = 2
-text = "閉じる"
+custom_minimum_size = Vector2(110, 64)
+tooltip_text = "閉じる"
+icon = ExtResource("ui_5")
+script = ExtResource("ui_3")
+base_color = Color(1, 1, 1, 1)
+icon_margin = 8
+

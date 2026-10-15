@@ -3,6 +3,14 @@
 [ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://scenes/room_match_dialog.gd" id="2_script"]
 [ext_resource type="PackedScene" path="res://scenes/loading_spinner.tscn" id="3_spinner"]
+[ext_resource type="Texture2D" path="res://ui/icons/play.png" id="ui_1"]
+[ext_resource type="Texture2D" path="res://ui/icons/refresh.png" id="ui_2"]
+[ext_resource type="Script" path="res://ui/icon_button.gd" id="ui_3"]
+[ext_resource type="Texture2D" path="res://ui/icons/search.png" id="ui_4"]
+[ext_resource type="Texture2D" path="res://ui/icons/stop.png" id="ui_5"]
+[ext_resource type="Texture2D" path="res://ui/icons/plus.png" id="ui_6"]
+[ext_resource type="Texture2D" path="res://ui/icons/ok.png" id="ui_7"]
+[ext_resource type="Texture2D" path="res://ui/icons/cancel.png" id="ui_8"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_modal"]
 content_margin_left = 30.0
@@ -68,12 +76,13 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_modal")
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="Title" type="Label" parent="Panel/VBox"]
+[node name="Title" type="TextureRect" parent="Panel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
-theme_override_font_sizes/font_size = 26
-text = "ルームマッチ (EOS P2P)"
-horizontal_alignment = 1
+custom_minimum_size = Vector2(72, 72)
+tooltip_text = "ルームマッチ (EOS P2P)"
+texture = ExtResource("ui_1")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="TabContainer" type="TabContainer" parent="Panel/VBox"]
 layout_mode = 2
@@ -91,7 +100,12 @@ theme_override_constants/separation = 12
 
 [node name="RefreshButton" type="Button" parent="Panel/VBox/TabContainer/LobbyList/TopRow"]
 layout_mode = 2
-text = "更新"
+custom_minimum_size = Vector2(84, 60)
+tooltip_text = "更新"
+icon = ExtResource("ui_2")
+script = ExtResource("ui_3")
+base_color = Color(1, 1, 1, 1)
+icon_margin = 8
 
 [node name="TierFilter" type="OptionButton" parent="Panel/VBox/TabContainer/LobbyList/TopRow"]
 layout_mode = 2
@@ -103,17 +117,30 @@ size_flags_horizontal = 3
 
 [node name="QuickMatchButton" type="Button" parent="Panel/VBox/TabContainer/LobbyList/TopRow"]
 layout_mode = 2
-text = "おまかせマッチ"
+custom_minimum_size = Vector2(130, 60)
+tooltip_text = "おまかせマッチ"
+icon = ExtResource("ui_4")
+script = ExtResource("ui_3")
+base_color = Color(1, 0.31, 0.64, 1)
+icon_margin = 8
 
 [node name="QuickMatchCancelButton" type="Button" parent="Panel/VBox/TabContainer/LobbyList/TopRow"]
 layout_mode = 2
 visible = false
-text = "中断"
 tooltip_text = "おまかせマッチの検索を中断します"
+custom_minimum_size = Vector2(84, 60)
+icon = ExtResource("ui_5")
+script = ExtResource("ui_3")
+base_color = Color(1, 1, 1, 1)
+icon_margin = 8
 
 [node name="CreateOpenButton" type="Button" parent="Panel/VBox/TabContainer/LobbyList/TopRow"]
 layout_mode = 2
-text = "+ 部屋を作成"
+custom_minimum_size = Vector2(110, 60)
+tooltip_text = "+ 部屋を作成"
+icon = ExtResource("ui_6")
+script = ExtResource("ui_3")
+icon_margin = 8
 
 [node name="Scroll" type="ScrollContainer" parent="Panel/VBox/TabContainer/LobbyList"]
 layout_mode = 2
@@ -179,10 +206,13 @@ layout_mode = 2
 size_flags_vertical = 3
 
 [node name="CreateButton" type="Button" parent="Panel/VBox/TabContainer/CreateRoom"]
-custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 size_flags_horizontal = 4
-text = "この設定で作成"
+custom_minimum_size = Vector2(170, 68)
+tooltip_text = "この設定で作成"
+icon = ExtResource("ui_7")
+script = ExtResource("ui_3")
+icon_margin = 8
 
 [node name="DirectConnect" type="VBoxContainer" parent="Panel/VBox/TabContainer"]
 visible = false
@@ -238,6 +268,11 @@ layout_mode = 2
 alignment = 1
 
 [node name="CloseButton" type="Button" parent="Panel/VBox/BottomRow"]
-custom_minimum_size = Vector2(140, 0)
 layout_mode = 2
-text = "閉じる"
+custom_minimum_size = Vector2(110, 64)
+tooltip_text = "閉じる"
+icon = ExtResource("ui_8")
+script = ExtResource("ui_3")
+base_color = Color(1, 1, 1, 1)
+icon_margin = 8
+

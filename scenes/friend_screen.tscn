@@ -2,14 +2,15 @@
 
 [ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://scenes/friend_screen.gd" id="2_script"]
+[ext_resource type="Shader" path="res://ui/pop_background.gdshader" id="ui_1"]
+[ext_resource type="Texture2D" path="res://ui/icons/back.png" id="ui_2"]
+[ext_resource type="Script" path="res://ui/icon_button.gd" id="ui_3"]
+[ext_resource type="Texture2D" path="res://ui/icons/friends.png" id="ui_4"]
+[ext_resource type="Texture2D" path="res://ui/icons/refresh.png" id="ui_5"]
+[ext_resource type="Texture2D" path="res://ui/icons/gift.png" id="ui_6"]
 
-[sub_resource type="Gradient" id="Gradient_bg"]
-colors = PackedColorArray(0.1, 0.12, 0.22, 1, 0.05, 0.05, 0.1, 1)
-
-[sub_resource type="GradientTexture2D" id="GradientTexture2D_bg"]
-gradient = SubResource("Gradient_bg")
-fill_from = Vector2(0.5, 0)
-fill_to = Vector2(0.5, 1)
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_bg"]
+shader = ExtResource("ui_1")
 
 [node name="FriendScreen" type="Control"]
 layout_mode = 3
@@ -21,14 +22,14 @@ grow_vertical = 2
 theme = ExtResource("1_theme")
 script = ExtResource("2_script")
 
-[node name="Background" type="TextureRect" parent="."]
+[node name="Background" type="ColorRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-texture = SubResource("GradientTexture2D_bg")
+material = SubResource("ShaderMaterial_bg")
 
 [node name="TopBar" type="HBoxContainer" parent="."]
 layout_mode = 1
@@ -42,27 +43,39 @@ grow_horizontal = 2
 theme_override_constants/separation = 16
 
 [node name="BackButton" type="Button" parent="TopBar"]
-custom_minimum_size = Vector2(140, 0)
 layout_mode = 2
-text = "← タイトルへ"
+custom_minimum_size = Vector2(76, 42)
+tooltip_text = "← タイトルへ"
+icon = ExtResource("ui_2")
+script = ExtResource("ui_3")
+base_color = Color(1, 1, 1, 1)
+icon_margin = 3
 
-[node name="TitleLabel" type="Label" parent="TopBar"]
+[node name="TitleLabel" type="TextureRect" parent="TopBar"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
-theme_override_font_sizes/font_size = 30
-text = "フレンド"
-horizontal_alignment = 1
-vertical_alignment = 1
+custom_minimum_size = Vector2(48, 48)
+tooltip_text = "フレンド"
+texture = ExtResource("ui_4")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="RefreshButton" type="Button" parent="TopBar"]
 layout_mode = 2
-text = "更新"
+custom_minimum_size = Vector2(76, 42)
+tooltip_text = "更新"
+icon = ExtResource("ui_5")
+script = ExtResource("ui_3")
+base_color = Color(1, 1, 1, 1)
+icon_margin = 3
 
 [node name="ShopButton" type="Button" parent="TopBar"]
-custom_minimum_size = Vector2(180, 0)
 layout_mode = 2
-text = "🎁 ショップでプレゼント"
+custom_minimum_size = Vector2(76, 42)
+tooltip_text = "🎁 ショップでプレゼント"
+icon = ExtResource("ui_6")
+script = ExtResource("ui_3")
+icon_margin = 3
 
 [node name="ContentMargin" type="MarginContainer" parent="."]
 layout_mode = 1

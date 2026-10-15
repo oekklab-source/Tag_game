@@ -3,14 +3,20 @@
 [ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://scenes/costume_screen.gd" id="2_script"]
 [ext_resource type="PackedScene" path="res://scenes/costume_preview.tscn" id="3_preview"]
-
-[sub_resource type="Gradient" id="Gradient_bg"]
-colors = PackedColorArray(0.1, 0.12, 0.22, 1, 0.05, 0.05, 0.1, 1)
-
-[sub_resource type="GradientTexture2D" id="GradientTexture2D_bg"]
-gradient = SubResource("Gradient_bg")
-fill_from = Vector2(0.5, 0)
-fill_to = Vector2(0.5, 1)
+[ext_resource type="Shader" path="res://ui/pop_background.gdshader" id="ui_1"]
+[ext_resource type="Texture2D" path="res://ui/icons/back.png" id="ui_2"]
+[ext_resource type="Script" path="res://ui/icon_button.gd" id="ui_3"]
+[ext_resource type="Texture2D" path="res://ui/icons/costume.png" id="ui_4"]
+[ext_resource type="Texture2D" path="res://ui/icons/shop.png" id="ui_5"]
+[ext_resource type="Texture2D" path="res://ui/icons/gem.png" id="ui_6"]
+[ext_resource type="Texture2D" path="res://ui/icons/character.png" id="ui_7"]
+[ext_resource type="Texture2D" path="res://ui/icons/pattern.png" id="ui_8"]
+[ext_resource type="Texture2D" path="res://ui/icons/palette.png" id="ui_9"]
+[ext_resource type="Texture2D" path="res://ui/icons/hat.png" id="ui_10"]
+[ext_resource type="Texture2D" path="res://ui/icons/ranking.png" id="ui_11"]
+[ext_resource type="Texture2D" path="res://ui/icons/matches.png" id="ui_12"]
+[ext_resource type="Texture2D" path="res://ui/icons/winrate.png" id="ui_13"]
+[ext_resource type="Texture2D" path="res://ui/icons/ok.png" id="ui_14"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_box"]
 bg_color = Color(0.08, 0.08, 0.12, 0.7)
@@ -18,6 +24,9 @@ corner_radius_top_left = 12
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_bg"]
+shader = ExtResource("ui_1")
 
 [node name="CostumeScreen" type="Control"]
 layout_mode = 3
@@ -29,14 +38,14 @@ grow_vertical = 2
 theme = ExtResource("1_theme")
 script = ExtResource("2_script")
 
-[node name="Background" type="TextureRect" parent="."]
+[node name="Background" type="ColorRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-texture = SubResource("GradientTexture2D_bg")
+material = SubResource("ShaderMaterial_bg")
 
 [node name="TopBar" type="HBoxContainer" parent="."]
 layout_mode = 1
@@ -50,23 +59,30 @@ grow_horizontal = 2
 theme_override_constants/separation = 16
 
 [node name="BackButton" type="Button" parent="TopBar"]
-custom_minimum_size = Vector2(140, 0)
 layout_mode = 2
-text = "← タイトルへ"
+custom_minimum_size = Vector2(76, 42)
+tooltip_text = "← タイトルへ"
+icon = ExtResource("ui_2")
+script = ExtResource("ui_3")
+base_color = Color(1, 1, 1, 1)
+icon_margin = 3
 
-[node name="TitleLabel" type="Label" parent="TopBar"]
+[node name="TitleLabel" type="TextureRect" parent="TopBar"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
-theme_override_font_sizes/font_size = 30
-text = "きせかえ"
-horizontal_alignment = 1
-vertical_alignment = 1
+custom_minimum_size = Vector2(48, 48)
+tooltip_text = "きせかえ"
+texture = ExtResource("ui_4")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="ShopButton" type="Button" parent="TopBar"]
-custom_minimum_size = Vector2(140, 0)
 layout_mode = 2
-text = "ショップへ"
+custom_minimum_size = Vector2(76, 42)
+tooltip_text = "ショップへ"
+icon = ExtResource("ui_5")
+script = ExtResource("ui_3")
+icon_margin = 3
 
 [node name="GemBadge" type="PanelContainer" parent="TopBar"]
 layout_mode = 2
@@ -76,11 +92,18 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_box")
 layout_mode = 2
 theme_override_constants/separation = 8
 
+[node name="GemIcon" type="TextureRect" parent="TopBar/GemBadge/HBox"]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+texture = ExtResource("ui_6")
+expand_mode = 1
+stretch_mode = 5
+
 [node name="GemLabel" type="Label" parent="TopBar/GemBadge/HBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.5, 0.85, 1, 1)
 theme_override_font_sizes/font_size = 20
-text = "💎 0"
+text = "0"
 
 [node name="ContentMargin" type="MarginContainer" parent="."]
 layout_mode = 1
@@ -117,10 +140,13 @@ theme_override_constants/separation = 10
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="NameLabel" type="Label" parent="ContentMargin/ContentRow/RightPane/NameRow"]
-custom_minimum_size = Vector2(100, 0)
+[node name="NameLabel" type="TextureRect" parent="ContentMargin/ContentRow/RightPane/NameRow"]
 layout_mode = 2
-text = "プレイヤー名:"
+custom_minimum_size = Vector2(44, 44)
+tooltip_text = "プレイヤー名:"
+texture = ExtResource("ui_7")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="NameEdit" type="LineEdit" parent="ContentMargin/ContentRow/RightPane/NameRow"]
 layout_mode = 2
@@ -147,29 +173,41 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="SkinTabButton" type="Button" parent="ContentMargin/ContentRow/RightPane/CategoryRow/CategorySidebar"]
-custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 toggle_mode = true
 button_pressed = true
-text = "キャラクター"
+custom_minimum_size = Vector2(120, 76)
+tooltip_text = "キャラクター"
+icon = ExtResource("ui_7")
+script = ExtResource("ui_3")
+icon_margin = 8
 
 [node name="CostumeTabButton" type="Button" parent="ContentMargin/ContentRow/RightPane/CategoryRow/CategorySidebar"]
-custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 toggle_mode = true
-text = "スキン柄"
+custom_minimum_size = Vector2(120, 76)
+tooltip_text = "スキン柄"
+icon = ExtResource("ui_8")
+script = ExtResource("ui_3")
+icon_margin = 8
 
 [node name="ColorTabButton" type="Button" parent="ContentMargin/ContentRow/RightPane/CategoryRow/CategorySidebar"]
-custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 toggle_mode = true
-text = "カラー"
+custom_minimum_size = Vector2(120, 76)
+tooltip_text = "カラー"
+icon = ExtResource("ui_9")
+script = ExtResource("ui_3")
+icon_margin = 8
 
 [node name="HatTabButton" type="Button" parent="ContentMargin/ContentRow/RightPane/CategoryRow/CategorySidebar"]
-custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 toggle_mode = true
-text = "帽子"
+custom_minimum_size = Vector2(120, 76)
+tooltip_text = "帽子"
+icon = ExtResource("ui_10")
+script = ExtResource("ui_3")
+icon_margin = 8
 
 [node name="CategoryContent" type="Control" parent="ContentMargin/ContentRow/RightPane/CategoryRow"]
 layout_mode = 2
@@ -259,10 +297,13 @@ theme_override_constants/h_separation = 16
 theme_override_constants/v_separation = 8
 columns = 2
 
-[node name="RatingLbl" type="Label" parent="ContentMargin/ContentRow/RightPane/StatsBox/Grid"]
+[node name="RatingLbl" type="TextureRect" parent="ContentMargin/ContentRow/RightPane/StatsBox/Grid"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
-text = "現在のレート:"
+custom_minimum_size = Vector2(40, 40)
+tooltip_text = "現在のレート:"
+texture = ExtResource("ui_11")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="RatingVal" type="Label" parent="ContentMargin/ContentRow/RightPane/StatsBox/Grid"]
 layout_mode = 2
@@ -270,19 +311,25 @@ theme_override_colors/font_color = Color(1, 0.8, 0.2, 1)
 theme_override_font_sizes/font_size = 20
 text = "1500"
 
-[node name="MatchesLbl" type="Label" parent="ContentMargin/ContentRow/RightPane/StatsBox/Grid"]
+[node name="MatchesLbl" type="TextureRect" parent="ContentMargin/ContentRow/RightPane/StatsBox/Grid"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
-text = "総対戦回数:"
+custom_minimum_size = Vector2(40, 40)
+tooltip_text = "総対戦回数:"
+texture = ExtResource("ui_12")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="MatchesVal" type="Label" parent="ContentMargin/ContentRow/RightPane/StatsBox/Grid"]
 layout_mode = 2
 text = "0"
 
-[node name="WinRateLbl" type="Label" parent="ContentMargin/ContentRow/RightPane/StatsBox/Grid"]
+[node name="WinRateLbl" type="TextureRect" parent="ContentMargin/ContentRow/RightPane/StatsBox/Grid"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
-text = "総勝率:"
+custom_minimum_size = Vector2(40, 40)
+tooltip_text = "総勝率:"
+texture = ExtResource("ui_13")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="WinRateVal" type="Label" parent="ContentMargin/ContentRow/RightPane/StatsBox/Grid"]
 layout_mode = 2
@@ -294,9 +341,12 @@ theme_override_constants/separation = 20
 alignment = 1
 
 [node name="SaveButton" type="Button" parent="ContentMargin/ContentRow/RightPane/ButtonRow"]
-custom_minimum_size = Vector2(200, 44)
 layout_mode = 2
-text = "保存してタイトルへ"
+custom_minimum_size = Vector2(190, 76)
+tooltip_text = "保存してタイトルへ"
+icon = ExtResource("ui_14")
+script = ExtResource("ui_3")
+icon_margin = 8
 
 [node name="ConfirmOverlay" type="Control" parent="."]
 layout_mode = 1

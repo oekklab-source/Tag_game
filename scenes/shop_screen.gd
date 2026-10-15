@@ -86,7 +86,7 @@ func refresh() -> void:
 
 
 func _refresh_gem_label() -> void:
-	gem_label.text = "💎 %d" % ProfileManager.premium_currency
+	gem_label.text = "%d" % ProfileManager.premium_currency
 
 
 func _setup_pack_row() -> void:

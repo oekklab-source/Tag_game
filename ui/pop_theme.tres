@@ -4,112 +4,165 @@
 ; 丸ゴシックなのでポップな見た目とも合う（ライセンスは ui/fonts/OFL.txt）
 [ext_resource type="FontFile" uid="uid://blj3ujq0wybpb" path="res://ui/fonts/MPLUSRounded1c-Bold.ttf" id="1_font"]
 
+; 配色は tools/blender/build_ui_art.py（ロゴとアイコン）と揃えてある:
+;   板 = 黄 #ffd23f、ふち・影 = 濃い紫 #3b1d6e、パネル = 紫の半透明＋白いふち。
+; ボタンは「濃い紫のふち＋下へずらした同色の影」で分厚い板に見せる。
+; pressed は影を短くして文字を下げ、板ごと沈んだように見せる
 [sub_resource type="StyleBoxEmpty" id="empty"]
 
+[sub_resource type="StyleBoxFlat" id="btn_disabled"]
+content_margin_left = 26.0
+content_margin_top = 12.0
+content_margin_right = 26.0
+content_margin_bottom = 12.0
+bg_color = Color(0.72, 0.7, 0.8, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.231, 0.114, 0.431, 0.6)
+corner_radius_top_left = 24
+corner_radius_top_right = 24
+corner_radius_bottom_right = 24
+corner_radius_bottom_left = 24
+anti_aliasing_size = 1.5
+
 [sub_resource type="StyleBoxFlat" id="btn_hover"]
-content_margin_left = 30.0
-content_margin_top = 14.0
-content_margin_right = 30.0
-content_margin_bottom = 14.0
-bg_color = Color(1, 0.58, 0.28, 1)
-border_width_bottom = 5
-border_color = Color(0.72, 0.3, 0.1, 1)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
+content_margin_left = 26.0
+content_margin_top = 12.0
+content_margin_right = 26.0
+content_margin_bottom = 12.0
+bg_color = Color(1, 0.89, 0.5, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.231, 0.114, 0.431, 1)
+corner_radius_top_left = 24
+corner_radius_top_right = 24
+corner_radius_bottom_right = 24
+corner_radius_bottom_left = 24
+shadow_color = Color(0.231, 0.114, 0.431, 1)
+shadow_size = 1
+shadow_offset = Vector2(0, 7)
+anti_aliasing_size = 1.5
 
 [sub_resource type="StyleBoxFlat" id="btn_normal"]
-content_margin_left = 30.0
-content_margin_top = 14.0
-content_margin_right = 30.0
-content_margin_bottom = 14.0
-bg_color = Color(0.98, 0.45, 0.18, 1)
-border_width_bottom = 5
-border_color = Color(0.68, 0.24, 0.06, 1)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
+content_margin_left = 26.0
+content_margin_top = 12.0
+content_margin_right = 26.0
+content_margin_bottom = 12.0
+bg_color = Color(1, 0.824, 0.247, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.231, 0.114, 0.431, 1)
+corner_radius_top_left = 24
+corner_radius_top_right = 24
+corner_radius_bottom_right = 24
+corner_radius_bottom_left = 24
+shadow_color = Color(0.231, 0.114, 0.431, 1)
+shadow_size = 1
+shadow_offset = Vector2(0, 7)
+anti_aliasing_size = 1.5
 
 [sub_resource type="StyleBoxFlat" id="btn_pressed"]
-content_margin_left = 30.0
-content_margin_top = 17.0
-content_margin_right = 30.0
-content_margin_bottom = 11.0
-bg_color = Color(0.82, 0.36, 0.12, 1)
-border_width_bottom = 2
-border_color = Color(0.6, 0.2, 0.04, 1)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
+content_margin_left = 26.0
+content_margin_top = 16.0
+content_margin_right = 26.0
+content_margin_bottom = 8.0
+bg_color = Color(0.94, 0.73, 0.16, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.231, 0.114, 0.431, 1)
+corner_radius_top_left = 24
+corner_radius_top_right = 24
+corner_radius_bottom_right = 24
+corner_radius_bottom_left = 24
+shadow_color = Color(0.231, 0.114, 0.431, 1)
+shadow_size = 1
+shadow_offset = Vector2(0, 2)
+anti_aliasing_size = 1.5
 
 [sub_resource type="StyleBoxFlat" id="edit_focus"]
 content_margin_left = 16.0
 content_margin_top = 10.0
 content_margin_right = 16.0
 content_margin_bottom = 10.0
-bg_color = Color(0.12, 0.11, 0.2, 0.95)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.4, 0.92, 1, 0.9)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
+bg_color = Color(1, 1, 1, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.243, 0.784, 0.961, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
 
 [sub_resource type="StyleBoxFlat" id="edit_normal"]
 content_margin_left = 16.0
 content_margin_top = 10.0
 content_margin_right = 16.0
 content_margin_bottom = 10.0
-bg_color = Color(0.12, 0.11, 0.2, 0.9)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(1, 1, 1, 0.25)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
+bg_color = Color(1, 1, 1, 0.94)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.231, 0.114, 0.431, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
 
 [sub_resource type="StyleBoxFlat" id="panel"]
-content_margin_left = 18.0
-content_margin_top = 10.0
-content_margin_right = 18.0
-content_margin_bottom = 10.0
-bg_color = Color(0.08, 0.07, 0.16, 0.82)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(1, 1, 1, 0.22)
-corner_radius_top_left = 22
-corner_radius_top_right = 22
-corner_radius_bottom_right = 22
-corner_radius_bottom_left = 22
+content_margin_left = 20.0
+content_margin_top = 14.0
+content_margin_right = 20.0
+content_margin_bottom = 14.0
+bg_color = Color(0.17, 0.09, 0.36, 0.9)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(1, 1, 1, 0.92)
+corner_radius_top_left = 28
+corner_radius_top_right = 28
+corner_radius_bottom_right = 28
+corner_radius_bottom_left = 28
+shadow_color = Color(0.231, 0.114, 0.431, 0.85)
+shadow_size = 1
+shadow_offset = Vector2(0, 8)
+anti_aliasing_size = 1.5
 
 [resource]
 default_font = ExtResource("1_font")
 default_font_size = 20
-Button/colors/font_color = Color(1, 1, 1, 1)
-Button/colors/font_hover_color = Color(1, 1, 1, 1)
-Button/colors/font_outline_color = Color(0.28, 0.09, 0.02, 1)
-Button/colors/font_pressed_color = Color(1, 0.95, 0.88, 1)
-Button/constants/outline_size = 6
+Button/colors/font_color = Color(0.231, 0.114, 0.431, 1)
+Button/colors/font_hover_color = Color(0.231, 0.114, 0.431, 1)
+Button/colors/font_focus_color = Color(0.231, 0.114, 0.431, 1)
+Button/colors/font_hover_pressed_color = Color(0.231, 0.114, 0.431, 1)
+Button/colors/font_pressed_color = Color(0.231, 0.114, 0.431, 1)
+Button/colors/font_disabled_color = Color(0.231, 0.114, 0.431, 0.45)
+Button/colors/font_outline_color = Color(1, 1, 1, 1)
+Button/colors/icon_disabled_color = Color(1, 1, 1, 0.45)
+Button/constants/outline_size = 0
 Button/font_sizes/font_size = 22
+Button/styles/disabled = SubResource("btn_disabled")
 Button/styles/focus = SubResource("empty")
 Button/styles/hover = SubResource("btn_hover")
 Button/styles/normal = SubResource("btn_normal")
 Button/styles/pressed = SubResource("btn_pressed")
 Label/colors/font_color = Color(1, 1, 1, 1)
-Label/colors/font_outline_color = Color(0.05, 0.04, 0.12, 1)
+Label/colors/font_outline_color = Color(0.16, 0.07, 0.33, 1)
 Label/constants/outline_size = 8
-LineEdit/colors/font_color = Color(1, 1, 1, 1)
+LineEdit/colors/caret_color = Color(0.231, 0.114, 0.431, 1)
+LineEdit/colors/font_color = Color(0.231, 0.114, 0.431, 1)
+LineEdit/colors/font_placeholder_color = Color(0.231, 0.114, 0.431, 0.45)
 LineEdit/styles/focus = SubResource("edit_focus")
 LineEdit/styles/normal = SubResource("edit_normal")
 PanelContainer/styles/panel = SubResource("panel")

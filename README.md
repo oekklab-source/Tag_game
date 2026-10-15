@@ -435,10 +435,11 @@ encode して `albedo_color` にする。`world_data.gd` の `ZONE_COLORS`
 
 ### アイテムスロットの絵柄
 
-ルーレット中と確定後の出目は文字だけでなく**アイコンでも出す**（`_on_item_icon_draw`）。
-画像アセットは足さず、円形タイマーやスタミナバーと同じ `Control.draw()` の自前描画で
-三角（ロケット）・弧（バナナ）・四角（ブロック）を引いている。
-色は文字と同じ `ITEM_INFO` から取るので、**確定前の伏せ方（薄さ）が文字とズレない**。
+ルーレット中と確定後の出目は**絵だけで出す**（`hud.gd` の `_set_shown_icon`）。
+絵は `ui/icons/item_rocket.png` / `item_banana.png` / `item_block.png` で、`ITEM_INFO` が
+アイテムごとの絵を持つ。確定前は絵を薄く出して伏せる（`modulate.a`）。
+以前は文字＋ `Control.draw()` の自前描画だったが、UI 全体を絵に寄せたときに置き換えた
+（下の「UI は絵で伝える」を参照）。
 
 ## エモート
 
@@ -628,6 +629,38 @@ godot --headless --path . res://tests/emote.tscn -- client 127.0.0.1
 UI が全部豆腐（□）になるので **`ui/fonts/` に丸ゴシックを同梱している**
 （M PLUS Rounded 1c、OFL。JIS 第一水準にサブセット済みで 1.6 MB）。
 テーマ `ui/pop_theme.tres` の `default_font` から全 Control に効く。
+
+### UI は絵で伝える（ロゴ「IT CHASE」とアイコン）
+
+メニュー・ロビー・HUD・リザルトは **「読まなくても絵で分かる」** ことを狙って、ボタンや見出しを
+絵に置き換えてある（2026-10-04）。文字で残しているのは次のものだけ。
+
+- プレイヤー名、数字（レート・タイマー・距離・人数・価格）、キーの刻印（W A S D など）
+- 通信エラー・版数の食い違いなど**原因を伝える文**、購入や終了の**確認ダイアログ**の本文とボタン
+- リザルトの大見出し1語（`hud.result_copy()` の1つ目）、入力欄、言語などの選択肢
+
+絵とロゴはすべて Blender でレンダリングした PNG で、`tools/blender/build_ui_art.py` が書き出す。
+
+```bash
+blender -b -P tools/blender/build_ui_art.py -- [--only 名前,名前] [--sheet <出力先>]
+```
+
+- 出力は `ui/logo/it_chase_logo.png`（ロゴ）、`ui/logo/it_chase_mark.png`（キャラだけのシンボル）、
+  `ui/icons/<名前>.png`（アイコン）。`--sheet` で全部を並べた一覧画像が出る
+  （`tools/blender/references/ui_art/ui_art_sheet.png` に1枚置いてある）。
+- キャラの絵は `tools/blender/fallguy.blend` を読み込んで撮るので、ゲーム内と同じ形・同じポーズになる。
+- 太いふち取り（濃い紫＋外側の白）は、レンダリング後に numpy でアルファを膨らませて付けている。
+  明るい背景でも 3D の画面の上でも沈まないようにするため。
+- **絵だけのボタンには必ず `tooltip_text` を付ける**（`ui/icon_button.gd` を付けた `Button`）。
+  `.tscn` の `tooltip_text` は自動翻訳され、`tests/test_i18n.tscn` の検査対象でもある。
+  ただしタッチ端末ではツールチップが出ないので、絵だけで意味が通ることが前提になる。
+- キー操作のヒントは「キーの絵（刻印）＋そのキーでできることの絵」で出す（`ui/key_hint.gd`）。
+- 役割は形の違う絵で示す（逃げる人＝走る緑、鬼＝角のある赤、未定＝さいころ）。HUD 上部のバッジは
+  鬼なら「鬼・手・逃げる人」（つかまえろ）、逃げる人なら「逃げる人・時計」（時間まで逃げろ）。
+- 鬼の目撃情報は「目の絵＋ゾーンの色＋数字」で出し、**ゾーン名の文字は出さない**。
+  場所はチップの色と、ミニマップの該当ゾーンの点灯（`minimap.gd`）で伝える。
+- **`project.godot` の `config/name`（"3D Chase Game"）は変えていない。** `user://` の場所が
+  この名前で決まるので、変えると既存のセーブが見えなくなる。「IT CHASE」はロゴだけに使っている。
 
 ### 表示言語（日本語 / 英語）
 
@@ -1475,7 +1508,12 @@ scenes/hud/lobby_panel.gd     hud.tscnの$Lobby。ロビー名簿・定員変更
 scenes/hud/touch_controls.tscn(.gd) スマホのタッチ操作(追従スティック・ボタン・視点ドラッグ)。大きさはdpで決める
 scenes/hud/web_screen.gd      Web版の画面まわり(全画面・ホーム画面起動の判定・safe area・dp換算)
 web/                          GitHub Pagesにだけ置くファイル(ホーム画面追加用のmanifestとアイコン)
-ui/pop_theme.tres             全体に適用される POP テーマ
+ui/pop_theme.tres             全体に適用される POP テーマ（黄色い板＋濃い紫のふち。配色は build_ui_art.py と揃える）
+ui/pop_background.gdshader    メニュー画面の背景（斜めの縞がゆっくり流れる。画像なし）
+ui/icon_button.gd             絵だけのボタン（Button に付ける。乗せると膨らみ押すと沈む。意味は tooltip_text）
+ui/key_hint.gd                キー操作のヒントを「キーの絵＋動作の絵」で組み立てる部品
+ui/logo/, ui/icons/           ロゴ「IT CHASE」とアイコンの PNG（build_ui_art.py の出力）
+tools/blender/build_ui_art.py ロゴとアイコンを Blender で描いて PNG に書き出す（blender -b -P で実行）
 locale/en.po                  英語の翻訳（msgid は日本語の原文。書き方は「表示言語」節）
 autoload/settings_manager.gd  マウス感度・音量・タッチ操作・表示言語・文字サイズの設定（user://settings.json）
 scenes/settings_screen.tscn(.gd) 設定画面

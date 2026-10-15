@@ -82,6 +82,19 @@ func show_hat(id: StringName) -> void:
 	_humanoid.apply_hat(id)
 
 
+## 背景を透かして、後ろの画面の上にキャラだけを立たせる（タイトル画面用）。
+## 環境は .tscn の sub_resource で全インスタンス共有なので、複製してから書き換える
+## （共有のまま変えると、きせかえ画面やロビー名簿のプレビューまで透ける）
+func set_transparent_background() -> void:
+	_viewport.transparent_bg = true
+	var world_env: WorldEnvironment = $SubViewportContainer/SubViewport/WorldEnvironment
+	var env: Environment = world_env.environment.duplicate()
+	env.background_mode = Environment.BG_CLEAR_COLOR
+	# 暗い箱の中で見せる前提の明るさのままだと、明るい背景の上ではくすんで見える
+	env.ambient_light_energy = 1.15
+	world_env.environment = env
+
+
 ## 未所持アイテムを試着中であることのバッジ表示切替
 func set_locked(locked: bool) -> void:
 	_lock_badge.visible = locked

@@ -8,14 +8,14 @@ extends Control
 @onready var profile_badge_color: ColorRect = $TopRightBadge/HBox/ColorBox
 @onready var profile_badge_btn: Button = $TopRightBadge/BadgeButton
 
-@onready var play_button: Button = $CenterMenu/VBox/PlayButton
-@onready var solo_button: Button = $CenterMenu/VBox/SoloButton
-@onready var profile_button: Button = $CenterMenu/VBox/ProfileButton
-@onready var shop_button: Button = $CenterMenu/VBox/ShopButton
-@onready var friend_button: Button = $CenterMenu/VBox/FriendButton
-@onready var ranking_button: Button = $CenterMenu/VBox/RankingButton
-@onready var settings_button: Button = $CenterMenu/VBox/SettingsButton
-@onready var quit_button: Button = $CenterMenu/VBox/QuitButton
+@onready var play_button: Button = $CenterMenu/VBox/BigRow/PlayButton
+@onready var solo_button: Button = $CenterMenu/VBox/BigRow/SoloButton
+@onready var profile_button: Button = $CenterMenu/VBox/SmallRow/ProfileButton
+@onready var shop_button: Button = $CenterMenu/VBox/SmallRow/ShopButton
+@onready var friend_button: Button = $CenterMenu/VBox/SmallRow/FriendButton
+@onready var ranking_button: Button = $CenterMenu/VBox/SmallRow/RankingButton
+@onready var settings_button: Button = $CornerRow/SettingsButton
+@onready var quit_button: Button = $CornerRow/QuitButton
 @onready var status_label: Label = $CenterMenu/VBox/StatusLabel
 
 @onready var room_match_dialog: Control = $RoomMatchDialog
@@ -42,6 +42,8 @@ extends Control
 
 ## スマホのブラウザ向けの全画面ボタン(2026-09-30)。scenes/hud/web_screen.gd 参照
 @onready var fullscreen_button: Button = $FullscreenButton
+## 自分の今の着せ替えを立たせる 3D プレビュー(scenes/costume_preview.gd)
+@onready var hero := $Hero
 
 const COSTUME_SCENE := "res://scenes/costume_screen.tscn"
 const SHOP_SCENE := "res://scenes/shop_screen.tscn"
@@ -91,7 +93,11 @@ func _ready() -> void:
 	_setup_web_screen_buttons()
 
 	# H-09: ボタン文言を実際の遷移先(Web=DirectConnectタブ既定, デスクトップ=ロビー全体)に合わせる
-	play_button.text = tr("参加する（リンク/アドレス指定）") if OS.has_feature("web") else tr("オンラインプレイ（部屋を探す・作る）")
+	# (ボタンは絵だけにしたので、文言はツールチップで出す)
+	play_button.tooltip_text = tr("参加する（リンク/アドレス指定）") if OS.has_feature("web") else tr("オンラインプレイ（部屋を探す・作る）")
+
+	hero.set_transparent_background()
+	_update_hero()
 
 	# 初期状態ではダイアログを隠す（①きせかえは専用シーンへ遷移するため、
 	# ここで隠すダイアログには含まれない）
@@ -153,7 +159,7 @@ func _exit_tree() -> void:
 
 
 func _refresh_fullscreen_label() -> void:
-	fullscreen_button.text = tr("全画面を解除") if WebScreen.is_fullscreen() else tr("全画面")
+	fullscreen_button.tooltip_text = tr("全画面を解除") if WebScreen.is_fullscreen() else tr("全画面")
 
 
 func _on_fullscreen_pressed() -> void:
@@ -271,6 +277,13 @@ func _update_badge() -> void:
 	profile_badge_name.text = ProfileManager.player_name
 	profile_badge_rating.text = "%s %d Pt" % [tr(RankingManager.tier_name(ProfileManager.rating)), ProfileManager.rating]
 	profile_badge_color.color = RankingManager.tier_color(ProfileManager.rating)
+	_update_hero()
+
+
+func _update_hero() -> void:
+	hero.show_skin(ProfileManager.skin)
+	hero.show_costume(ProfileManager.costume_id, ProfileManager.costume_colors)
+	hero.show_hat(ProfileManager.hat_id)
 
 
 ## C-03 R-4: 起動時、サーバー権威のレートとローカル値に差があった場合の同期通知

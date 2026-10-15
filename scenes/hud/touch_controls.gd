@@ -102,7 +102,7 @@ func _on_fullscreen_pressed() -> void:
 func _refresh_fullscreen_button() -> void:
 	fullscreen_button.visible = WebScreen.fullscreen_enabled() and not WebScreen.is_standalone()
 	var on := WebScreen.is_fullscreen()
-	fullscreen_button.text = tr("全画面を解除") if on else tr("全画面")
+	fullscreen_button.tooltip_text = tr("全画面を解除") if on else tr("全画面")
 
 
 ## touch_look_zone.gd が「上端のボタンの上の指は視点ドラッグにしない」判定に使う

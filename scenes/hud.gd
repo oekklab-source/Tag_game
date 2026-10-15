@@ -25,23 +25,35 @@ const BUFF_BAR_WIDTH := 64.0
 const DANGER_FAR := 28.0   # この距離からヴィネットが出はじめる
 const DANGER_NEAR := 7.0   # この距離で最大になる
 
-const TOAST_TEXT := {
-	Player.Effect.BOOST: "ブースト！",
-	Player.Effect.WARP: "ワープ！",
-	Player.Effect.STUN: "すべった！",
+## HUD は「読まなくても絵で分かる」ことを狙っている。文字で残すのは名前・数字と、
+## 原因を伝える通知（切断・レート補正）だけ。絵は tools/blender/build_ui_art.py が書き出す
+const KeyHint := preload("res://ui/key_hint.gd")
+const ICON_RUNNER := preload("res://ui/icons/role_runner.png")
+const ICON_HUNTER := preload("res://ui/icons/role_hunter.png")
+const ICON_TAGGED := preload("res://ui/icons/tagged.png")
+const ICON_CLOCK := preload("res://ui/icons/clock.png")
+const ICON_LOCK := preload("res://ui/icons/lock.png")
+const ICON_EYE := preload("res://ui/icons/eye.png")
+const ICON_EYE_OFF := preload("res://ui/icons/eye_off.png")
+const ICON_DISTANCE := preload("res://ui/icons/distance.png")
+const ICON_WIN := preload("res://ui/icons/win.png")
+const ICON_LOSE := preload("res://ui/icons/lose.png")
+const ICON_STOP := preload("res://ui/icons/stop.png")
+## 効果を受けた瞬間に出す絵（以前は「ブースト！」などの文字だった）
+const TOAST_ICON := {
+	Player.Effect.BOOST: preload("res://ui/icons/bolt.png"),
+	Player.Effect.WARP: preload("res://ui/icons/warp.png"),
+	Player.Effect.STUN: preload("res://ui/icons/item_banana.png"),
 }
-const TOAST_COLOR := {
-	Player.Effect.BOOST: Color(0.4, 1.0, 1.0),
-	Player.Effect.WARP: Color(0.6, 1.0, 0.5),
-	Player.Effect.STUN: Color(1.0, 0.85, 0.25),
-}
-## 持ち物の表示名と色（Player.Item と対応）
+## 持ち物の名前・色・絵（Player.Item と対応）。画面に出すのは絵だけ
 const ITEM_INFO := {
-	Player.Item.NONE: ["- - -", Color(1, 1, 1, 0.35)],
-	Player.Item.ROCKET: ["ロケット", Color(1.0, 0.55, 0.3)],
-	Player.Item.BANANA: ["バナナ", Color(1.0, 0.86, 0.2)],
-	Player.Item.BLOCK: ["ブロック", Color(0.45, 0.85, 1.0)],
+	Player.Item.NONE: ["- - -", Color(1, 1, 1, 0.35), null],
+	Player.Item.ROCKET: ["ロケット", Color(1.0, 0.55, 0.3), preload("res://ui/icons/item_rocket.png")],
+	Player.Item.BANANA: ["バナナ", Color(1.0, 0.86, 0.2), preload("res://ui/icons/item_banana.png")],
+	Player.Item.BLOCK: ["ブロック", Color(0.45, 0.85, 1.0), preload("res://ui/icons/item_block.png")],
 }
+## 左下のキー操作ヒントの絵の大きさ(px)
+const KEY_HINT_PX := 34.0
 ## 取得直後に回すルーレットの出目の並びと、切り替え間隔（速い→遅い）
 const ROULETTE_ORDER := [Player.Item.ROCKET, Player.Item.BANANA, Player.Item.BLOCK]
 const ROULETTE_FAST := 0.05
@@ -50,10 +62,11 @@ const ROULETTE_SLOW := 0.22
 ## 以前は 2.5 を手書きしていて、パネル側を 3.0 秒へ延ばした(8fcdd1e)ときに取り残され、
 ## 踏んでから0.5秒間ゲージが満タンのまま減らなかった(tests/boost_gauge.tscn が検出)
 const BoostPanel := preload("res://scenes/gimmicks/boost_panel.gd")
-## バフの表示名と、残量ゲージの基準になる持続時間
+## バフの名前、残量ゲージの基準になる持続時間、ゲージの色、絵
 const BUFF_INFO := {
-	&"speed": ["スピード", BoostPanel.BOOST_TIME, Color(1.0, 0.85, 0.25)],
-	&"jump": ["ジャンプ", 8.0, Color(0.55, 0.8, 1.0)],
+	&"speed": ["スピード", BoostPanel.BOOST_TIME, Color(1.0, 0.85, 0.25),
+		preload("res://ui/icons/bolt.png")],
+	&"jump": ["ジャンプ", 8.0, Color(0.55, 0.8, 1.0), preload("res://ui/icons/spring.png")],
 }
 
 var _local_player: Player
@@ -87,14 +100,20 @@ var _overlay_instance: Control = null
 var _overlay_full_notified := false
 var _shown_item: int = Player.Item.NONE
 var _shown_alpha := 1.0
+## 結果画面の事実の行は毎フレーム作り直さず、中身が変わったときだけ組み直す
+var _facts_key := ""
 var _icon_tween: Tween
 
 @onready var vignette: TextureRect = $Vignette
 @onready var role_badge: PanelContainer = $RoleBadge
-@onready var role_label: Label = $RoleBadge/RoleLabel
+@onready var role_icon: TextureRect = $RoleBadge/Row/RoleIcon
+@onready var goal_icon: TextureRect = $RoleBadge/Row/GoalIcon
+@onready var target_icon: TextureRect = $RoleBadge/Row/TargetIcon
+@onready var lock_icon: TextureRect = $RoleBadge/Row/LockIcon
 @onready var timer_ring: Control = $TimerRing
 @onready var timer_label: Label = $TimerRing/TimerLabel
 @onready var zone_chip: PanelContainer = $ZoneChip
+@onready var zone_icon: TextureRect = $ZoneChip/Row/ZoneIcon
 @onready var zone_swatch: ColorRect = $ZoneChip/Row/Swatch
 @onready var zone_label: Label = $ZoneChip/Row/ZoneLabel
 ## scenes/hud/minimap.gd がアタッチされている(型を書くと組み込みControlに
@@ -103,25 +122,26 @@ var _icon_tween: Tween
 @onready var compass: Control = $Compass
 @onready var distance_chip: PanelContainer = $DistanceChip
 @onready var distance_label: Label = $DistanceChip/DistanceLabel
-@onready var spotted_banner: Label = $SpottedBanner
+@onready var spotted_banner: TextureRect = $SpottedBanner
 @onready var item_slot: PanelContainer = $ItemSlot
-@onready var item_icon: Control = $ItemSlot/Row/ItemIcon
-@onready var item_label: Label = $ItemSlot/Row/ItemLabel
+@onready var item_icon: TextureRect = $ItemSlot/Row/ItemIcon
 @onready var buff_tray: HBoxContainer = $BuffTray
-@onready var stamina_label: Label = $StaminaLabel
+@onready var stamina_icon: TextureRect = $StaminaIcon
 @onready var stamina_bar: Control = $StaminaBar
 @onready var toast_tray: VBoxContainer = $ToastTray
 ## scenes/hud/lobby_panel.gd がアタッチされている。HUD で唯一クリックできる UI
 ## なので _ignore_mouse() はここだけ対象外にする(型を書くとupdate_lobby()等の
 ## 独自メンバーが呼べないため、意図的に無署名の := で推論させる)
 @onready var lobby := $Lobby
+@onready var key_hints: HBoxContainer = $KeyHints
 @onready var info_label: Label = $InfoLabel
 @onready var result_panel: CenterContainer = $ResultPanel
+@onready var result_icon: TextureRect = $ResultPanel/Box/Col/ResultIcon
 @onready var result_title: Label = $ResultPanel/Box/Col/ResultTitle
 @onready var result_sub: Label = $ResultPanel/Box/Col/ResultSub
 ## H-03: 生存時間・鬼人数・トドメ役の事実行＋レート内訳（低レート帯ボーナス分のみ）
+@onready var result_facts: HBoxContainer = $ResultPanel/Box/Col/ResultFacts
 @onready var result_detail: Label = $ResultPanel/Box/Col/ResultDetail
-@onready var result_next: Label = $ResultPanel/Box/Col/ResultNext
 ## M-14対策: 結果画面唯一の操作可能ボタン。lobbyと同じ理由で_ignore_mouse()の対象外にする
 @onready var result_skip_btn: Button = $ResultPanel/Box/Col/ResultSkipButton
 
@@ -130,7 +150,6 @@ func _ready() -> void:
 	_ignore_mouse(self)
 	timer_ring.draw.connect(_on_timer_draw)
 	stamina_bar.draw.connect(_on_stamina_draw)
-	item_icon.draw.connect(_on_item_icon_draw)
 	GameManager.state_changed.connect(_on_state_changed)
 	GameManager.spotted_changed.connect(_on_spotted_changed)
 	GameManager.runner_cpu_takeover.connect(_on_runner_cpu_takeover)
@@ -155,9 +174,21 @@ func _ready() -> void:
 	## C-07 T-6: キーボード操作ヒントはタッチ操作時には意味がなく、仮想スティック
 	## 直上の視覚密集も緩和するため非表示にする
 	info_label.visible = not SettingsManager.should_show_touch_controls()
+	_build_key_hints()
 	_capture_base_offsets()
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_apply_safe_area()
+
+
+## 左下のキー操作ヒント。「キーの絵＋そのキーでできることの絵」を並べる
+## (視点・移動・ダッシュ・ダイブ・アイテム・エモート・メニュー)
+func _build_key_hints() -> void:
+	for entry: Array in [
+			[KeyHint.icon("mouse"), null], ["WASD", KeyHint.icon("move")],
+			["Shift", KeyHint.icon("bolt")], ["Space", KeyHint.icon("dive")],
+			["E", KeyHint.icon("gift")], ["F", KeyHint.icon("emote")],
+			["Esc", KeyHint.icon("quit")]]:
+		key_hints.add_child(KeyHint.pair(entry[0], entry[1], KEY_HINT_PX))
 
 
 ## iPhone のノッチ・角の丸み(safe area)の分だけ、画面の端に付いた HUD 要素を内側へ寄せる
@@ -262,13 +293,21 @@ func _update_labels() -> void:
 			result_panel.visible = false
 		GameManager.State.PLAYING, GameManager.State.RESULT:
 			role_badge.visible = true
-			# H-08: lobby_panel.gd の役割バッジと同じ漢字1字の記号差分(応急処置、詳細は同ファイル参照)
+			# H-08: 色だけに頼らず、役割と目的を形の違う絵で示す(lobby_panel.gd の役割の絵と同じ)。
+			#   逃げる人: 逃げる人・時計     ＝ 時間まで逃げろ
+			#   鬼      : 鬼・手・逃げる人   ＝ つかまえろ
 			if is_runner:
-				role_label.text = tr("[走] にげろ！")
-				role_label.modulate = COLOR_RUNNER
+				role_icon.texture = ICON_RUNNER
+				goal_icon.texture = ICON_CLOCK
+				target_icon.visible = false
 			else:
-				role_label.text = tr("[鬼] おに ― にげる人をつかまえろ！")
-				role_label.modulate = COLOR_HUNTER
+				role_icon.texture = ICON_HUNTER
+				goal_icon.texture = ICON_TAGGED
+				target_icon.texture = ICON_RUNNER
+				target_icon.visible = true
+			# ヘッドスタート中の鬼はまだ動けない
+			lock_icon.texture = ICON_LOCK
+			lock_icon.visible = not is_runner and GameManager.head_start_left > 0.0
 			if GameManager.head_start_left > 0.0:
 				timer_label.text = "%d" % ceili(GameManager.head_start_left)
 			else:
@@ -284,24 +323,12 @@ func _update_labels() -> void:
 	lobby.update_lobby(_overlay_instance != null)
 	_check_overlay_room_full(GameManager.player_ids().size(), multiplayer.is_server())
 
-	var lines := PackedStringArray()
-	if GameManager.state == GameManager.State.WAITING:
-		lines.append(tr("Esc: メニュー（マウスも離れる） / F: ナイス！"))
-	else:
-		# 挑発は3種あって 1/2/3 で選ぶので、今どれが出るかをヒントに出す
-		var style := "前のめり"
-		var me := _get_local_player()
-		if me:
-			style = Player.TAUNT_NAME.get(me.taunt_style, style)
-		lines.append(tr("クリック: 視点を操作 / Esc: メニュー / F: カモン！（1/2/3 で型: %s）")
-			% tr(style))
-		if GameManager.head_start_left > 0.0:
-			lines.append(tr("にげる時間！ 今のうちに走れ") if is_runner
-				else tr("にげる時間 ― おには動けない"))
-	if GameManager.debug_cpu_runner:
-		lines.append(tr("デバッグ: R バナナ / T ブロック / Y ロケット / E 使用 / Q メイン画面"))
-	info_label.text = "
-".join(lines)
+	# キー操作のヒントは絵の並び(key_hints)で出す。待機中はロビーのパネルに同じものがあるので隠す。
+	# 文字で残すのはデバッグ用の行だけ
+	key_hints.visible = GameManager.state != GameManager.State.WAITING \
+		and not SettingsManager.should_show_touch_controls()
+	info_label.text = tr("デバッグ: R バナナ / T ブロック / Y ロケット / E 使用 / Q メイン画面") \
+		if GameManager.debug_cpu_runner else ""
 
 
 ## --- 待機中のロビー -----------------------------------------------------
@@ -359,31 +386,38 @@ func _show_room_full_popup() -> void:
 
 ## 鬼にだけ、共有された目撃情報を見せる。
 ## 距離は情報が切れてから10秒後に限り読める。方向・マーカー・座標は出さない。
-## 3状態とも表示したままにしてレイアウトが跳ねないようにする
+## 文ではなく「絵＋ゾーンの色＋数字」で出す:
+##   手がかりなし = 斜線の目 / 距離 = 両矢印＋m / 発見 = 目＋色＋「!」 / さっき目撃 = 薄い目＋色＋残り秒
+## ゾーン名は出さない。場所は色と、ミニマップの該当ゾーンの点灯(minimap.gd)で伝える
 func _update_zone_chip(is_runner: bool) -> void:
 	if is_runner or GameManager.state != GameManager.State.PLAYING:
 		zone_chip.visible = false
 		return
 	zone_chip.visible = true
 	var zone: int = GameManager.spotted_zone
+	zone_swatch.visible = zone >= 0
+	zone_icon.modulate.a = 1.0
 	if zone < 0:
 		var distance := _runner_distance(_get_local_player())
 		if _hunter_distance_delay_left <= 0.0 and distance >= 0.0:
-			zone_label.text = tr("逃走者との距離　%d m") % roundi(distance)
-			zone_swatch.color = COLOR_RUNNER.darkened(0.2)
+			zone_icon.texture = ICON_DISTANCE
+			zone_label.text = "%d m" % roundi(distance)
 		else:
-			zone_label.text = tr("手がかりなし")
-			zone_swatch.color = Color(0.32, 0.32, 0.38)
+			zone_icon.texture = ICON_EYE_OFF
+			zone_label.text = ""
 		zone_chip.modulate.a = 1.0
 	elif GameManager.spotted:
-		zone_label.text = tr("発見！　%s") % WorldData.zone_name(zone)
+		zone_icon.texture = ICON_EYE
+		zone_label.text = "!"
 		zone_swatch.color = WorldData.zone_color(zone)
 		zone_chip.modulate.a = 0.75 + 0.25 * sin(Time.get_ticks_msec() * 0.012)
 	else:
-		zone_label.text = tr("さっき目撃　%s　あと%d秒") % [
-			WorldData.zone_name(zone), maxi(ceili(GameManager.intel_left), 0)]
+		zone_icon.texture = ICON_EYE
+		zone_icon.modulate.a = 0.55
+		zone_label.text = "%d" % maxi(ceili(GameManager.intel_left), 0)
 		zone_swatch.color = WorldData.zone_color(zone).darkened(0.35)
 		zone_chip.modulate.a = 1.0
+	zone_label.visible = not zone_label.text.is_empty()
 
 
 func _update_hunter_distance_delay(delta: float, player: Player) -> void:
@@ -412,25 +446,26 @@ func _update_result(is_runner: bool) -> void:
 		return
 	var won: bool = GameManager.result_runner_won
 	var copy := result_copy(is_runner, won, GameManager.result_reason)
+	# 文字は大見出しの1語だけ。説明文(copy[1])は出さず、勝ち負けは絵で伝える
 	result_title.text = copy[0]
-	result_sub.text = copy[1]
 	if GameManager.result_reason == GameManager.EndReason.RUNNER_LEFT:
 		result_title.modulate = COLOR_GOLD
+		result_icon.texture = ICON_STOP
+		result_sub.visible = false
 	else:
 		result_title.modulate = COLOR_RUNNER if won else COLOR_HUNTER
-		var sub_text := copy[1]
-
-		# レート変動表示（①CPU戦・離脱中断は非表示）
+		result_icon.texture = ICON_WIN if is_runner == won else ICON_LOSE
+		# レート変動（①CPU戦・離脱中断は出さない）。数字だけにする
+		result_sub.visible = _rating_shown
 		if _rating_shown:
 			var sign_str := "+" if _last_rating_delta >= 0 else ""
-			sub_text += "\n" + tr("レート: %d Pt (%s%d)") % [ProfileManager.rating, sign_str, _last_rating_delta]
-		else:
-			sub_text += "\n" + tr("練習モード（レート変動なし）")
-		result_sub.text = sub_text
+			result_sub.text = "%d Pt (%s%d)" % [ProfileManager.rating, sign_str, _last_rating_delta]
 
+	_update_result_facts()
 	result_detail.text = _result_detail_text()
-	result_next.text = tr("%d秒後になかま待ちにもどります") % maxi(ceili(GameManager.result_left), 0)
-	result_next.modulate = COLOR_GOLD
+	result_detail.visible = not result_detail.text.is_empty()
+	# 自動で戻るまでの残り秒は、やり直しボタンの数字で出す
+	result_skip_btn.text = "%d" % maxi(ceili(GameManager.result_left), 0)
 
 
 ## static 関数では Object.tr() が使えないので TranslationServer.translate() で訳す(L-09)
@@ -451,29 +486,50 @@ static func result_copy(is_runner: bool, runner_won: bool, reason: int) -> Packe
 		TranslationServer.translate(pair[0]), TranslationServer.translate(pair[1])])
 
 
-## H-03: 「何が起きたか」の事実行(生存時間/鬼人数/トドメ役)と、レート内訳
-## (低レート帯ボーナス分のみ)。毎フレーム呼ばれるが、参照する値は RESULT 中は
-## 固定されている(time_left は RESULT 中は減らない)ので表示は安定する。
+## H-03: 「何が起きたか」の事実行。時計＋時間、鬼の絵＋人数、手の絵＋つかまえた人。
+## 毎フレーム呼ばれるが、参照する値は RESULT 中は固定されている(time_left は RESULT 中は
+## 減らない)ので、中身が変わったときだけ組み直す
+func _update_result_facts() -> void:
+	var elapsed := GameManager.ROUND_TIME - GameManager.time_left
+	var tagger := _tagger_display_name()
+	var key := "%s|%d|%s" % [_mmss(elapsed), GameManager.round_hunter_count, tagger]
+	if key == _facts_key:
+		return
+	_facts_key = key
+	for c in result_facts.get_children():
+		result_facts.remove_child(c)
+		c.queue_free()
+	result_facts.add_child(_result_fact(ICON_CLOCK, _mmss(elapsed)))
+	if GameManager.round_hunter_count > 0:
+		result_facts.add_child(_result_fact(ICON_HUNTER, "x%d" % GameManager.round_hunter_count))
+	if not tagger.is_empty():
+		result_facts.add_child(_result_fact(ICON_TAGGED, tagger))
+
+
+func _result_fact(texture: Texture2D, text: String) -> Control:
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(KeyHint.image(texture, 40.0))
+	var label := Label.new()
+	# 名前は利用者の入力なので自動翻訳させない
+	label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	label.text = text
+	label.add_theme_font_size_override("font_size", 22)
+	box.add_child(label)
+	return box
+
+
+## H-03: レート内訳(低レート帯ボーナス分のみ)。
 ## 生存スコア分・鬼人数ハンデ分は式の上で加算項ではなく(ロジスティック期待値の
 ## 入力なので)Pt単位に分解できない。分解できるのは最後に純加算される低レート帯
-## ボーナス(ranking_manager.gd の手順8)だけなので、残りは「事実」として並べる
+## ボーナス(ranking_manager.gd の手順8)だけなので、残りは事実の行(絵)として並べる
 func _result_detail_text() -> String:
-	var facts: Array[String] = []
-	var elapsed := GameManager.ROUND_TIME - GameManager.time_left
-	var time_label := tr("経過") if GameManager.result_reason == GameManager.EndReason.RUNNER_LEFT else tr("生存")
-	facts.append("%s %s" % [time_label, _mmss(elapsed)])
-	if GameManager.round_hunter_count > 0:
-		facts.append(tr("鬼 %d人") % GameManager.round_hunter_count)
-	var tagger := _tagger_display_name()
-	if not tagger.is_empty():
-		facts.append(tr("トドメ: %s") % tagger)
-
-	var lines: Array[String] = [tr("　／　").join(facts)]
 	# ボーナスが0(ダイヤ帯以上)のときは合計＝基礎なので内訳行そのものを出さない
 	if _rating_shown and _last_rating_bonus != 0:
-		lines.append(tr("内訳: 基礎 %s ／ 低レート帯ボーナス %s")
-			% [_signed(_last_rating_base), _signed(_last_rating_bonus)])
-	return "\n".join(lines)
+		return tr("内訳: 基礎 %s ／ 低レート帯ボーナス %s") \
+			% [_signed(_last_rating_base), _signed(_last_rating_bonus)]
+	return ""
 
 
 ## 捕まった試合でだけ「誰がタッチしたか」を返す。逃げ切り・中断では空文字
@@ -528,7 +584,7 @@ func _on_timer_draw() -> void:
 func _update_stamina(player: Player) -> void:
 	var show := player != null and GameManager.state != GameManager.State.WAITING
 	stamina_bar.visible = show
-	stamina_label.visible = show
+	stamina_icon.visible = show
 
 
 func _on_stamina_draw() -> void:
@@ -567,9 +623,6 @@ func _update_item(player: Player, delta: float) -> void:
 	if _spinning:
 		_spinning = false
 		_confirm_item(player.item)
-	var info: Array = ITEM_INFO.get(player.item, ITEM_INFO[Player.Item.NONE])
-	item_label.text = tr(info[0])
-	item_label.modulate = info[1]
 	_set_shown_icon(player.item, 1.0)
 
 
@@ -585,11 +638,7 @@ func _spin_item(player: Player, delta: float) -> void:
 		var t := 1.0 - clampf(player.item_lock / Player.ITEM_ROULETTE, 0.0, 1.0)
 		_spin_next = lerpf(ROULETTE_FAST, ROULETTE_SLOW, t * t)
 		_punch_icon()  # コマが切り替わった瞬間だけ弾ませ、リールが1コマ進んだ手応えを出す
-	var info: Array = ITEM_INFO[ROULETTE_ORDER[_spin_index]]
-	var color: Color = info[1]
-	item_label.text = tr(info[0])
-	item_label.modulate = Color(color, 0.7)  # 確定前は薄く出す
-	_set_shown_icon(ROULETTE_ORDER[_spin_index], 0.7)
+	_set_shown_icon(ROULETTE_ORDER[_spin_index], 0.7)  # 確定前は薄く出す
 
 
 ## ルーレットが止まった瞬間。ここで初めて中身を名乗る
@@ -597,7 +646,7 @@ func _confirm_item(held: int) -> void:
 	if held == Player.Item.NONE:
 		return  # ラウンド開始などで持ち物ごと消えた場合
 	var info: Array = ITEM_INFO.get(held, ITEM_INFO[Player.Item.NONE])
-	_toast(tr("%s を手に入れた（E キー）") % tr(info[0]), info[1])
+	_toast_icon(info[2])
 	_set_shown_icon(held, 1.0)
 	item_slot.pivot_offset = item_slot.size * 0.5
 	var tw := create_tween()
@@ -606,12 +655,12 @@ func _confirm_item(held: int) -> void:
 	tween.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
 
-## 絵柄アイコンに表示中の出目を反映する。ラベルと同じ情報源から描くので、
-## 出目の伏せ方（薄さ）がラベルの文字色とズレない
+## スロットの絵に表示中の出目を反映する。確定前は薄く出す
 func _set_shown_icon(item: int, alpha: float) -> void:
 	_shown_item = item
 	_shown_alpha = alpha
-	item_icon.queue_redraw()
+	item_icon.texture = ITEM_INFO.get(item, ITEM_INFO[Player.Item.NONE])[2]
+	item_icon.modulate.a = alpha
 
 
 ## リールが1コマ進むたびに小さく弾ませる。連続で呼ばれるので前のを必ず止めてから張り直す
@@ -623,33 +672,6 @@ func _punch_icon() -> void:
 	_icon_tween = create_tween()
 	_icon_tween.tween_property(item_icon, "scale", Vector2.ONE, 0.12) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-
-
-## スロットの絵柄。画像を増やさず、既存の円形タイマーやスタミナバーと同じ
-## Control.draw() での自前描画で済ませる
-func _on_item_icon_draw() -> void:
-	if _shown_item == Player.Item.NONE:
-		return
-	var c := item_icon.size * 0.5
-	var col: Color = ITEM_INFO[_shown_item][1]
-	col.a = _shown_alpha
-	match _shown_item:
-		Player.Item.ROCKET:
-			var pts := PackedVector2Array([
-				c + Vector2(0, -13), c + Vector2(8, 10), c + Vector2(0, 5), c + Vector2(-8, 10),
-			])
-			item_icon.draw_colored_polygon(pts, col)
-		Player.Item.BANANA:
-			var pts := PackedVector2Array()
-			for i in 17:
-				var t := i / 16.0
-				pts.append(c + Vector2(lerpf(-11.0, 11.0, t), -10.0 * sin(t * PI)))
-			item_icon.draw_polyline(pts, col, 5.0, true)
-		Player.Item.BLOCK:
-			var r := Rect2(c - Vector2(10, 10), Vector2(20, 20))
-			item_icon.draw_rect(r, col, false, 4.0)
-		_:
-			pass
 
 
 ## トーストは確定時（_confirm_item）に出すので、ここでは回転の後始末だけ行う
@@ -676,7 +698,7 @@ func _update_buffs(player: Player) -> void:
 	for key in active:
 		if i >= buff_tray.get_child_count():
 			break
-		var info: Array = BUFF_INFO.get(key, ["BUFF", 6.0, Color.WHITE])
+		var info: Array = BUFF_INFO.get(key, ["BUFF", 6.0, Color.WHITE, null])
 		var fill: ColorRect = buff_tray.get_child(i).get_node("Col/Fill")
 		var frac := clampf(player.buffs.time_left(key) / info[1], 0.0, 1.0)
 		fill.custom_minimum_size.x = BUFF_BAR_WIDTH * frac
@@ -684,15 +706,12 @@ func _update_buffs(player: Player) -> void:
 
 
 func _make_buff_chip(key: StringName) -> Control:
-	var info: Array = BUFF_INFO.get(key, ["BUFF", 6.0, Color.WHITE])
+	var info: Array = BUFF_INFO.get(key, ["BUFF", 6.0, Color.WHITE, null])
 	var panel := PanelContainer.new()
 	var col := VBoxContainer.new()
 	col.name = "Col"
 	col.add_theme_constant_override("separation", 4)
-	var label := Label.new()
-	label.text = tr(info[0])
-	label.add_theme_font_size_override("font_size", 16)
-	label.modulate = info[2]
+	var label := KeyHint.image(info[3], 40.0)
 	var fill := ColorRect.new()
 	fill.name = "Fill"
 	fill.color = info[2]
@@ -823,7 +842,7 @@ func _pop_in(node: Control) -> void:
 
 
 func _on_effect_gained(effect: int) -> void:
-	_toast(tr(TOAST_TEXT.get(effect, "!")), TOAST_COLOR.get(effect, Color.WHITE))
+	_toast_icon(TOAST_ICON.get(effect))
 
 
 ## H-02: 逃げる役の切断でCPUが代行を始めたことをその場で気づけるようにする
@@ -850,11 +869,25 @@ func _toast(text: String, color: Color) -> void:
 	label.add_theme_font_size_override("font_size", 26)
 	label.modulate = color
 	toast_tray.add_child(label)
+	_fade_toast(label)
+
+
+## 効果やアイテムの取得は文ではなく絵で知らせる（何が起きたかは絵で足りる）
+func _toast_icon(texture: Texture2D) -> void:
+	if texture == null:
+		return
+	var icon := KeyHint.image(texture, 72.0)
+	icon.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	toast_tray.add_child(icon)
+	_fade_toast(icon)
+
+
+func _fade_toast(node: Control) -> void:
 	var tw := create_tween()
-	tw.tween_property(label, "modulate:a", 1.0, 0.15).from(0.0)
+	tw.tween_property(node, "modulate:a", 1.0, 0.15).from(0.0)
 	tw.tween_interval(1.6)
-	tw.tween_property(label, "modulate:a", 0.0, 0.4)
-	tw.tween_callback(label.queue_free)
+	tw.tween_property(node, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(node.queue_free)
 
 
 func _get_local_player() -> Player:

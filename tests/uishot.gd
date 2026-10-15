@@ -9,14 +9,18 @@ extends Node
 ## --text-size を付けるとその文字サイズ(UI全体の拡大率)で撮る(L-10、はみ出し確認用)。
 ## どちらも設定は保存しない。
 ## --only-touch を付けるとタッチ操作UIの3枚だけ撮る(スマホ向け配置の確認用。全画面を撮ると数分かかる)
+## --only-title を付けるとタイトル画面の1枚だけ撮る(world.tscn を開かないので数秒で済む)
 
 func _ready() -> void:
 	var out := "."
 	var only_touch := false
+	var only_title := false
 	var args := OS.get_cmdline_user_args()
 	for i in args.size():
 		if args[i] == "--only-touch":
 			only_touch = true
+		if args[i] == "--only-title":
+			only_title = true
 		if args[i] == "--shots" and i + 1 < args.size():
 			out = args[i + 1]
 		if args[i] == "--locale" and i + 1 < args.size():
@@ -35,6 +39,9 @@ func _ready() -> void:
 	get_tree().root.add_child(title)
 	get_tree().current_scene = title
 	await _shot(out, "title")
+	if only_title:
+		get_tree().quit()
+		return
 	title.queue_free()
 	await get_tree().process_frame
 

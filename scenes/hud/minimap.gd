@@ -86,6 +86,17 @@ func _on_map_draw() -> void:
 		c.a = 0.92
 		draw_rect(_zone_rect(idx), c)
 		draw_rect(_zone_rect(idx), Color(0, 0, 0, 0.25), false, 1.0)
+	# 目撃されたゾーンを白い枠で光らせる（鬼の画面だけ）。目撃情報のチップからゾーン名の
+	# 文字を外したので、場所はチップの色とこの点灯で伝える。見えている間は脈打ち、
+	# 見失った後（最後の目撃）は淡く残す。鬼に共有されるのはもともとゾーンだけなので、
+	# 逃走者の位置がこれ以上細かく漏れることはない
+	var zone: int = GameManager.spotted_zone
+	if zone >= 0 and multiplayer.get_unique_id() != GameManager.runner_id:
+		var glow := 0.45
+		if GameManager.spotted:
+			glow = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.012)
+		draw_rect(_zone_rect(zone), Color(1, 1, 1, 0.22 * glow))
+		draw_rect(_zone_rect(zone).grow(-2.0), Color(1, 1, 1, glow), false, 4.0)
 	# マップ全体の外枠を真四角・細く淡い色で描画する（角丸や太枠にせずスッキリ馴染ませる）
 	draw_rect(Rect2(Vector2.ZERO, s), Color(0.12, 0.10, 0.22, 0.5), false, 2.0)
 

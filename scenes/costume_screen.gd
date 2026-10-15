@@ -131,7 +131,7 @@ func refresh() -> void:
 
 
 func _update_gem_label() -> void:
-	gem_label.text = "💎 %d" % ProfileManager.premium_currency
+	gem_label.text = "%d" % ProfileManager.premium_currency
 
 
 ## ①カテゴリの切り替え（縦サイドバー方式）。
@@ -169,6 +169,7 @@ func _build_skin_card(index: int, display_name: String) -> Control:
 	btn.toggle_mode = true
 	btn.button_pressed = index == _selected_skin
 	btn.text = display_name
+	_style_card_text(btn)
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = SKIN_SWATCHES[index] if index < SKIN_SWATCHES.size() else Color(0.4, 0.45, 0.5)
@@ -256,6 +257,7 @@ func _build_item_card(id: StringName, def: Dictionary, owned: bool, selected_id:
 	btn.toggle_mode = true
 	btn.button_pressed = (id == selected_id)
 	btn.text = tr(String(def.get("name", String(id))))
+	_style_card_text(btn)
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = swatch
@@ -453,3 +455,13 @@ func _leave() -> void:
 func _on_shop_pressed() -> void:
 	if get_tree().current_scene == self:
 		get_tree().change_scene_to_file(SHOP_SCENE)
+
+
+## カードの地は濃い色のこともあるので、文字はテーマの既定(黄色い板向けの濃い紫)ではなく
+## 白にふちを付けて、どの色の上でも読めるようにする
+func _style_card_text(btn: Button) -> void:
+	for key: String in ["font_color", "font_hover_color", "font_pressed_color",
+			"font_hover_pressed_color", "font_focus_color"]:
+		btn.add_theme_color_override(key, Color.WHITE)
+	btn.add_theme_color_override("font_outline_color", Color(0.16, 0.07, 0.33))
+	btn.add_theme_constant_override("outline_size", 6)

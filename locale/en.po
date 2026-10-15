@@ -69,12 +69,6 @@ msgid "保存してもどる"
 msgstr "Save & Back"
 
 # --- タイトル画面 (scenes/title) ---
-msgid "- オンライン鬼ごっこバトル -"
-msgstr "- Online Tag Battle -"
-
-msgid "オンラインプレイ (EOS P2P)"
-msgstr "Online Play (EOS P2P)"
-
 msgid "参加する（リンク/アドレス指定）"
 msgstr "Join (Link / Address)"
 
@@ -162,15 +156,6 @@ msgid "言語 / Language"
 msgstr "Language"
 
 # --- ゲーム中の HUD (scenes/hud) ---
-msgid "まちかまえ中"
-msgstr "Lying in wait"
-
-msgid "げきちゃく地点"
-msgstr "Landing spot"
-
-msgid "見つかった！"
-msgstr "Spotted!"
-
 msgid "スタミナ"
 msgstr "Stamina"
 
@@ -213,32 +198,11 @@ msgstr "Change"
 msgid "たいきしてタイトルへ戻る"
 msgstr "Leave & Back to Title"
 
-msgid "WASD 移動　Shift ダッシュ　Space スライディング　E アイテム　F カモン(1/2/3で型)　R 役割切替　Tab 逃げる役を指名　Enter 開始　Esc メニュー"
-msgstr "WASD Move   Shift Dash   Space Slide   E Item   F Taunt (1/2/3: style)   R Switch Role   Tab Pick Runner   Enter Start   Esc Menu"
-
 msgid "けっか"
 msgstr "Results"
 
 msgid "もう1戦（なかま待ちへ）"
 msgstr "Play Again (Back to Lobby)"
-
-msgid "[走] にげろ！"
-msgstr "[R] Run!"
-
-msgid "[鬼] おに ― にげる人をつかまえろ！"
-msgstr "[C] Chaser - Catch the Runner!"
-
-msgid "Esc: メニュー（マウスも離れる） / F: ナイス！"
-msgstr "Esc: Menu (frees the mouse) / F: Nice!"
-
-msgid "クリック: 視点を操作 / Esc: メニュー / F: カモン！（1/2/3 で型: %s）"
-msgstr "Click: Camera / Esc: Menu / F: Come on! (1/2/3 style: %s)"
-
-msgid "にげる時間！ 今のうちに走れ"
-msgstr "Head start! Run while you can"
-
-msgid "にげる時間 ― おには動けない"
-msgstr "Head start - Chasers can't move yet"
 
 msgid "デバッグ: R バナナ / T ブロック / Y ロケット / E 使用 / Q メイン画面"
 msgstr "Debug: R Banana / T Block / Y Rocket / E Use / Q Main Screen"
@@ -249,26 +213,8 @@ msgstr "Your room is full. Go back?"
 msgid "部屋に戻る"
 msgstr "Back to Room"
 
-msgid "逃走者との距離　%d m"
-msgstr "Runner distance: %d m"
-
 msgid "手がかりなし"
 msgstr "No clues"
-
-msgid "発見！　%s"
-msgstr "Found!  %s"
-
-msgid "さっき目撃　%s　あと%d秒"
-msgstr "Last seen: %s  (%ds left)"
-
-msgid "レート: %d Pt (%s%d)"
-msgstr "Rating: %d Pt (%s%d)"
-
-msgid "練習モード（レート変動なし）"
-msgstr "Practice mode (unrated)"
-
-msgid "%d秒後になかま待ちにもどります"
-msgstr "Back to the lobby in %d s"
 
 msgid "ちゅうだん"
 msgstr "Match Stopped"
@@ -306,23 +252,11 @@ msgstr "Time"
 msgid "生存"
 msgstr "Survived"
 
-msgid "鬼 %d人"
-msgstr "Chasers: %d"
-
-msgid "トドメ: %s"
-msgstr "Caught by: %s"
-
-msgid "　／　"
-msgstr "  /  "
-
 msgid "内訳: 基礎 %s ／ 低レート帯ボーナス %s"
 msgstr "Breakdown: base %s / low-rating bonus %s"
 
 msgid "あなた"
 msgstr "You"
-
-msgid "%s を手に入れた（E キー）"
-msgstr "Got %s! (E key)"
 
 msgid "%s が切断 ― CPUが代わりに逃げます"
 msgstr "%s disconnected - a CPU will run instead"
@@ -332,12 +266,6 @@ msgstr "Your rating was synced with the server and adjusted by %s%d Pt (now %d P
 
 msgid "ブースト！"
 msgstr "Boost!"
-
-msgid "ワープ！"
-msgstr "Warp!"
-
-msgid "すべった！"
-msgstr "Slipped!"
 
 msgid "ロケット"
 msgstr "Rocket"
@@ -367,44 +295,14 @@ msgstr "Cancel"
 msgid "%s をロビーから退出させますか？"
 msgstr "Remove %s from the lobby?"
 
-msgid "招待リンク: %s"
-msgstr "Invite link: %s"
-
 msgid "※cloudflared が入っていないため、インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）"
 msgstr "* cloudflared is not installed, so an internet invite link could not be created (only players on the same LAN can join)."
 
 msgid "※インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）"
 msgstr "* Could not create an internet invite link (only players on the same LAN can join)."
 
-msgid "（うち CPU の鬼 %d人）"
-msgstr " (incl. CPU Chasers: %d)"
-
-msgid "ホスト（あなた）"
-msgstr "Host (You)"
-
-msgid "参加中（ホストは別の人）"
-msgstr "Joined (someone else is hosting)"
-
-msgid "4人であそぶ: %d人が参加中%s"
-msgstr "4-player game: %d joined%s"
-
 msgid "※EOSに接続されていないため、この部屋は他のPCからは見えません"
 msgstr "* Not connected to EOS, so other PCs can't see this room"
-
-msgid "この対戦は鬼がランダムで決まります（立候補不可）%s"
-msgstr "Chasers are chosen at random in this match (no volunteering)%s"
-
-msgid "　Enter キー: 開始"
-msgstr "   Enter: Start"
-
-msgid "　― ホストが始めるのを待っています"
-msgstr "   - Waiting for the host to start"
-
-msgid "デバッグ中: あなたが鬼、CPUが逃げる役です。Enter キー: 開始"
-msgstr "Debug: You're the Chaser and a CPU is the Runner. Enter: Start"
-
-msgid "R キー: 役割を切りかえ　― ホストが始めるのを待っています"
-msgstr "R: Switch role   - Waiting for the host to start"
 
 msgid "定員を%d人に変更しました"
 msgstr "Max players set to %d"
@@ -412,20 +310,8 @@ msgstr "Max players set to %d"
 msgid "定員の変更に失敗しました（現在: %d人）"
 msgstr "Couldn't change max players (currently %d)"
 
-msgid "だれもいません"
-msgstr "Nobody here yet"
-
 msgid "鬼は開始時にランダムで決まります（立候補不可）"
 msgstr "Chasers are chosen at random at the start (no volunteering)"
-
-msgid "逃げる役が未定です（開始時にランダムで決まります）"
-msgstr "No Runner yet (one will be chosen at random at the start)"
-
-msgid "[走] にげる"
-msgstr "[R] Runner"
-
-msgid "[鬼] おに"
-msgstr "[C] Chaser"
 
 msgid "この人を逃げる役にする"
 msgstr "Make this player the Runner"

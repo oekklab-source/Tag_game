@@ -2,14 +2,19 @@
 
 [ext_resource type="Theme" uid="uid://d2wmg5g7tg0uc" path="res://ui/pop_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://scenes/settings_screen.gd" id="2_script"]
+[ext_resource type="Shader" path="res://ui/pop_background.gdshader" id="ui_1"]
+[ext_resource type="Texture2D" path="res://ui/icons/settings.png" id="ui_2"]
+[ext_resource type="Texture2D" path="res://ui/icons/mouse.png" id="ui_3"]
+[ext_resource type="Texture2D" path="res://ui/icons/volume.png" id="ui_4"]
+[ext_resource type="Texture2D" path="res://ui/icons/touch.png" id="ui_5"]
+[ext_resource type="Texture2D" path="res://ui/icons/language.png" id="ui_6"]
+[ext_resource type="Texture2D" path="res://ui/icons/text_size.png" id="ui_7"]
+[ext_resource type="Texture2D" path="res://ui/icons/refresh.png" id="ui_8"]
+[ext_resource type="Script" path="res://ui/icon_button.gd" id="ui_9"]
+[ext_resource type="Texture2D" path="res://ui/icons/ok.png" id="ui_10"]
 
-[sub_resource type="Gradient" id="Gradient_bg"]
-colors = PackedColorArray(0.1, 0.12, 0.22, 1, 0.05, 0.05, 0.1, 1)
-
-[sub_resource type="GradientTexture2D" id="GradientTexture2D_bg"]
-gradient = SubResource("Gradient_bg")
-fill_from = Vector2(0.5, 0)
-fill_to = Vector2(0.5, 1)
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_bg"]
+shader = ExtResource("ui_1")
 
 [node name="SettingsScreen" type="Control"]
 layout_mode = 3
@@ -21,14 +26,14 @@ grow_vertical = 2
 theme = ExtResource("1_theme")
 script = ExtResource("2_script")
 
-[node name="Background" type="TextureRect" parent="."]
+[node name="Background" type="ColorRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-texture = SubResource("GradientTexture2D_bg")
+material = SubResource("ShaderMaterial_bg")
 
 [node name="TopBar" type="HBoxContainer" parent="."]
 layout_mode = 1
@@ -41,14 +46,14 @@ offset_bottom = 68.0
 grow_horizontal = 2
 theme_override_constants/separation = 16
 
-[node name="TitleLabel" type="Label" parent="TopBar"]
+[node name="TitleLabel" type="TextureRect" parent="TopBar"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(1, 0.75, 0.25, 1)
-theme_override_font_sizes/font_size = 30
-text = "設定"
-horizontal_alignment = 1
-vertical_alignment = 1
+custom_minimum_size = Vector2(64, 64)
+tooltip_text = "設定"
+texture = ExtResource("ui_2")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="ContentMargin" type="MarginContainer" parent="."]
 layout_mode = 1
@@ -74,11 +79,14 @@ theme_override_constants/separation = 24
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="SectionTitle" type="Label" parent="ContentMargin/Scroll/MainVBox/SensitivitySection"]
+[node name="SectionTitle" type="TextureRect" parent="ContentMargin/Scroll/MainVBox/SensitivitySection"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
-theme_override_font_sizes/font_size = 22
-text = "マウス感度"
+custom_minimum_size = Vector2(52, 52)
+size_flags_horizontal = 0
+tooltip_text = "マウス感度"
+texture = ExtResource("ui_3")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="Row" type="HBoxContainer" parent="ContentMargin/Scroll/MainVBox/SensitivitySection"]
 layout_mode = 2
@@ -102,11 +110,14 @@ text = "×1.00"
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="SectionTitle" type="Label" parent="ContentMargin/Scroll/MainVBox/VolumeSection"]
+[node name="SectionTitle" type="TextureRect" parent="ContentMargin/Scroll/MainVBox/VolumeSection"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
-theme_override_font_sizes/font_size = 22
-text = "マスター音量"
+custom_minimum_size = Vector2(52, 52)
+size_flags_horizontal = 0
+tooltip_text = "マスター音量"
+texture = ExtResource("ui_4")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="Row" type="HBoxContainer" parent="ContentMargin/Scroll/MainVBox/VolumeSection"]
 layout_mode = 2
@@ -136,11 +147,14 @@ text = "※まだBGM・効果音がありません"
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="SectionTitle" type="Label" parent="ContentMargin/Scroll/MainVBox/TouchSection"]
+[node name="SectionTitle" type="TextureRect" parent="ContentMargin/Scroll/MainVBox/TouchSection"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
-theme_override_font_sizes/font_size = 22
-text = "タッチ操作"
+custom_minimum_size = Vector2(52, 52)
+size_flags_horizontal = 0
+tooltip_text = "タッチ操作"
+texture = ExtResource("ui_5")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="Row" type="HBoxContainer" parent="ContentMargin/Scroll/MainVBox/TouchSection"]
 layout_mode = 2
@@ -155,11 +169,14 @@ size_flags_horizontal = 3
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="SectionTitle" type="Label" parent="ContentMargin/Scroll/MainVBox/LanguageSection"]
+[node name="SectionTitle" type="TextureRect" parent="ContentMargin/Scroll/MainVBox/LanguageSection"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
-theme_override_font_sizes/font_size = 22
-text = "言語 / Language"
+custom_minimum_size = Vector2(52, 52)
+size_flags_horizontal = 0
+tooltip_text = "言語 / Language"
+texture = ExtResource("ui_6")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="Row" type="HBoxContainer" parent="ContentMargin/Scroll/MainVBox/LanguageSection"]
 layout_mode = 2
@@ -174,11 +191,14 @@ size_flags_horizontal = 3
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="SectionTitle" type="Label" parent="ContentMargin/Scroll/MainVBox/TextSizeSection"]
+[node name="SectionTitle" type="TextureRect" parent="ContentMargin/Scroll/MainVBox/TextSizeSection"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.35, 0.8, 1, 1)
-theme_override_font_sizes/font_size = 22
-text = "文字サイズ"
+custom_minimum_size = Vector2(52, 52)
+size_flags_horizontal = 0
+tooltip_text = "文字サイズ"
+texture = ExtResource("ui_7")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="Row" type="HBoxContainer" parent="ContentMargin/Scroll/MainVBox/TextSizeSection"]
 layout_mode = 2
@@ -195,11 +215,19 @@ alignment = 1
 theme_override_constants/separation = 16
 
 [node name="ResetButton" type="Button" parent="ContentMargin/Scroll/MainVBox/ButtonsRow"]
-custom_minimum_size = Vector2(140, 0)
 layout_mode = 2
-text = "既定に戻す"
+custom_minimum_size = Vector2(110, 72)
+tooltip_text = "既定に戻す"
+icon = ExtResource("ui_8")
+script = ExtResource("ui_9")
+base_color = Color(1, 1, 1, 1)
+icon_margin = 8
 
 [node name="SaveButton" type="Button" parent="ContentMargin/Scroll/MainVBox/ButtonsRow"]
-custom_minimum_size = Vector2(160, 0)
 layout_mode = 2
-text = "保存してもどる"
+custom_minimum_size = Vector2(170, 72)
+tooltip_text = "保存してもどる"
+icon = ExtResource("ui_10")
+script = ExtResource("ui_9")
+icon_margin = 8
+
