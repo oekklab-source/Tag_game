@@ -1035,6 +1035,9 @@ Web ビルドを作り、成果物だけを **`web-build` ブランチへ force 
 GitHub Pages はそのブランチを見てデプロイする。以降は**push するだけで公開が更新される**。
 
 1. `winget install --id Cloudflare.cloudflared`
+   （**エディタから実行してホストする PC にだけ必要**。配布する Windows 版には
+   `cloudflared.exe` を同梱しているので、遊ぶ人が入れる必要は無い。
+   「Windows 版のビルドと itch.io への配布」参照）
 2. main を push して Actions を1回通す（`web-build` ブランチができる）
 3. リポジトリの **Settings > Pages** で
    - **Source: Deploy from a branch**
@@ -1113,6 +1116,8 @@ python -m http.server 8123 --directory export/web
   の分岐に落ちるだけなので気付きにくい）。下記の `tools/export_windows.ps1` で書き出せば
   機械的に止まる。`encryption_key` が空・64桁の16進でない場合も同様に止める
   （空のまま出荷するとクラウドセーブだけが黙って常に失敗するため）
+- `cloudflared`（`winget install --id Cloudflare.cloudflared`）。配布物へ同梱するために要る。
+  PATH に無ければ `-CloudflaredExe` で場所を渡す。無いと書き出しは失敗する
 - Client Secret を平文で exe に同梱するのは**意図どおり**。GameClient 型ポリシーの認証情報は
   クライアントに埋め込む前提の設計（Epic 公式 dev-portal/client-credentials）で、
   権限の確認は [docs/DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md) の「6.」で済ませてある
@@ -1135,12 +1140,40 @@ pwsh tools/export_windows.ps1
 false にする（判断が `export_presets.cfg` の差分に残る）。Web 版は認証情報を同梱しないので、
 このガードの対象外。
 
+ラッパーは**書き出し中に `SCRIPT ERROR` が出た場合も** exe を削除して exit 1 で止める。
+GDScript にパースエラーがあっても Godot は書き出しを完走するため、素のコマンドだと
+Autoload を読めない exe が「成功」として出力される（2026-10-04 実測。編集途中のスクリプトが
+混ざった作業ツリーで書き出して発覚）。
+
 `export/` は `.gitignore` 対象なので追加設定は不要。出力される配布物一式（実測済み）:
 
 - `TagGame.exe`（`binary_format/embed_pck=true` のため `.pck` は分離されない）
 - `EOSSDK-Win64-Shipping.dll`
 - `libeosg.windows.template_release.x86_64.dll`
 - `xaudio2_9redist.dll`
+
+ここまでは Godot が出力する。続けて `tools/export_windows.ps1` が次を同じフォルダへ**同梱**する
+（どれか1つでも用意できなければ exe を消して失敗させる）。いずれも
+**開発機では無くても動くが、配布先の PC では無いと壊れる**もの:
+
+- `cloudflared.exe` — ホスト時のトンネル用。配布先の PC には入っていないので、無いと
+  部屋の `host_addr` が LAN 内 IP のままになり、外から誰も参加できない。
+  ゲームは exe の隣にあればそれを使い、無ければ PATH から探す
+  （[network_manager.gd](autoload/network_manager.gd) の `_launch_tunnel()`。
+  エディタ実行では隣に無いので PATH 側が使われる）
+- `msvcp140.dll` / `vcruntime140.dll` / `vcruntime140_1.dll` — `EOSSDK-Win64-Shipping.dll` が
+  依存する VC++ ランタイム。Visual C++ 再頒布可能パッケージが入っていない PC では、これが無いと
+  GDExtension を読み込めず、**クラッシュせずに黙って EOS オフラインモードになる**
+- `.itch.toml` — itch アプリに起動対象（`TagGame.exe`）を教える。exe が2つ並ぶので、
+  書かないと `cloudflared.exe` を起動対象に選ばれうる（元は [tools/dist/](tools/dist/)）
+- `THIRD_PARTY_LICENSES.txt` — Godot・cloudflared・EOSG・フォント等のライセンス表記
+  （元は [tools/dist/](tools/dist/)。同梱物を足したらここにも足すこと）
+
+トンネルの起動には、もう1つ配布先でだけ効く条件がある。`_launch_tunnel()` は
+`powershell -ExecutionPolicy Bypass -File ...` で `serve.ps1` を起動する。Windows の既定の
+実行ポリシー（Restricted）は `.ps1` の実行を拒否するため、`-ExecutionPolicy` を渡さないと
+配布先ではスクリプトが1行も走らず、トンネルは `timeout` で失敗する
+（開発機は RemoteSigned 等に変えてあるので、外しても気付けない）。
 
 いずれも `TagGame.exe` と同じフォルダに並ぶ（サブフォルダは作られない）。
 `eos_credentials.cfg` と `tools/serve.ps1` はこのフォルダには出てこない
@@ -1176,11 +1209,59 @@ butler status <ユーザー名>/<プロジェクト>:windows
 見た目の修正だけをリリースしても `PROTOCOL_VERSION` は変える必要が無く、
 逆に RPC を変えていないのにストア更新のたびに `PROTOCOL_VERSION` を上げる必要も無い。
 
-### CI で自動化しない理由
+### CI でのリリース（タグを切ると itch.io へ上がる）
 
-[.github/workflows/web-build.yml](.github/workflows/web-build.yml) は Web 版のみを対象にしている。
-Windows 版を CI に載せるには `eos_credentials.cfg`（Client Secret を含み `.gitignore` 対象）を
-GitHub Secrets に置く判断が別途必要なため、当面は手元での手動ビルドとする。
+[.github/workflows/windows-release.yml](.github/workflows/windows-release.yml) が、
+**`v<版数>` のタグを push すると** Windows 版をビルドして `butler push` まで行う。
+中身は上の手動手順と同じ `tools/export_windows.ps1` なので、手元のビルドと同じ配布物になる。
+
+```sh
+# project.godot の config/version を上げて main へ入れた後
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+- **タグと `config/version` が一致しないと失敗する**（上の「版数の運用」を機械的に守らせるため）。
+- Actions の画面から手動実行（`workflow_dispatch`）もできる。既定ではビルドと検査だけを行い、
+  `push_to_itch` にチェックを入れたときだけアップロードする（ワークフローを直したときの試運転用）。
+- `eos_credentials.cfg` はリポジトリに無いので、**中身を base64 にして GitHub Secrets に置き**、
+  ワークフローの中でだけファイルへ戻す。Client Secret は exe に同梱される前提の値
+  （上の「事前に必要なもの」）なので、Secrets に置いても守るべき範囲は広がらない。
+- ビルドした exe は Actions の artifact には置かない。公開リポジトリの artifact は誰でも
+  落とせるため、配布経路を itch.io の1本にしてある。
+- `pull_request` では動かさない（Secrets を扱うワークフローを、外部からの PR で走らせないため）。
+
+#### 初回の設定（リポジトリの管理者が1回だけ行う）
+
+1. itch.io でプロジェクトを作る。**公開設定は Draft のまま**にしておく（下の「公開する前に」）。
+2. itch.io の Settings → API keys でキーを発行する。
+3. GitHub の Settings → Environments で `release` を作り、**Required reviewers** を設定し、
+   Deployment branches and tags を「タグ `v*` のみ」にする。
+   `BUTLER_API_KEY` は **itch.io のアカウント全体に効く鍵**で、environment で守らないと
+   リポジトリへ書き込める人なら誰でもワークフローを書き換えて取り出せる。
+4. その environment に次を登録する:
+
+   | 種類 | 名前 | 値 |
+   | --- | --- | --- |
+   | secret | `EOS_CREDENTIALS_CFG_B64` | `eos_credentials.cfg` を base64 にしたもの |
+   | secret | `BUTLER_API_KEY` | 手順2のキー |
+   | variable | `ITCH_TARGET` | `<ユーザー名>/<プロジェクト>` |
+
+   ```powershell
+   [Convert]::ToBase64String([IO.File]::ReadAllBytes('eos_credentials.cfg')) |
+       gh secret set EOS_CREDENTIALS_CFG_B64 --env release --repo oekklab-source/Tag_game
+   ```
+
+`encryption_key` を含め、`eos_credentials.cfg` の値を変えたら Secrets も入れ直すこと
+（手元のビルドと CI のビルドで値が食い違うと、クラウドセーブを互いに復号できなくなる）。
+
+#### 公開する前に（Draft → Public）
+
+`butler push` はページの公開設定を変えない。Draft のうちはプロジェクトの管理者にしか見えないので、
+**CI を通しただけでは公開されない**。Public に切り替える前に
+[docs/OWNER_TASKS.md](docs/OWNER_TASKS.md) の A-1（法務文書）・A-2（Stripe の本番切替）・
+A-4（クリーンな PC での確認）を済ませること。特に A-2 を飛ばすと、
+**Stripe がテストモードのまま公開され、テストカード番号で誰でもジェムを取得できる**。
 
 ## EOS ロビーによる自動マッチメイキング（見知らぬ相手と）
 
@@ -1374,7 +1455,11 @@ autoload/eos_credentials_check.gd eos_credentials.cfg の検証（実行時の�
                               EosManager と書き出しガードで共有
 addons/tag_game_export_guard/ Windows 書き出し時に eos_credentials.cfg の不備を知らせる
                               エクスポートプラグイン（止めるのは tools/export_windows.ps1）
-tools/export_windows.ps1      Windows 版の書き出し。認証情報の不備を検出したら exe を消して失敗させる
+tools/export_windows.ps1      Windows 版の書き出し。認証情報の不備を検出したら exe を消して失敗させる。
+                              cloudflared・VC++ ランタイム・tools/dist/ の中身を配布フォルダへ同梱する
+tools/dist/                   配布フォルダへそのままコピーするファイル（.itch.toml、第三者ライセンス表記）
+.github/workflows/windows-release.yml
+                              v* タグの push で Windows 版をビルドし、butler で itch.io へ上げる
 autoload/music_manager.gd     タイトル/ロビー系画面のBGMを保持するAutoload。change_scene_to_file()を
                               またいで鳴り続けさせる（NetworkManagerの対戦開始/終了と連動して停止/再生）
 scenes/title.tscn(.gd)        タイトル画面（エントリーシーン）。メインメニュー・プロフィールバッジ・
