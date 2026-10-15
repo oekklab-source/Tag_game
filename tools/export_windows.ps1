@@ -18,8 +18,21 @@
     tag_game/require_eos_credentials を false にする（このラッパーの引数では切らない。
     判断を export_presets.cfg の差分に残すため）。
 
-    終了コード: 0 = 成功 / 1 = ガードが不備を検出、または exe が出力されなかった /
-    124 = タイムアウト。
+    書き出しに成功したら、exe と同じフォルダへ配布に必要な同梱物をコピーする（同梱段）:
+      - cloudflared.exe: 配布先には winget で入れた cloudflared が無く、PATH 任せだと
+        ホストしてもトンネルが張れない（host_addr が LAN 内 IP のままになり外から参加できない）。
+        ゲームは exe の隣のこのファイルを serve.ps1 へ渡す
+      - msvcp140.dll / vcruntime140.dll / vcruntime140_1.dll: EOSSDK-Win64-Shipping.dll の依存。
+        VC++ 再頒布パッケージが入っていない PC では GDExtension が読めず、
+        黙って EOS オフラインモードになる。exe の隣へ置いて app-local で解決させる
+      - .itch.toml: フォルダに exe が2つ（TagGame.exe と cloudflared.exe）並ぶので、
+        itch アプリが cloudflared.exe を起動対象に選ばないよう起動対象を明示する
+      - THIRD_PARTY_LICENSES.txt: 第三者ソフトウェアを同梱して一般公開するのに必要なライセンス表記
+    どれか1つでも元ファイルが無ければ、上と同じ理由で exe を削除して exit 1 を返す
+    （同梱物の欠けた配布物が手元に残って butler push されるのを防ぐ）。
+
+    終了コード: 0 = 成功 / 1 = ガードが不備を検出、exe が出力されなかった、
+    書き出し中に SCRIPT ERROR が出た、または同梱物が見つからない / 124 = タイムアウト。
     Godot の終了コードそのものは判定に使わない（run_headless_test.ps1 と同じ方針）。
 
 .PARAMETER OutputPath
@@ -31,6 +44,10 @@
 .PARAMETER TimeoutSec
     このタイムアウト（壁時計秒）を過ぎたら強制終了する（既定 600 秒。書き出しは数分かかる）。
 
+.PARAMETER CloudflaredExe
+    同梱する cloudflared.exe のフルパス。未指定なら PATH 上の cloudflared を使う
+    （winget install --id Cloudflare.cloudflared）。
+
 .EXAMPLE
     pwsh tools/export_windows.ps1
 #>
@@ -38,7 +55,8 @@
 param(
     [string]$OutputPath = 'export/windows/TagGame.exe',
     [string]$GodotExe,
-    [int]$TimeoutSec = 600
+    [int]$TimeoutSec = 600,
+    [string]$CloudflaredExe
 )
 
 # この開発機でのデフォルトパス（run_headless_test.ps1 と同じ）
@@ -95,8 +113,51 @@ try {
         Write-Host "=> exe が出力されなかったため exit 1 を返す（上のエラーを確認）" -ForegroundColor Red
         exit 1
     }
+    # GDScript にパースエラーがあっても Godot は書き出しを完走し、exe ができてしまう
+    # （2026-10-04 実測: 編集途中のスクリプトが混ざった作業ツリーで書き出したところ、
+    # Autoload の ranking_manager.gd を読めない exe が「成功」として出力された）。
+    # run_headless_test.ps1 と同じく SCRIPT ERROR を失敗扱いにする
+    if ($allText -cmatch 'SCRIPT ERROR') {
+        Remove-Item $outFull -ErrorAction SilentlyContinue
+        Write-Host "=> 書き出し中に SCRIPT ERROR が出たため、書き出した exe を削除して exit 1 を返す（上のエラーを確認）" -ForegroundColor Red
+        exit 1
+    }
+
+    # ---- 同梱段（.DESCRIPTION 参照）。コピー元は「コピー先の名前 -> 元ファイル」で並べる ----
+    if (-not $CloudflaredExe) { $CloudflaredExe = (Get-Command cloudflared -ErrorAction SilentlyContinue).Source }
+    $outDir = Split-Path -Parent $outFull
+    $sys32 = Join-Path $env:SystemRoot 'System32'
+    $bundle = [ordered]@{
+        'cloudflared.exe'         = $CloudflaredExe
+        'msvcp140.dll'            = Join-Path $sys32 'msvcp140.dll'
+        'vcruntime140.dll'        = Join-Path $sys32 'vcruntime140.dll'
+        'vcruntime140_1.dll'      = Join-Path $sys32 'vcruntime140_1.dll'
+        '.itch.toml'              = Join-Path $repoRoot 'tools/dist/.itch.toml'
+        'THIRD_PARTY_LICENSES.txt' = Join-Path $repoRoot 'tools/dist/THIRD_PARTY_LICENSES.txt'
+    }
+    $missing = @()
+    foreach ($name in $bundle.Keys) {
+        $src = $bundle[$name]
+        if ($src -and (Test-Path -LiteralPath $src)) {
+            Copy-Item -LiteralPath $src -Destination (Join-Path $outDir $name) -Force
+        } else {
+            $missing += $name
+        }
+    }
+    if ($missing.Count -gt 0) {
+        Remove-Item $outFull -ErrorAction SilentlyContinue
+        Write-Host "=> 同梱物が見つからないため、書き出した exe を削除して exit 1 を返す: $($missing -join ', ')" -ForegroundColor Red
+        if ($missing -contains 'cloudflared.exe') {
+            Write-Host "   cloudflared は 'winget install --id Cloudflare.cloudflared' で入れるか、-CloudflaredExe でパスを指定すること" -ForegroundColor Red
+        }
+        exit 1
+    }
 
     Write-Host "=> 書き出し成功: $outFull" -ForegroundColor Green
+    # -Force が無いとドット始まりの .itch.toml が一覧に出ない
+    Get-ChildItem -LiteralPath $outDir -File -Force | ForEach-Object {
+        Write-Host ('   {0,-45} {1,12:N0} bytes' -f $_.Name, $_.Length)
+    }
     exit 0
 }
 finally {

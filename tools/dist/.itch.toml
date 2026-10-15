@@ -1,0 +1,6 @@
+# 配布フォルダには exe が2つ（TagGame.exe と cloudflared.exe）並ぶので、
+# itch アプリが起動対象を誤らないよう明示する。
+# tools/export_windows.ps1 が書き出し後に配布フォルダへコピーする。
+[[actions]]
+name = "play"
+path = "TagGame.exe"

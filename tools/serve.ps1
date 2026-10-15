@@ -53,6 +53,11 @@
     not_found = cloudflared が見つからない / exited = cloudflared が途中で終了した。
     2行目以降は調査用の詳細（cloudflared のログの末尾など）。
 
+.PARAMETER CloudflaredExe
+    cloudflared.exe のフルパス。配布版ではゲームが exe の隣に同梱した cloudflared.exe を渡す
+    （配布先には winget で入れた cloudflared が無く、PATH 任せだと見つからないため）。
+    未指定、または実在しなければ従来どおり PATH から探す。
+
 .EXAMPLE
     pwsh tools/serve.ps1
 .EXAMPLE
@@ -65,7 +70,8 @@ param(
     [string]$HostAddrFile,
     [int]$ParentPid = 0,
     [string]$PidFile,
-    [string]$ErrorFile
+    [string]$ErrorFile,
+    [string]$CloudflaredExe
 )
 
 # GitHub Pages の URL（末尾のスラッシュ無し）
@@ -76,7 +82,13 @@ $ErrorActionPreference = 'Stop'
 if (-not $PagesUrl) { $PagesUrl = $DefaultPagesUrl }
 $PagesUrl = $PagesUrl.TrimEnd('/')
 
-$cloudflared = (Get-Command cloudflared -ErrorAction SilentlyContinue).Source
+# 同梱版が指定されていればそれを優先する。このスクリプトは pwsh が無い配布先では
+# Windows PowerShell 5.1 でも動く必要があるので、三項演算子などは使わない
+if ($CloudflaredExe -and (Test-Path $CloudflaredExe)) {
+    $cloudflared = $CloudflaredExe
+} else {
+    $cloudflared = (Get-Command cloudflared -ErrorAction SilentlyContinue).Source
+}
 
 # 失敗時にホストが拾ってしまわないよう、api.trycloudflare.com（quick tunnel を払い出す API。
 # 失敗時のエラー行に現れる）は除外する

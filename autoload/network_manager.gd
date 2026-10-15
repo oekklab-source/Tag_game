@@ -339,10 +339,20 @@ func _launch_tunnel() -> void:
 	# create_process は PID をそのまま返す（失敗時 -1）。辞書ではない
 	# pwsh (PowerShell Core) が入っていない環境向けに、Windows PowerShell へフォールバックする
 	# (tools/serve.ps1 自体はどちらでも動く内容で書かれている)
-	var ps_args := ["-NoProfile", "-File", script_path, "-HostAddrFile", host_file,
+	# -ExecutionPolicy Bypass は -File より前に置かないと効かない（pwsh / powershell 共通）。
+	# Windows クライアントの既定（Restricted）のままだと serve.ps1 が実行されず、何も書き出されない
+	# まま timeout で失敗する。開発機は RemoteSigned 等に変えてあるので、配布先でしか気付けない
+	var ps_args := ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path, "-HostAddrFile", host_file,
 		"-ParentPid", str(OS.get_process_id()),
 		"-PidFile", ProjectSettings.globalize_path(TUNNEL_PID_FILE),
 		"-ErrorFile", ProjectSettings.globalize_path(TUNNEL_ERROR_FILE)]
+	# 配布版は tools/export_windows.ps1 が exe の隣に cloudflared.exe を同梱している。
+	# 配布先には winget で入れた cloudflared が無いので、PATH 任せだと必ず失敗する。
+	# エディタ実行では exe の隣（Godot 本体のフォルダ）に無いので何も渡さず、
+	# serve.ps1 が従来どおり PATH から探す
+	var bundled := OS.get_executable_path().get_base_dir().path_join("cloudflared.exe")
+	if FileAccess.file_exists(bundled):
+		ps_args.append_array(["-CloudflaredExe", bundled])
 	_tunnel_pid = OS.create_process("pwsh", ps_args, false)
 	if _tunnel_pid == -1:
 		_tunnel_pid = OS.create_process("powershell", ps_args, false)
