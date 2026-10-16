@@ -1134,6 +1134,14 @@ pwsh tools/export_windows.ps1
 false にする（判断が `export_presets.cfg` の差分に残る）。Web 版は認証情報を同梱しないので、
 このガードの対象外。
 
+ラッパーはもう1つ、**配布物に開発用ファイルが入っていないか**も検査する。プリセットの
+`exclude_filter`（Web・Windows 共通で `tests/*` `export/*` `service/*` `server/*` `docs/*`
+`tools/blender/*` `tools/*.gd` `tools/*.py` `skills-lock.json`）が空だった頃の exe には、
+`tests/shots` の確認用 PNG（開発機の実プロフィールが写り込みうる）や `service/*/node_modules`
+まで500件以上入っていた。書き出しログの savepack 行（pck に入れたファイルの全件）を走査し、
+禁止パスがあれば exe を消して exit 1 にする。`tools/` を丸ごと除外しないのは、
+`exclude_filter` が `include_filter` の後に効き、同梱が必要な `tools/serve.ps1` まで消えるため。
+
 `export/` は `.gitignore` 対象なので追加設定は不要。出力される配布物一式（実測済み）:
 
 - `TagGame.exe`（`binary_format/embed_pck=true` のため `.pck` は分離されない）
@@ -1372,7 +1380,8 @@ autoload/eos_credentials_check.gd eos_credentials.cfg の検証（実行時の�
                               EosManager と書き出しガードで共有
 addons/tag_game_export_guard/ Windows 書き出し時に eos_credentials.cfg の不備を知らせる
                               エクスポートプラグイン（止めるのは tools/export_windows.ps1）
-tools/export_windows.ps1      Windows 版の書き出し。認証情報の不備を検出したら exe を消して失敗させる
+tools/export_windows.ps1      Windows 版の書き出し。認証情報の不備・配布物への開発用ファイル混入を
+                              検出したら exe を消して失敗させる
 autoload/music_manager.gd     タイトル/ロビー系画面のBGMを保持するAutoload。change_scene_to_file()を
                               またいで鳴り続けさせる（NetworkManagerの対戦開始/終了と連動して停止/再生）
 scenes/title.tscn(.gd)        タイトル画面（エントリーシーン）。メインメニュー・プロフィールバッジ・

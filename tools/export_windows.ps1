@@ -18,8 +18,16 @@
     tag_game/require_eos_credentials を false にする（このラッパーの引数では切らない。
     判断を export_presets.cfg の差分に残すため）。
 
-    終了コード: 0 = 成功 / 1 = ガードが不備を検出、または exe が出力されなかった /
-    124 = タイムアウト。
+    もう1つ、配布物に開発用のファイルが入っていないかも検査する（KAN-30）。
+    プリセットの exclude_filter が空だった頃の exe には、tests/shots の確認用 PNG
+    （開発機の実プロフィールが写り込んだ前例がある）や service/*/node_modules まで
+    500件以上入っていた。exclude_filter は誰かが消しても書き出しは黙って通るので、
+    出力の savepack 行（pck に入れたファイルを1件ずつ出す。2026-10-16 に pck の
+    ディレクトリを直接読んで全件一致することを確認済み）を走査し、禁止パスがあれば
+    exe を消して失敗させる。禁止パスは $ForbiddenPackPaths（exclude_filter と揃えること）。
+
+    終了コード: 0 = 成功 / 1 = ガードが不備を検出、配布物に禁止パスが入っていた、
+    または exe が出力されなかった / 124 = タイムアウト。
     Godot の終了コードそのものは判定に使わない（run_headless_test.ps1 と同じ方針）。
 
 .PARAMETER OutputPath
@@ -45,6 +53,15 @@ param(
 $DefaultGodotExe = 'C:\dev\godot47\Godot_v4.7.2-stable_win64.exe'
 # addons/tag_game_export_guard/export_guard.gd の BLOCK_MARKER と一致させること
 $BlockMarker = '[TagGameExportGuard] BLOCKED'
+# 配布物に入っていてはいけないパス（正規表現。export_presets.cfg の exclude_filter と揃えること）。
+# tools/ は serve.ps1 だけを include_filter で同梱するので、それ以外を禁止にする
+# （exclude_filter は include_filter の後に効くため、tools/* を丸ごと除外すると serve.ps1 まで消える）
+$ForbiddenPackPaths = @(
+    '^res://(tests|export|service|server|docs)/',
+    'node_modules',
+    '^res://tools/(?!serve\.ps1$)',
+    '^res://skills-lock\.json$'
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -95,6 +112,27 @@ try {
         Write-Host "=> exe が出力されなかったため exit 1 を返す（上のエラーを確認）" -ForegroundColor Red
         exit 1
     }
+
+    # savepack 行の文言はエディタの表示言語で変わる（日本語なら「ファイルの保存中: res://…」）ので、
+    # 行頭の段階名 savepack と res:// 以降のパスだけを拾う。
+    # パスの直後には ANSI の色コード（ESC[39m）が付いているので、ESC の手前で切る
+    # （\S+ だと色コードまで取り込み、serve.ps1 が「serve.ps1 以外の tools/」と誤判定される）
+    $packedFiles = @(($allText -split "`r?`n") | Where-Object { $_ -match 'savepack' } |
+        ForEach-Object { if ($_ -match '(res://[^\s\x1b]+)') { $Matches[1] } })
+    if ($packedFiles.Count -eq 0) {
+        # 一覧が取れないまま「禁止パスなし」と判定すると検査が素通りになるので、失敗扱いにする
+        Remove-Item $outFull -ErrorAction SilentlyContinue
+        Write-Host "=> 出力から pck の中身一覧（savepack 行）が読めなかったため、exe を削除して exit 1 を返す" -ForegroundColor Red
+        exit 1
+    }
+    $forbidden = @($packedFiles | Where-Object { $f = $_; $ForbiddenPackPaths | Where-Object { $f -match $_ } })
+    if ($forbidden.Count -gt 0) {
+        $forbidden | Select-Object -First 20 | ForEach-Object { Write-Host "  禁止パス: $_" -ForegroundColor DarkYellow }
+        Remove-Item $outFull -ErrorAction SilentlyContinue
+        Write-Host "=> 配布物に開発用ファイルが $($forbidden.Count) 件入っていたため、exe を削除して exit 1 を返す（export_presets.cfg の exclude_filter を確認）" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "=> pck の中身 $($packedFiles.Count) 件に禁止パスなし" -ForegroundColor Green
 
     Write-Host "=> 書き出し成功: $outFull" -ForegroundColor Green
     exit 0
