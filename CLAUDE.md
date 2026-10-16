@@ -12,7 +12,10 @@
   「はじめに（人とAIの読み順）」、page id 491543）。リポジトリの文書には状態（済み・未了）を書かない。
 - セッション開始時は次の JQL で Claude が関わる未完了チケットを取り、issuelinks の
   「is blocked by」が全部完了しているものだけを候補にする:
-  `project = KAN AND labels = rel-itch-1.0 AND statusCategory != Done AND labels in (who-claude, who-pair) AND issuetype != Epic ORDER BY key ASC`
+  `project = KAN AND labels = rel-itch-1.0 AND statusCategory != Done AND labels in (who-claude, who-pair) AND issuetype != Epic ORDER BY priority DESC, key ASC`
+  スプリント運用中（土曜開始・金曜終了の1週間）は `AND sprint in openSprints()` を足し、
+  スプリント外のチケットにはオーナーの指示なしに着手しない。優先度（Highest/High/Medium/Low）の
+  付け方と、土曜の計画・金曜のレビューの手順は Confluence「優先度とスプリントの運用」（page id 1277954）。
 - チケット本文の見出し（目的 / 完了条件 / 手順・参照 / 終わったら / 由来）とラベル
   （`rel-*` / `who-*` / `gate-*` / `kind-decision`）は Confluence の「チケットの書き方」「ラベル辞書」に従う。
   新しい作業を見つけたら同じ形で起票し、勝手に範囲を広げない。人の判断が要るなら kind-decision で起票して止まる。
