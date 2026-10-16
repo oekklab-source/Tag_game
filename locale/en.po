@@ -373,6 +373,9 @@ msgstr "Invite link: %s"
 msgid "※cloudflared が入っていないため、インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）"
 msgstr "* cloudflared is not installed, so an internet invite link could not be created (only players on the same LAN can join)."
 
+msgid "※トンネル用のスクリプトを PowerShell で起動できなかったため、インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）"
+msgstr "* The tunnel script could not be started in PowerShell, so an internet invite link could not be created (only players on the same LAN can join)."
+
 msgid "※インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）"
 msgstr "* Could not create an internet invite link (only players on the same LAN can join)."
 

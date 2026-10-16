@@ -1071,6 +1071,10 @@ python -m http.server 8123 --directory export/web
    手動で `pwsh tools/serve.ps1` を実行する必要は無い。Windows デスクトップ版限定で、
    cloudflared が無い・途中で落ちた等で張れなかったときは、ロビーパネルの招待リンクの下に
    注記が出るだけでゲーム側は止まらない（LAN 内の相手はそのまま参加できる）。
+   PowerShell は `-ExecutionPolicy Bypass`（そのプロセスだけに効く）で起動する。素の Windows 11 の
+   Windows PowerShell 5.1 は既定の実行ポリシーが Restricted で、指定しないと `serve.ps1` が
+   実行されないため。それでも起動できなかった（グループポリシーで禁止されている等）ときは、
+   PowerShell が何も書かずに終わったことを検知して、タイムアウトを待たずに注記を出す。
    トンネルは部屋を抜けた・アプリを閉じたときにゲーム側が止める。強制終了やクラッシュで
    ゲームの後始末が走らなかった場合も、`serve.ps1` がゲームのプロセスを見張っていて
    自分で cloudflared を止める）
