@@ -1157,6 +1157,20 @@ false にする（判断が `export_presets.cfg` の差分に残る）。Web 版
 `user://serve.ps1` へ実ファイルとして書き出してから起動するため、配布物として
 別途置く必要は無い）。
 
+### セーブの保存先（タイトルを変えても動かさない）
+
+Windows 版（エディタ実行・headless テストも含む）の `user://` は **`%APPDATA%\TagGame\`**。
+`project.godot` の `config/use_custom_user_dir=true` と `config/custom_user_dir_name="TagGame"`
+で、タイトル（`config/name`）から切り離して固定している。既定のままだと
+`%APPDATA%\Godot\app_userdata\<config/name>\` になり、公開後にタイトルを変えた瞬間に
+`profile.json`（購入済みジェム・戦績・名前）と `settings.json` が見えなくなる。
+**`custom_user_dir_name` は初回公開後に変えてはいけない**（変えると同じ理由でセーブが消えて見える）。
+Web 版の `user://` はブラウザの IndexedDB でこの設定の影響を受けない。
+
+2026-10-16 以前の開発機のセーブは `%APPDATA%\Godot\app_userdata\3D Chase Game\` に残っている。
+引き継ぐときは、ゲームを閉じてから `profile.json` と `settings.json` を `%APPDATA%\TagGame\` へコピーする
+（`serve.ps1`・`tunnel_*`・`logs`・`eosg-cache`・`shader_cache` などは起動時に作り直されるので不要）。
+
 ### butler でのアップロード
 
 ```sh
