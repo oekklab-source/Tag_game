@@ -213,8 +213,8 @@ msgstr "Change"
 msgid "たいきしてタイトルへ戻る"
 msgstr "Leave & Back to Title"
 
-msgid "WASD 移動　Shift ダッシュ　Space スライディング　E アイテム　F カモン(1/2/3で型)　R 役割切替　Tab 逃げる役を指名　Enter 開始　Esc メニュー"
-msgstr "WASD Move   Shift Dash   Space Slide   E Item   F Taunt (1/2/3: style)   R Switch Role   Tab Pick Runner   Enter Start   Esc Menu"
+msgid "WASD 移動　Shift ダッシュ　Space ダイブ　E アイテム　F カモン(1/2/3で型)　R 役割切替　Tab 逃げる役を指名　Enter 開始　Esc メニュー"
+msgstr "WASD Move   Shift Dash   Space Dive   E Item   F Taunt (1/2/3: style)   R Switch Role   Tab Pick Runner   Enter Start   Esc Menu"
 
 msgid "けっか"
 msgstr "Results"

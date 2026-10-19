@@ -65,7 +65,7 @@ func _test_ai_state_transitions(world: Node, cpu: CharacterBody3D) -> void:
 	var runner: CharacterBody3D = world.get_node("Players/1")
 	runner.global_position = Vector3(0, 2, -75)
 
-	# (a) 情報なし (見失って20秒経過) -> PATROL (0)
+	# (a) 情報なし (見失って INTEL_TIME 経過) -> PATROL (0)
 	GameManager._set_intel(-1, 0.0, false)
 	GameManager._seer_ids.clear()
 	for i in 5:

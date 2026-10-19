@@ -430,7 +430,7 @@ theme_override_colors/font_color = Color(1, 1, 1, 0.6)
 theme_override_constants/outline_size = 5
 theme_override_font_sizes/font_size = 14
 autowrap_mode = 2
-text = "WASD 移動　Shift ダッシュ　Space スライディング　E アイテム　F カモン(1/2/3で型)　R 役割切替　Tab 逃げる役を指名　Enter 開始　Esc メニュー"
+text = "WASD 移動　Shift ダッシュ　Space ダイブ　E アイテム　F カモン(1/2/3で型)　R 役割切替　Tab 逃げる役を指名　Enter 開始　Esc メニュー"
 
 [node name="VersionLabel" type="Label" parent="Lobby/Box/Col/ControlsHelpRow"]
 layout_mode = 2
