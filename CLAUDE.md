@@ -36,6 +36,11 @@ OSレベルのタイムアウトで自動的に強制終了する。自分が起
 pwsh tools/run_headless_test.ps1 res://tests/<name>.tscn
 ```
 
+ラッパーは既定で `--quit-after` を**付けない**（2026-10-19 KAN-79）。以前は 600 フレームを
+固定で渡しており、10ラウンド回す `test_phase7_stability` 等が結果行を出す前に打ち切られて
+偽PASSになっていた。テストは自分で `get_tree().quit()` して終わるか、`-TimeoutSec`（既定90秒）で
+強制終了されて exit 124 になる。フレーム数で止めたい一時シーンだけ `-QuitAfter <N>` を使う。
+
 素の `godot` コマンドを直接使う場合は、以下の罠に注意すること:
 
 ```powershell
@@ -72,7 +77,8 @@ godot --headless --path . res://tests/<name>.tscn --quit-after 600
   （成功時にも必ず出る `FAIL=0` だけは除外。大文字小文字は区別するので、
   エンジンの `Failed to load script` 等は拾わない）。新しいテストを書くときは、
   失敗時に大文字 `FAIL` を必ず出力すること（`_assert()` ヘルパの踏襲が最も確実）。
-  成功時の行に `FAIL` を含めてはいけない。
+  成功時の行に `FAIL` を含めてはいけない。どの経路でも最後に `get_tree().quit()` を呼ぶこと
+  （呼ばないとラッパーではタイムアウト扱いになる）。
   `SCRIPT ERROR` も失敗扱いにしている。実行時エラーでテスト関数が中断すると
   結果行が出ないまま終わり、偽PASSになるため（`tests/debug_controls.tscn` が
   消えた定数の参照で長期間そうなっていた。2026-09-25 修正）。
