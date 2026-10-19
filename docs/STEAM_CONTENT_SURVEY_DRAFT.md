@@ -45,7 +45,8 @@
 - **画像(間接)**: 衣装2種(オーバーオール・黒影忍者)は、生成AIで作った設定画
   (`tools/blender/references/*_turnaround_v1.png`、プロンプトは同名の`.prompt.txt`)を見て
   Blender で3D化した。設定画そのものはビルドに入らない。主人公の元絵(`tools/blender/reference.png`)と
-  バスケ衣装の設定画は出所の記録が無く、確認待ち。
+  バスケ衣装の設定画(`basketball_turnaround.png`)も生成AIで作ったもの(2026-10-19 オーナー申告。ツール名の記録なし)。
+- **画像(コード)**: 仮アイコン `icon.svg`(と Web 版のホーム画面アイコン)は Claude Code が SVG をコードとして書いた。
 - **画像(予定)**: ショップの店員さん・壁の絵、カバー画像・アプリアイコンは生成AIで作る予定。
   製品に入った時点で、ここと AI_GENERATED_ASSETS.md に追記する。
 - **コード・テキスト**: ゲームのコード、3D モデルを組み立てる Blender スクリプト、UI 文言と英訳、
