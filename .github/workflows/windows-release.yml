@@ -1,0 +1,218 @@
+name: Windows release
+
+# v* タグを push する（または手動実行する）と Windows 版を書き出し、itch.io へ butler push する。
+# 手順は README の「Windows 版のビルドと itch.io への配布」節を参照。
+#
+# 必要な設定（リポジトリの Settings）:
+#   - environment `release`（承認者を付けておくと、Secrets を使う実行を手元で止められる）
+#   - secrets  EOS_CREDENTIALS_CFG_B64 : eos_credentials.cfg を base64 にしたもの
+#   - secrets  BUTLER_API_KEY          : itch.io の butler 用 API キー
+#   - variable ITCH_TARGET             : 「ユーザー名/ゲーム名」（チャンネル名は付けない。windows はここで付ける）
+#
+# Actions の artifact へはアップロードしない。公開リポジトリの artifact は誰でも落とせるので、
+# itch.io のページを Draft にしていても、公開前の確認が済んでいないビルドがそこから出回ってしまう。
+# 配布経路は itch.io に一本化する。
+#
+# pull_request / pull_request_target は使わない。このジョブは Secrets（EOS のクレデンシャル、
+# butler の API キー）を扱うので、外部から出されたコードが走る経路を作らない。
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      push_to_itch:
+        description: 'itch.io へ butler push する（既定は書き出しと検査だけ）'
+        type: boolean
+        default: false
+
+env:
+  GODOT_VERSION: 4.7.2
+  # 版を上げるときは両方を同時に変えること。SHA256 は公式リリース資産
+  # cloudflared-windows-amd64.exe の digest で、改ざん・差し替えの検出に使う
+  CLOUDFLARED_VERSION: 2026.9.0
+  CLOUDFLARED_SHA256: 547057326266f0e1c7d50d102dbd22ff283d740c055bd61e94f10e2c606f89af
+
+jobs:
+  build:
+    if: github.repository == 'oekklab-source/Tag_game'
+    runs-on: windows-latest
+    environment: release
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # itch.io へ上げる版と config/version を突き合わせるため（README「版数の運用」）。
+      # タグ push のときは v<version> とタグ名が一致しなければ失敗させ、版の付け間違いを防ぐ。
+      # タグ名は ${{ }} でスクリプトへ埋め込まず、環境変数から読む（タグ名には引用符や $() を
+      # 含められるので、埋め込むとスクリプトとして実行されうる）
+      - name: Read and check version
+        id: ver
+        run: |
+          $m = Select-String -Path project.godot -Pattern '^config/version="([^"]+)"' | Select-Object -First 1
+          if (-not $m) { throw 'project.godot に config/version が見つからない' }
+          $version = $m.Matches[0].Groups[1].Value
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "config/version が X.Y.Z の形ではない: $version" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "config/version = $version"
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "タグ '$env:GITHUB_REF_NAME' が config/version の 'v$version' と一致しない"
+          }
+
+      # 1.2GB あるのでキャッシュする。ヒットすればダウンロードを丸ごと省ける
+      - name: Cache export templates
+        id: cache-templates
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Roaming\Godot\export_templates
+          key: godot-templates-windows-${{ env.GODOT_VERSION }}
+
+      - name: Install Godot
+        run: |
+          $ver = $env:GODOT_VERSION
+          $base = "https://github.com/godotengine/godot/releases/download/$ver-stable"
+          $zip = Join-Path $env:RUNNER_TEMP 'godot.zip'
+          $dir = Join-Path $env:RUNNER_TEMP 'godot'
+          Invoke-WebRequest -Uri "$base/Godot_v$ver-stable_win64.exe.zip" -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dir -Force
+          $exe = Join-Path $dir "Godot_v$ver-stable_win64.exe"
+          if (-not (Test-Path $exe)) { throw "Godot の exe が見つからない: $exe" }
+          "GODOT_EXE=$exe" >> $env:GITHUB_ENV
+          & $exe --version
+
+      # Windows 版しか書き出さないので、約1.2GB の tpz から必要な3ファイルだけ取り出す
+      - name: Install export templates
+        if: steps.cache-templates.outputs.cache-hit != 'true'
+        run: |
+          $ver = $env:GODOT_VERSION
+          $base = "https://github.com/godotengine/godot/releases/download/$ver-stable"
+          $tpz = Join-Path $env:RUNNER_TEMP 'templates.tpz'
+          Invoke-WebRequest -Uri "$base/Godot_v$ver-stable_export_templates.tpz" -OutFile $tpz
+          $tmp = Join-Path $env:RUNNER_TEMP 'templates_extract'
+          New-Item -ItemType Directory -Force $tmp | Out-Null
+          tar -xf $tpz -C $tmp templates/windows_release_x86_64.exe templates/windows_release_x86_64_console.exe templates/version.txt
+          if ($LASTEXITCODE -ne 0) { throw 'export テンプレートの展開に失敗した' }
+          $dest = Join-Path $env:APPDATA "Godot\export_templates\$ver.stable"
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Move-Item (Join-Path $tmp 'templates\*') $dest -Force
+          Get-ChildItem $dest | Format-Table Name, Length
+
+      # eos_credentials.cfg は git 管理外。Secrets から復元する。
+      # 内容は絶対にログへ出さないこと（echo / Get-Content / Write-Host をここに足さない）。
+      # base64 で持つのは、複数行の secret はログのマスクが効きにくいため
+      - name: Restore eos_credentials.cfg
+        env:
+          EOS_CREDENTIALS_CFG_B64: ${{ secrets.EOS_CREDENTIALS_CFG_B64 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:EOS_CREDENTIALS_CFG_B64)) {
+            throw 'secrets.EOS_CREDENTIALS_CFG_B64 が空'
+          }
+          $path = Join-Path $PWD 'eos_credentials.cfg'
+          [IO.File]::WriteAllBytes($path, [Convert]::FromBase64String($env:EOS_CREDENTIALS_CFG_B64))
+
+      # 初回は .godot/ が無く、リソース未インポートのままだと export が失敗する。
+      # --import は取り込み後に非ゼロで終わることがあるので、ここでは失敗を許す
+      # （本当に取り込めていなければ次の export で落ちる）
+      - name: Import resources
+        run: |
+          $proc = Start-Process -FilePath $env:GODOT_EXE -ArgumentList @('--headless', '--path', '.', '--import') -NoNewWindow -PassThru
+          if (-not $proc.WaitForExit(900000)) {
+            Write-Warning 'import がタイムアウト。プロセスを止めて先へ進む'
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
+          Write-Host "import exit code: $($proc.ExitCode)（判定には使わない）"
+          $global:LASTEXITCODE = 0
+
+      # 公式リリースの exe をそのまま同梱する。digest で改ざん・差し替えを検出する
+      - name: Download cloudflared
+        run: |
+          $ver = $env:CLOUDFLARED_VERSION
+          $dir = Join-Path $env:RUNNER_TEMP 'cloudflared'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $exe = Join-Path $dir 'cloudflared.exe'
+          Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/download/$ver/cloudflared-windows-amd64.exe" -OutFile $exe
+          $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash
+          if ($hash -ne $env:CLOUDFLARED_SHA256) {
+            throw "cloudflared の SHA256 が一致しない: $hash"
+          }
+          "CLOUDFLARED_EXE=$exe" >> $env:GITHUB_ENV
+
+      # 素の godot コマンドではなくラッパーを使う。eos_credentials.cfg の不備を検出する
+      # ガードの BLOCK 判定（不備があれば exe を消して exit 1）を CI でも効かせるため
+      - name: Export Windows
+        run: |
+          pwsh tools/export_windows.ps1 -GodotExe $env:GODOT_EXE -CloudflaredExe $env:CLOUDFLARED_EXE -TimeoutSec 1200
+          if ($LASTEXITCODE -ne 0) { throw "export_windows.ps1 が失敗した (exit $LASTEXITCODE)" }
+
+      - name: Verify distribution contents
+        run: |
+          $dir = 'export/windows'
+          $required = @(
+            'TagGame.exe',
+            'EOSSDK-Win64-Shipping.dll',
+            'libeosg.windows.template_release.x86_64.dll',
+            'xaudio2_9redist.dll',
+            'cloudflared.exe',
+            'msvcp140.dll',
+            'vcruntime140.dll',
+            'vcruntime140_1.dll',
+            '.itch.toml',
+            'THIRD_PARTY_LICENSES.txt'
+          )
+          # .itch.toml はドット始まりなのでワイルドカードに頼らず個別に確認する
+          $missing = $required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $dir $_)) }
+          Get-ChildItem -LiteralPath $dir -File -Force | Format-Table Name, Length
+          if ($missing) { throw "配布物に無いファイル: $($missing -join ', ')" }
+
+      # 書き出した exe が起動できるかの確認。
+      # Godot 4.7 の headless は終了コードが常に -1 になる（CLAUDE.md の方針）ので終了コードは見ず、
+      # 出力に SCRIPT ERROR / EOSG SDK not detected が無いことで判定する。
+      # EOS のログイン成否はネットワーク依存なので判定に使わない。
+      # ランナーには VC++ ランタイムが元から入っているため、app-local 配置で読めるかの確認には
+      # ならない（それはクリーンな PC での手動確認）
+      - name: Smoke test exe
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'smoke.out.txt'
+          $err = Join-Path $env:RUNNER_TEMP 'smoke.err.txt'
+          $proc = Start-Process -FilePath (Resolve-Path 'export/windows/TagGame.exe') `
+            -ArgumentList @('--headless', '--quit-after', '300') `
+            -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          if (-not $proc.WaitForExit(180000)) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            throw '起動確認がタイムアウトした（180秒）'
+          }
+          $files = @($out, $err)
+          $log = Join-Path $env:APPDATA 'Godot\app_userdata\3D Chase Game\logs\godot.log'
+          if (Test-Path $log) { $files += $log }
+          $text = ($files | ForEach-Object { Get-Content $_ -Raw -ErrorAction SilentlyContinue }) -join "`n"
+          ($text -split "`r?`n") | Select-Object -Last 40 | ForEach-Object { Write-Host $_ }
+          if ($text.Contains('SCRIPT ERROR') -or $text.Contains('EOSG SDK not detected')) {
+            throw '起動確認の出力に SCRIPT ERROR または EOSG SDK not detected がある'
+          }
+
+      - name: Push to itch.io
+        if: github.ref_type == 'tag' || inputs.push_to_itch
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCH_TARGET: ${{ vars.ITCH_TARGET }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:BUTLER_API_KEY)) { throw 'secrets.BUTLER_API_KEY が空' }
+          if ([string]::IsNullOrWhiteSpace($env:ITCH_TARGET)) { throw 'vars.ITCH_TARGET が空' }
+          $zip = Join-Path $env:RUNNER_TEMP 'butler.zip'
+          $dir = Join-Path $env:RUNNER_TEMP 'butler'
+          Invoke-WebRequest -Uri 'https://broth.itch.zone/butler/windows-amd64/LATEST/archive/default' -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dir -Force
+          $butler = Join-Path $dir 'butler.exe'
+          # "$env:ITCH_TARGET:windows" だと変数名の解釈が壊れるので波括弧で囲む
+          & $butler push export/windows "${env:ITCH_TARGET}:windows" --userversion '${{ steps.ver.outputs.version }}'
+          if ($LASTEXITCODE -ne 0) { throw 'butler push に失敗した' }
+          & $butler status "${env:ITCH_TARGET}:windows"
+
+      - name: Remove eos_credentials.cfg
+        if: always()
+        run: Remove-Item -LiteralPath eos_credentials.cfg -Force -ErrorAction SilentlyContinue

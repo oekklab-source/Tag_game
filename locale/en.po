@@ -564,6 +564,9 @@ msgstr "Couldn't connect to the new host"
 msgid "ホストの引き継ぎがタイムアウトしました"
 msgstr "Host handover timed out"
 
+msgid "ほかのプレイヤーの再接続を待っています…"
+msgstr "Waiting for the other players to reconnect…"
+
 msgid "ゲームのバージョンが違います（ホスト v%d / あなた v%d）。\nブラウザなら再読み込み（Ctrl+Shift+R）、PC なら最新版で起動しなおしてください。"
 msgstr "Game versions don't match (host v%d / you v%d).\nIn a browser, reload the page (Ctrl+Shift+R). On PC, restart with the latest version."
 

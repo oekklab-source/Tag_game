@@ -11,10 +11,10 @@ config_version=5
 [application]
 
 config/name="3D Chase Game"
+config/version="0.1.0"
 run/main_scene="res://scenes/title.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
-config/version="0.1.0"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="TagGame"
 

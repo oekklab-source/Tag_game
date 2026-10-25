@@ -1,6 +1,7 @@
 # オーナー作業一覧（人手でしかできない作業）
 
-最終更新: 2026-10-14（進捗の管理を Jira KAN へ移し、各項目に KAN キーを付記）
+最終更新: 2026-10-25（2026-10-14 に進捗の管理を Jira KAN へ移し、各項目に KAN キーを付記。
+2026-10-25 に main 側の Windows 版 CI リリース対応（A-4・A-5 の更新、A-6 の追加）を統合）
 
 > **進捗（済み・未了）の正は Jira KAN**（<https://oekklab.atlassian.net/jira/software/projects/KAN/boards/1>）。
 > この文書は**手順書**として残す。状態をここへ新しく書き足さないこと（二重管理で食い違うため）。
@@ -28,9 +29,10 @@ Steam で出すつもりがあるなら、itch.io の作業と並行して早め
 | 3 | D-2 Steamworks 登録と $100 | 数営業日＋30日待ち | Steam リリース全体 |
 | 4 | A-3 タイトルと画像 | 並行可 | itch.io・Steam のストアページ |
 | 5 | A-2 Stripe の本番切替 | 半日 | 実際の売上 |
-| 6 | A-4 クリーンな PC での起動確認 | 1時間 | itch.io 公開 |
-| 7 | A-5 itch.io へアップロード | 1時間 | — |
-| 8 | B-1 レートのサーバー権威化 | 半日（Claude と一緒に） | — |
+| 6 | A-6 CI リリースの初回設定 | 30分 | A-5（タグでのアップロード） |
+| 7 | A-5 itch.io へアップロード（Draft） | 1時間 | A-4 |
+| 8 | A-4 クリーンな PC での起動確認 | 1時間 | itch.io 公開（Draft → Public） |
+| 9 | B-1 レートのサーバー権威化 | 半日（Claude と一緒に） | — |
 | 随時 | C 実機確認・E 任意の調査 | — | — |
 
 ---
@@ -38,7 +40,10 @@ Steam で出すつもりがあるなら、itch.io の作業と並行して早め
 ## A. itch.io 先行リリースに必要なもの
 
 > Phase 5（itch.io 配信準備）は完了しているが、**「Phase 5 完了 = itch.io で公開できる」ではない**。
-> 下の A-1〜A-5 が残っている。
+> 下の A-1〜A-6 が残っている。
+>
+> アップロード（A-5）と公開は別の操作。itch.io のページを **Draft** にしておけば、CI がビルドを
+> 上げても管理者にしか見えない。**Public への切替は A-1・A-2・A-4 が済んでから**行う。
 
 ### A-1. 事業者情報の確定と法務文書の穴埋め（KAN-14 / KAN-17 / KAN-18）
 
@@ -92,23 +97,53 @@ Steam で出すつもりがあるなら、itch.io の作業と並行して早め
 ### A-4. クリーンな Windows PC での起動確認と、コード署名の判断（KAN-68 / KAN-37）
 
 - **なぜ**: 開発機には Godot や各種ランタイムが入っているので、配布物だけで動くかは別の PC でしか分からない。
+  特に次の3つは**開発機では必ず通ってしまう**（`cloudflared` を winget で入れてある／PowerShell の
+  実行ポリシーを緩めてある／VC++ ランタイムが入っている）ので、ここでしか確かめられない。
+- **前提**: A-5（Draft のページに CI のビルドが上がっている）。
 - **手順**:
-  1. `pwsh tools/export_windows.ps1` でビルドする（手順と注意は [README.md](../README.md) の
-     「Windows 版のビルドと itch.io への配布」節。素の `godot` コマンドで書き出さないこと）。
-  2. `export/windows/` の4ファイルを、Godot を入れていない Windows PC にコピーして `TagGame.exe` を起動する。
-  3. 確認: タイトル画面が出る／SmartScreen の警告がどう出るか／ホストしてトンネルの招待リンクが出る／
-     ショップが開く／終了後に `cloudflared` がタスクマネージャーに残らない。
+  1. Godot も `cloudflared` も入れていない Windows PC で、itch.io の Draft ページからダウンロードして
+     `TagGame.exe` を起動する（手元のビルドで試すなら `pwsh tools/export_windows.ps1` の出力
+     `export/windows/` を**フォルダごと**コピーする。exe だけでは動かない。配布物の一覧は
+     [README.md](../README.md) の「Windows 版のビルドと itch.io への配布」節）。
+  2. 確認:
+     - タイトル画面が出る。SmartScreen と Windows セキュリティ（Defender）の警告がどう出るか。
+     - **EOS につながる**: 「部屋をつくる」でオレンジの注記
+       （「EOSに接続されていないため…」）が**出ない**。出たら VC++ ランタイムの同梱が効いていない。
+     - **トンネルが張れる**: ホストして、ロビーパネルの招待リンクが `?s=xxxx.trycloudflare.com` に変わる
+       （数字の IP のままなら `cloudflared` の同梱か実行ポリシーの回避が効いていない）。
+       初回のホストで出る Windows ファイアウォールの確認は、拒否してもトンネル経由の参加には影響しない。
+     - 別の回線（スマホのテザリング等）のブラウザから招待リンクで参加でき、1試合遊べる。
+     - ショップが開く／終了後に `cloudflared` がタスクマネージャーに残らない。
 - **コード署名（Phase 3 L-07）**: 署名しないと、初回起動時に SmartScreen の「WindowsによってPCが保護されました」が出る。
   証明書は有料（毎年の更新あり）なので、上の手順3で警告の出方を見てから、取るかどうかを決める。コード作業は無い。
 - **完了条件**: 別の PC で1試合遊べた。署名の要否を決めた。
 
 ### A-5. itch.io のプロジェクト作成とアップロード（KAN-64 / KAN-65 / KAN-74 / KAN-75）
 
-- **前提**: A-1〜A-4。
-- **手順**: [README.md](../README.md) の「Windows 版のビルドと itch.io への配布」節（butler のインストール・`butler login`・`butler push`・版数の決め方）。
-  ストアページの文面は [itchio_page_ja.md](concept/store/itchio_page_ja.md) にある。
+- **前提**: A-6（アップロードまで）。**Public への切替は A-1・A-2・A-4 の後**。
+- **手順**:
+  1. `project.godot` の `config/version` を上げて main へ入れ、同じ版数のタグを push する
+     （`git tag v0.1.0 && git push origin v0.1.0`）。
+     [windows-release.yml](../.github/workflows/windows-release.yml) がビルドして `butler push` まで行う。
+     Actions の画面で environment `release` の承認を求められるので承認する。
+     手元から上げる手順（`butler login`・`butler push`）と版数の決め方は [README.md](../README.md) の
+     「Windows 版のビルドと itch.io への配布」節。
+  2. ストアページの文面（[itchio_page_ja.md](concept/store/itchio_page_ja.md)）を入れる。
+  3. A-1・A-2・A-4 が済んだら、ページの公開設定を Draft から Public に切り替える。
+     **A-2 を飛ばして公開すると、Stripe がテストモードのままなので、テストカード番号で誰でもジェムを取得できる。**
 - **完了条件**: 自分のプロジェクトページからダウンロードして起動できる。
 - **終わったら**: itch.io のプロジェクト URL を伝える（特商法の表記に入れる欄がある）。
+
+### A-6. CI リリースの初回設定（GitHub と itch.io）
+
+- **なぜ**: Windows 版は `v*` タグの push で自動的にビルドされ itch.io へ上がるようにしてあるが、
+  鍵の登録はリポジトリの管理者にしかできない。
+- **手順**: [README.md](../README.md) の「CI でのリリース」→「初回の設定」（itch.io のプロジェクトを Draft で作成 →
+  API キー発行 → GitHub の environment `release` を作成して保護 → `EOS_CREDENTIALS_CFG_B64` /
+  `BUTLER_API_KEY` / `ITCH_TARGET` を登録）。
+- **注意**: `BUTLER_API_KEY` は itch.io のアカウント全体に効く。必ず environment の secret として登録し、
+  Required reviewers を付けること（リポジトリの secret にすると、書き込み権限のある人なら誰でも取り出せる）。
+- **完了条件**: Actions の「Windows release」を手動実行（`push_to_itch` はオフ）して緑になる。
 
 ---
 
