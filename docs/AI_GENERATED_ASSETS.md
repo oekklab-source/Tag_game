@@ -45,3 +45,8 @@ Steam の Content Survey（`docs/STEAM_CONTENT_SURVEY_DRAFT.md` B 節）に答�
 - **Text & Dialog / Code**: 大半が Claude Code による
 - `reference.png` と `basketball_turnaround.png` も生成AI製と確認できた（2026-10-19 オーナー申告）ので、Graphics の事実はこれで揃った。
   残る判断は、生成した設定画を見て作った 3D モデルや、コードとして書いた `icon.svg` を「Graphics に生成AIを使った」と申告するか
+
+**決定（2026-10-25 オーナー、KAN-47）**: itch.io の Generative AI disclosure は **Yes**、区分は Graphics / Sound /
+Text & Dialog / Code の4つすべて。設定画から作った 3D モデルと `icon.svg` も Graphics に含める（過少申告を避けるため）。
+ストアページのクレジット欄に、どこに使ったかを一文で書いた（docs/concept/store/itchio_page_ja.md 第9章）。
+Steam 版を出すときも同じ範囲で申告する。

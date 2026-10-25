@@ -87,13 +87,16 @@ Windows 10 / 11(64bit)。**キーボード・マウスが必須**で、ゲーム
 
 ## 9. クレジット
 
-> TODO(KAN-47 / 5.4): 生成AIの利用に関する一文を、5.4 で決まる itch.io の AI 開示の回答と
-> 同じ内容でここに入れる(棚卸しは KAN-46 / 5.3)。ライセンス表記の扱いは KAN-44 / 5.1・KAN-45 / 5.2。
+> 生成AIの一文は、itch.io の AI 開示の回答(KAN-47。2026-10-25 に Yes・Graphics / Sound /
+> Text & Dialog / Code の4区分すべてと決定)と同じ範囲にしてある。根拠は
+> [docs/AI_GENERATED_ASSETS.md](../../AI_GENERATED_ASSETS.md)。ライセンス表記の扱いは KAN-44 / 5.1・KAN-45 / 5.2。
 
 - Godot Engine で制作
 - 使っている第三者のソフトウェア・フォントのライセンスは、ゲーム内の「クレジット・ライセンス」画面
   (タイトル画面の左下)と、ダウンロードしたフォルダの `THIRD_PARTY_LICENSES.txt` /
   `GODOT_LICENSES.txt` で読めます(cloudflared、Epic Online Services、M PLUS Rounded 1c ほか)
+- 本ゲームの制作には生成AIを使っています。タイトル BGM、キャラクター・衣装の設定画(3Dモデルの元にしたもの)、
+  プログラムコードの大部分、ゲーム内の文章とこのページの文面が該当します。
 - 本ゲームには Epic Games, Inc. が提供する Epic Online Services (EOS) が組み込まれており、
   オンライン対戦のマッチメイキング・ランキング・フレンド機能等に利用されています。
   Epic Online Services の利用に関連して、Epic Games, Inc. はいかなる明示・黙示の保証も行わず、
