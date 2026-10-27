@@ -1,4 +1,4 @@
-# 3D Chase Game（Godot 4 / WebSocket オンライン鬼ごっこ）
+# Reverse Tag! ／ 逆転鬼ごっこ（Godot 4 / WebSocket オンライン鬼ごっこ）
 
 PC がホスト（WebSocket サーバ）、Web ブラウザがクライアントとして参加する
 3D 三人称視点のオンライン・チェイスゲーム。マリオ風のカラフルでポップな
@@ -1132,7 +1132,7 @@ python -m http.server 8123 --directory export/web
 pwsh tools/export_windows.ps1
 ```
 
-中身は `godot --headless --export-release "Windows Desktop" export/windows/TagGame.exe` だが、
+中身は `godot --headless --export-release "Windows Desktop" export/windows/ReverseTag.exe` だが、
 **素の godot コマンドを直接叩かないこと**。
 [addons/tag_game_export_guard/](addons/tag_game_export_guard/export_guard.gd) が
 `eos_credentials.cfg` の不備を検出すると、`[TagGameExportGuard] BLOCKED` を出力する。
@@ -1159,7 +1159,7 @@ Autoload を読めない exe が「成功」として出力される（2026-10-0
 
 `export/` は `.gitignore` 対象なので追加設定は不要。出力される配布物一式（実測済み）:
 
-- `TagGame.exe`（`binary_format/embed_pck=true` のため `.pck` は分離されない）
+- `ReverseTag.exe`（`binary_format/embed_pck=true` のため `.pck` は分離されない）
 - `EOSSDK-Win64-Shipping.dll`
 - `libeosg.windows.template_release.x86_64.dll`
 - `xaudio2_9redist.dll`
@@ -1176,7 +1176,7 @@ Autoload を読めない exe が「成功」として出力される（2026-10-0
 - `msvcp140.dll` / `vcruntime140.dll` / `vcruntime140_1.dll` — `EOSSDK-Win64-Shipping.dll` が
   依存する VC++ ランタイム。Visual C++ 再頒布可能パッケージが入っていない PC では、これが無いと
   GDExtension を読み込めず、**クラッシュせずに黙って EOS オフラインモードになる**
-- `.itch.toml` — itch アプリに起動対象（`TagGame.exe`）を教える。exe が2つ並ぶので、
+- `.itch.toml` — itch アプリに起動対象（`ReverseTag.exe`）を教える。exe が2つ並ぶので、
   書かないと `cloudflared.exe` を起動対象に選ばれうる（元は [tools/dist/](tools/dist/)）
 - `THIRD_PARTY_LICENSES.txt` — Godot・cloudflared・EOSG・フォント等のライセンス表記
   （元は [tools/dist/](tools/dist/)。同梱物を足したらここにも足すこと）
@@ -1187,7 +1187,7 @@ Autoload を読めない exe が「成功」として出力される（2026-10-0
 配布先ではスクリプトが1行も走らず、トンネルは `timeout` で失敗する
 （開発機は RemoteSigned 等に変えてあるので、外しても気付けない）。
 
-いずれも `TagGame.exe` と同じフォルダに並ぶ（サブフォルダは作られない）。
+いずれも `ReverseTag.exe` と同じフォルダに並ぶ（サブフォルダは作られない）。
 `eos_credentials.cfg` と `tools/serve.ps1` はこのフォルダには出てこない
 （`export_presets.cfg` の `include_filter` で `.pck` 内の `res://` パスへ同梱され、
 実行時に読まれる設計。特に `tools/serve.ps1` は起動のたびに

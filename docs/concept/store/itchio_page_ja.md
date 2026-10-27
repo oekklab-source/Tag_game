@@ -100,9 +100,8 @@ Windows 10 / 11(64bit)。**キーボード・マウスが必須**で、ゲーム
 
 ## 掲載時の注意(プレースホルダ)
 
-- タイトルは`project.godot`上の暫定名称「3D Chase Game」のまま執筆している。
-  正式名称確定後、本文中の表記を一斉に差し替えること
-  (`tag-game-ux-fix-roadmap.md`のPhase 5 I5-6参照)。
+- タイトルは「Reverse Tag!」(日本語表記「逆転鬼ごっこ」)。2026-10-25 に KAN-50 で確定した。
+  本文はタイトル名を書かずに成立させてあるので、ページのタイトル欄にだけ入れればよい。
 - 投げ銭(Pay What You Want)の最低支払額はitch.io側のダッシュボードで別途設定する
   (このページ本文には金額を書いていない)。
 - スクリーンショットは[docs/concept/store/screenshots/](screenshots/)の5枚

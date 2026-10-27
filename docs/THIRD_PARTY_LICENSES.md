@@ -12,8 +12,8 @@ Godot 本体の同梱物（§2）は手で書かず、`Engine.get_copyright_info
 
 | 名前 | 版 | ライセンス | 表示義務 | 配布物での場所 | 入手元・本文 |
 |---|---|---|---|---|---|
-| Godot Engine | 4.7.2-stable (official, `ed1daf0b`) | MIT (Expat) | 著作権表示とライセンス本文を、配布物の中か付属文書に入れる | `TagGame.exe`（エンジン本体）／ Web 版の `index.wasm` `index.js` | https://godotengine.org/license/ |
-| Godot に同梱のサードパーティ（FreeType・ENet・Mbed TLS・HarfBuzz・ICU・libpng・zlib・Ogg Vorbis ほか約100件） | Godot 4.7.2 同梱版 | 各種（§2） | 項目ごとに異なる（§2 の表と §3） | `TagGame.exe` ／ `index.wasm` | `Engine.get_copyright_info()` / `get_license_info()`（§2） |
+| Godot Engine | 4.7.2-stable (official, `ed1daf0b`) | MIT (Expat) | 著作権表示とライセンス本文を、配布物の中か付属文書に入れる | `ReverseTag.exe`（エンジン本体）／ Web 版の `index.wasm` `index.js` | https://godotengine.org/license/ |
+| Godot に同梱のサードパーティ（FreeType・ENet・Mbed TLS・HarfBuzz・ICU・libpng・zlib・Ogg Vorbis ほか約100件） | Godot 4.7.2 同梱版 | 各種（§2） | 項目ごとに異なる（§2 の表と §3） | `ReverseTag.exe` ／ `index.wasm` | `Engine.get_copyright_info()` / `get_license_info()`（§2） |
 | Epic Online Services Godot（EOSG） | 2.3.0（`addons/epic-online-services-godot/plugin.cfg`） | MIT | 著作権表示（Copyright (c) 2022 Delano Lourenco）とライセンス本文 | `libeosg.windows.template_release.x86_64.dll`、pck 内の `addons/epic-online-services-godot/*.gdc` | `addons/epic-online-services-godot/LICENSE.md` |
 | godot-cpp（GDExtension の C++ バインディング） | EOSG 2.3.0 のビルドに使われた版（未特定） | MIT (Expat) | 著作権表示（Godot Engine contributors）とライセンス本文。Godot 本体と同じ文面なので、Godot の表示に含めれば足りる | `libeosg.windows.template_release.x86_64.dll` に静的リンク（C++ の GDExtension はこれ無しにはビルドできない） | https://github.com/godotengine/godot-cpp |
 | EOS SDK（Epic Online Services SDK） | 1.19.1.2（DLL 内の版文字列 `1.19.1.2-53289219`） | Epic Developer Agreements（独自。OSS ではない） | OSS のようなライセンス本文は無い。分かっている義務は、Epic を免責する条項をエンドユーザー向け EULA に入れる義務（第3.1条(c)、`docs/EOS_LEGAL_REVIEW.md` 第2章）。ストアのクレジットにも同じ免責文を載せている（`docs/concept/store/itchio_page_ja.md` §9） | `EOSSDK-Win64-Shipping.dll`（Windows 版のみ。Web 版には入らない） | Epic Developer Portal の契約。文言は `docs/EULA_DRAFT.md` §4 |

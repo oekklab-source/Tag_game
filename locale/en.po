@@ -1,4 +1,4 @@
-# 3D Chase Game - 英語訳 (L-09)
+# Reverse Tag! - 英語訳 (L-09)
 #
 # msgid は日本語の原文そのもの。日本語ロケールではこのファイルは使われず、tr() は原文を返す。
 # ja 以外のロケールは project.godot の locale/fallback="en" によりこのファイルで表示される。
@@ -19,7 +19,7 @@
 #       訳文で新しく使う文字がフォントにあるかは tests/test_i18n の [6] が検査する。
 msgid ""
 msgstr ""
-"Project-Id-Version: 3D Chase Game\n"
+"Project-Id-Version: Reverse Tag!\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -69,6 +69,10 @@ msgid "保存してもどる"
 msgstr "Save & Back"
 
 # --- タイトル画面 (scenes/title) ---
+# 正式タイトル(KAN-50 で決定)。日本語名と英語名は別物なので、直訳ではなく英語名を当てる
+msgid "逆転鬼ごっこ"
+msgstr "Reverse Tag!"
+
 msgid "- オンライン鬼ごっこバトル -"
 msgstr "- Online Tag Battle -"
 

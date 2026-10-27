@@ -33,7 +33,7 @@
       - msvcp140.dll / vcruntime140.dll / vcruntime140_1.dll: EOSSDK-Win64-Shipping.dll の依存。
         VC++ 再頒布パッケージが入っていない PC では GDExtension が読めず、
         黙って EOS オフラインモードになる。exe の隣へ置いて app-local で解決させる
-      - .itch.toml: フォルダに exe が2つ（TagGame.exe と cloudflared.exe）並ぶので、
+      - .itch.toml: フォルダに exe が2つ（ReverseTag.exe と cloudflared.exe）並ぶので、
         itch アプリが cloudflared.exe を起動対象に選ばないよう起動対象を明示する
       - THIRD_PARTY_LICENSES.txt: 第三者ソフトウェアを同梱して一般公開するのに必要なライセンス表記
     どれか1つでも元ファイルが無ければ、上と同じ理由で exe を削除して exit 1 を返す
@@ -45,7 +45,7 @@
     Godot の終了コードそのものは判定に使わない（run_headless_test.ps1 と同じ方針）。
 
 .PARAMETER OutputPath
-    書き出し先（既定: export/windows/TagGame.exe。README の手順と同じ）。
+    書き出し先（既定: export/windows/ReverseTag.exe。README の手順と同じ）。
 
 .PARAMETER GodotExe
     Godotエディタ実行ファイルのフルパス。既定値は $DefaultGodotExe。
@@ -62,7 +62,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$OutputPath = 'export/windows/TagGame.exe',
+    [string]$OutputPath = 'export/windows/ReverseTag.exe',
     [string]$GodotExe,
     [int]$TimeoutSec = 600,
     [string]$CloudflaredExe

@@ -9,7 +9,7 @@
 > が示す区分(一般コンテンツ/Mature Content/生成AIコンテンツ)に沿って整理した回答案であり、
 > 実際のフォーム上の設問文言とは一致しない可能性があります。
 
-- ゲーム名: **3D Chase Game**(`project.godot`上の暫定名称。正式名称確定後に差し替え)
+- ゲーム名: **Reverse Tag!**(日本語表記「逆転鬼ごっこ」。2026-10-25 に KAN-50 で確定)
 - 最終改定日: `[YYYY-MM-DD]`
 - 対象: UXロードマップ Phase 4 P1-4(ロードマップ本体はリポジトリ外の作業用プランファイルに
   あるため、ここではリンクを張らない)
@@ -74,7 +74,7 @@
 
 - [ ] 光過敏性(フラッシュ・強い明滅)の実機確認(上記A表、未検証のまま残っている)
 - [ ] 事業者名([docs/TOKUSHOHO_DRAFT.md](TOKUSHOHO_DRAFT.md)・[docs/EULA_DRAFT.md](EULA_DRAFT.md)と一致させること)
-- [ ] ゲームの正式名称(現状「3D Chase Game」は`project.godot`上の暫定名)
+- [x] ゲームの正式名称 → 「Reverse Tag!」(日本語表記「逆転鬼ごっこ」)。2026-10-25 に KAN-50 で確定
 - [ ] 提出直前に、実際にSteamworksパートナーポータルの調査票フォームを開き、設問文言・区分が
       本ドラフトの想定と一致しているか再確認すること(Valveがフォーム内容を変更する可能性がある)
 - [ ] app_icon・店員さん等の画像素材が生成AIツールで制作・組み込まれた場合、B節と[docs/AI_GENERATED_ASSETS.md](AI_GENERATED_ASSETS.md)への追記

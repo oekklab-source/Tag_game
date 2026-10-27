@@ -153,7 +153,7 @@ jobs:
         run: |
           $dir = 'export/windows'
           $required = @(
-            'TagGame.exe',
+            'ReverseTag.exe',
             'EOSSDK-Win64-Shipping.dll',
             'libeosg.windows.template_release.x86_64.dll',
             'xaudio2_9redist.dll',
@@ -179,7 +179,7 @@ jobs:
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'smoke.out.txt'
           $err = Join-Path $env:RUNNER_TEMP 'smoke.err.txt'
-          $proc = Start-Process -FilePath (Resolve-Path 'export/windows/TagGame.exe') `
+          $proc = Start-Process -FilePath (Resolve-Path 'export/windows/ReverseTag.exe') `
             -ArgumentList @('--headless', '--quit-after', '300') `
             -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
           if (-not $proc.WaitForExit(180000)) {
@@ -187,7 +187,7 @@ jobs:
             throw '起動確認がタイムアウトした（180秒）'
           }
           $files = @($out, $err)
-          $log = Join-Path $env:APPDATA 'Godot\app_userdata\3D Chase Game\logs\godot.log'
+          $log = Join-Path $env:APPDATA 'TagGame\logs\godot.log'
           if (Test-Path $log) { $files += $log }
           $text = ($files | ForEach-Object { Get-Content $_ -Raw -ErrorAction SilentlyContinue }) -join "`n"
           ($text -split "`r?`n") | Select-Object -Last 40 | ForEach-Object { Write-Host $_ }
