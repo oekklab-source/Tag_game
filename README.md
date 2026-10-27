@@ -1074,6 +1074,12 @@ python -m http.server 8123 --directory export/web
    手動で `pwsh tools/serve.ps1` を実行する必要は無い。Windows デスクトップ版限定で、
    cloudflared が無い・途中で落ちた等で張れなかったときは、ロビーパネルの招待リンクの下に
    注記が出るだけでゲーム側は止まらない（LAN 内の相手はそのまま参加できる）。
+   注記は理由（`not_found` / `launch_failed` / `exited` / `timeout`）ごとに、プレイヤーが次に
+   何をすればよいかまで書く（[lobby_panel.gd](scenes/hud/lobby_panel.gd) の `tunnel_failure_note()`、KAN-40）。
+   配布版は exe の隣に `cloudflared.exe` を同梱しているので、`not_found` は「フォルダごと展開し直す／
+   ウイルス対策ソフトの隔離を確かめる」、エディタ実行では「winget で入れる」と案内を分けている。
+   ゲーム終了時の後始末は、同梱版でも PATH 版でも同じ PID ファイル経路で cloudflared を止める
+   （どこから起動したかに依らない）。
    PowerShell は `-ExecutionPolicy Bypass`（そのプロセスだけに効く）で起動する。素の Windows 11 の
    Windows PowerShell 5.1 は既定の実行ポリシーが Restricted で、指定しないと `serve.ps1` が
    実行されないため。それでも起動できなかった（グループポリシーで禁止されている等）ときは、
