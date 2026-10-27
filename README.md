@@ -1591,6 +1591,8 @@ tests/uishot.tscn             UI（タイトル/ロビー/対戦中/リザルト
 tests/quit_menu.tscn          Esc の終了確認メニューの開閉・既定フォーカス・キーリピートの検証
 tests/phone_perf.tscn         スマホ向け軽量化の判定・適用と、PC では何も変わらないことの検証
 tests/test_i18n.tscn          翻訳の整合性（未登録 msgid・訳し忘れ・書式指定・フォントの字形・言語設定）の検証
+tests/test_licenses.tscn      ライセンス表記（GODOT_LICENSES.txt と Godot の出力のずれ・同梱物の抜け・クレジット画面）の検証
+tools/run_all_tests.ps1       tests/*.tscn をまとめて流して集計する（headless 系と2プロセス系。分類は CLAUDE.md）
 tests/host_conflict.tscn      ポートが埋まっているときホストを弾いて理由を出すかの検証
 tests/costume_model.tscn      ④コスチューム・⑤帽子のデータモデル（所持・移行・整合性）を検証
 tests/shop_fitting.tscn       ショップの試着・まとめ買い・着替え・元に戻す・プレゼント可否の検証

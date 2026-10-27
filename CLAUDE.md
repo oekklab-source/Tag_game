@@ -41,6 +41,27 @@ pwsh tools/run_headless_test.ps1 res://tests/<name>.tscn
 偽PASSになっていた。テストは自分で `get_tree().quit()` して終わるか、`-TimeoutSec`（既定90秒）で
 強制終了されて exit 124 になる。フレーム数で止めたい一時シーンだけ `-QuitAfter <N>` を使う。
 
+**全部まとめて流すときは `tools/run_all_tests.ps1`**（KAN-66）。headless 系と2プロセス系を
+1本ずつ上のラッパーと同じ規則で流し、結果を集計する（全部通れば exit 0）。`-List` で分類だけを
+表示し、`-Filter 'test_phase*'` で絞れる。ゲームでホスト中の PC では、ポート 9999 がぶつかるので
+`-SkipTwoProcess` を付ける。全件で20分ほどかかる（2026-10-27 の実測で約18分・58本 PASS）。
+
+```powershell
+pwsh tools/run_all_tests.ps1
+```
+
+`tests/*.tscn` の分類（分類はスクリプト冒頭の配列が正）:
+
+| 分類 | テスト | 流し方 |
+|---|---|---|
+| headless（1プロセス） | 下の3つ以外の全部（54本） | `run_all_tests.ps1` が流す |
+| 2プロセス | `net_roles` / `net_anim` / `net_live` / `emote` | `run_all_tests.ps1` が `-- host` と `-- client 127.0.0.1` の組で同時に起動する |
+| ウィンドウ必須（PNG 書き出し） | `uishot` / `screenshot` / `shot_stamina` / `*_preview` | 流さない。エディタか、ウィンドウ有りで手動実行する |
+| 実 EOS | `test_eos_live_smoke` / `test_eos_live_lobby_p2p` | 流さない。実クレデンシャルが要り、実バックエンドに副作用があるので、ヘッダの手順で手動実行する |
+
+新しいテストを足したら、headless で流せないものだけ `run_all_tests.ps1` の配列に書き足す
+（書かなければ headless として流れる）。
+
 素の `godot` コマンドを直接使う場合は、以下の罠に注意すること:
 
 ```powershell
