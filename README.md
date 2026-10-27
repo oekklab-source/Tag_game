@@ -1229,8 +1229,8 @@ butler status <ユーザー名>/<プロジェクト>:windows
 
 | 版数 | 実体 | 上げるタイミング |
 |---|---|---|
-| `PROTOCOL_VERSION` | [autoload/game_manager.gd](autoload/game_manager.gd) の定数（現在13）。ロビー画面の `v13` 表示 | RPC の名前・引数・ノードパスを変えたときだけ（`### 通信の版数` 参照） |
-| `application/config/version` | `project.godot`（現在 `0.1.0`）。exe のファイルプロパティ、`butler --userversion` | itch.io へ新しいビルドを上げるたびに（見た目だけの修正でも上げる） |
+| `PROTOCOL_VERSION` | [autoload/game_manager.gd](autoload/game_manager.gd) の定数（現在13）。ロビー画面の `v13` 表示、タイトル画面右下の `（通信 v13）` | RPC の名前・引数・ノードパスを変えたときだけ（`### 通信の版数` 参照） |
+| `application/config/version` | `project.godot`（現在 `0.1.0`）。タイトル画面右下の `Ver 0.1.0`、exe のファイルプロパティ、`butler --userversion` | itch.io へ新しいビルドを上げるたびに（見た目だけの修正でも上げる） |
 
 見た目の修正だけをリリースしても `PROTOCOL_VERSION` は変える必要が無く、
 逆に RPC を変えていないのにストア更新のたびに `PROTOCOL_VERSION` を上げる必要も無い。
