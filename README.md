@@ -1178,8 +1178,12 @@ Autoload を読めない exe が「成功」として出力される（2026-10-0
   GDExtension を読み込めず、**クラッシュせずに黙って EOS オフラインモードになる**
 - `.itch.toml` — itch アプリに起動対象（`ReverseTag.exe`）を教える。exe が2つ並ぶので、
   書かないと `cloudflared.exe` を起動対象に選ばれうる（元は [tools/dist/](tools/dist/)）
-- `THIRD_PARTY_LICENSES.txt` — Godot・cloudflared・EOSG・フォント等のライセンス表記
-  （元は [tools/dist/](tools/dist/)。同梱物を足したらここにも足すこと）
+- `THIRD_PARTY_LICENSES.txt` — Godot・cloudflared・EOSG・EOS SDK・XAudio2・VC++ ランタイム・フォントの
+  ライセンス表記（元は [licenses/](licenses/)。ゲーム内のクレジット画面も同じファイルを `.pck` から読む。
+  同梱物を足したらここにも、`tests/test_licenses.gd` の `REQUIRED_ENTRIES` にも足すこと）
+- `GODOT_LICENSES.txt` — Godot 本体と同梱ライブラリの全件とライセンス本文（元は [licenses/](licenses/)。
+  `Engine.get_copyright_info()` の出力そのもので、Godot を上げてずれたら `tests/test_licenses.tscn` が
+  FAIL する。作り直しは `godot --headless --path . res://tests/test_licenses.tscn -- --write`）
 
 トンネルの起動には、もう1つ配布先でだけ効く条件がある。`_launch_tunnel()` は
 `powershell -ExecutionPolicy Bypass -File ...` で `serve.ps1` を起動する。Windows の既定の
@@ -1483,8 +1487,9 @@ addons/tag_game_export_guard/ Windows 書き出し時に eos_credentials.cfg の
                               エクスポートプラグイン（止めるのは tools/export_windows.ps1）
 tools/export_windows.ps1      Windows 版の書き出し。認証情報の不備・配布物への開発用ファイル混入を
                               検出したら exe を消して失敗させる。
-                              cloudflared・VC++ ランタイム・tools/dist/ の中身を配布フォルダへ同梱する
-tools/dist/                   配布フォルダへそのままコピーするファイル（.itch.toml、第三者ライセンス表記）
+                              cloudflared・VC++ ランタイム・tools/dist/ と licenses/ の中身を配布フォルダへ同梱する
+tools/dist/                   配布フォルダへそのままコピーするファイル（.itch.toml）
+licenses/                     第三者ライセンス表記。配布フォルダへ同梱し、クレジット画面も読む（KAN-45）
 .github/workflows/windows-release.yml
                               v* タグの push で Windows 版をビルドし、butler で itch.io へ上げる
 autoload/music_manager.gd     タイトル/ロビー系画面のBGMを保持するAutoload。change_scene_to_file()を
@@ -1526,6 +1531,7 @@ ui/pop_theme.tres             全体に適用される POP テーマ
 locale/en.po                  英語の翻訳（msgid は日本語の原文。書き方は「表示言語」節）
 autoload/settings_manager.gd  マウス感度・音量・タッチ操作・表示言語・文字サイズの設定（user://settings.json）
 scenes/settings_screen.tscn(.gd) 設定画面
+scenes/credits_screen.tscn(.gd) クレジット・ライセンス画面（タイトル画面の左下から開く）
 tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
 tools/blender/character_common.py 着せ替えで共通の骨格・リグ・アニメ・書き出し。
                               服が増えてもここは触らない

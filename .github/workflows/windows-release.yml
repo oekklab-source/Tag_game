@@ -162,7 +162,8 @@ jobs:
             'vcruntime140.dll',
             'vcruntime140_1.dll',
             '.itch.toml',
-            'THIRD_PARTY_LICENSES.txt'
+            'THIRD_PARTY_LICENSES.txt',
+            'GODOT_LICENSES.txt'
           )
           # .itch.toml はドット始まりなのでワイルドカードに頼らず個別に確認する
           $missing = $required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $dir $_)) }

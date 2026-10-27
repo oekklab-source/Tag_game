@@ -45,11 +45,15 @@ extends Control
 
 ## KAN-32: 右下の版数表示。問い合わせを受けたときにどのビルドか特定するため
 @onready var version_label: Label = $VersionLabel
+## KAN-45: 左下のクレジット・ライセンス画面へのボタン。メニュー列に足すと
+## 文字サイズ「特大」で縦にあふれるので、版数表示と対になる隅に置く
+@onready var credits_button: Button = $CreditsButton
 
 const COSTUME_SCENE := "res://scenes/costume_screen.tscn"
 const SHOP_SCENE := "res://scenes/shop_screen.tscn"
 const FRIEND_SCENE := "res://scenes/friend_screen.tscn"
 const SETTINGS_SCENE := "res://scenes/settings_screen.tscn"
+const CREDITS_SCENE := "res://scenes/credits_screen.tscn"
 
 ## C-05: ?s= 経由の自動参加直前に挟む名前確認ダイアログの、参加先アドレスの一時退避
 var _pending_join_server := ""
@@ -67,6 +71,7 @@ func _ready() -> void:
 	friend_button.pressed.connect(_on_friend_pressed)
 	ranking_button.pressed.connect(_on_ranking_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
+	credits_button.pressed.connect(_on_credits_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	profile_badge_btn.pressed.connect(_on_profile_pressed)
 	name_confirm_cancel_btn.pressed.connect(_close_name_confirm_dialog)
@@ -332,6 +337,10 @@ func _on_ranking_pressed() -> void:
 ## H-07: 設定画面への遷移
 func _on_settings_pressed() -> void:
 	get_tree().change_scene_to_file(SETTINGS_SCENE)
+
+
+func _on_credits_pressed() -> void:
+	get_tree().change_scene_to_file(CREDITS_SCENE)
 
 
 func _on_quit_pressed() -> void:

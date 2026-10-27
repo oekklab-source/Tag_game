@@ -29,8 +29,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 Godot Engine includes third-party libraries. Notices required by the Godot documentation
-(Complying with licenses) follow. The complete list is available at:
-https://github.com/godotengine/godot/blob/master/COPYRIGHT.txt
+(Complying with licenses) follow. The complete list of components, their copyright holders and
+the full text of every license is in GODOT_LICENSES.txt in this folder
+(also shown in the in-game Credits / Licenses screen).
+Godot Engine に同梱の第三者コンポーネントの全一覧とライセンス本文は、同じフォルダの
+GODOT_LICENSES.txt にあります（ゲーム内の「クレジット・ライセンス」画面でも読めます）。
 
 --- FreeType ---
 
@@ -280,6 +283,9 @@ Source: https://github.com/cloudflare/cloudflared
 ================================================================================
 
 The Epic Online Services SDK is bundled under the Epic Games, Inc. SDK terms of use.
+EOSG is built with godot-cpp (Copyright (c) 2017-present Godot Engine contributors.),
+which is licensed under the same MIT License text as Godot Engine above.
+https://github.com/godotengine/godot-cpp
 
 MIT License
 
@@ -407,3 +413,26 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 msvcp140.dll / vcruntime140.dll / vcruntime140_1.dll are bundled as Microsoft redistributable code (Microsoft Visual C++ Redistributable).
 Microsoft Visual C++ ランタイムは Microsoft の再頒布可能コードとして同梱しています。
+
+================================================================================
+6. Microsoft XAudio 2.9 Redistributable
+================================================================================
+
+xaudio2_9redist.dll is Copyright (c) Microsoft Corporation and is bundled as distributable code
+under the Microsoft Software License Terms for the Microsoft XAudio 2.9 Redistributable.
+It is used by the Epic Online Services SDK for voice features.
+https://aka.ms/XAudio2Redist
+xaudio2_9redist.dll は Microsoft の再頒布可能コード（XAudio 2.9 Redistributable）として同梱しています。
+
+================================================================================
+7. Epic Online Services SDK
+================================================================================
+
+EOSSDK-Win64-Shipping.dll is provided by Epic Games, Inc. under the Epic Games SDK terms.
+This game uses Epic Online Services for matchmaking, rankings and friends.
+Epic Games, Inc. expressly disclaims all representations, warranties, conditions and
+liabilities, express or implied, in connection with Epic Online Services.
+本ゲームには Epic Games, Inc. が提供する Epic Online Services (EOS) が組み込まれており、
+オンライン対戦のマッチメイキング・ランキング・フレンド機能等に利用されています。
+Epic Online Services の利用に関連して、Epic Games, Inc. はいかなる明示・黙示の保証も行わず、
+一切の表明、保証、条件、および責任を負わないものとします。

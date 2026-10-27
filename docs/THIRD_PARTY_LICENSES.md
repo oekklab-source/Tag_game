@@ -2,10 +2,17 @@
 
 配布物（Windows 版 `export/windows/` 一式、Web 版 `export/web/` 一式）に入っている、
 自作でないソフトウェア・フォントの一覧と、それぞれの表示義務。
-2026-10-16 時点の棚卸し（KAN-44）。表示そのもの（クレジット画面・配布フォルダへのライセンス文書の同梱）は
-KAN-45（5.2）で行う。ここはその元データ。
+2026-10-16 時点の棚卸し（KAN-44）。2026-10-27 に KAN-45（5.2）で、PR #10 で増えた同梱物
+（cloudflared・VC++ ランタイム）に合わせて更新した。ここは元データで、表示そのものは次の2か所:
 
-**この一覧を更新するとき**: アドオン・フォント・DLL・素材を足したら、この表に1行足す。
+- 配布フォルダの [licenses/THIRD_PARTY_LICENSES.txt](../licenses/THIRD_PARTY_LICENSES.txt)（手書き）と
+  [licenses/GODOT_LICENSES.txt](../licenses/GODOT_LICENSES.txt)（Godot の API から生成）。
+  `tools/export_windows.ps1` が exe の隣へコピーする
+- ゲーム内のクレジット・ライセンス画面（[scenes/credits_screen.gd](../scenes/credits_screen.gd)。タイトル画面の左下）。
+  上の THIRD_PARTY_LICENSES.txt を pck から読み、Godot の分は実行時に API から作る
+
+**この一覧を更新するとき**: アドオン・フォント・DLL・素材を足したら、この表に1行足し、
+`licenses/THIRD_PARTY_LICENSES.txt` に節を足し、`tests/test_licenses.gd` の `REQUIRED_ENTRIES` にも足す。
 Godot 本体の同梱物（§2）は手で書かず、`Engine.get_copyright_info()` の出力から作り直す（手順は §2）。
 
 ## 1. 一覧（配布物に入るもの）
@@ -17,9 +24,10 @@ Godot 本体の同梱物（§2）は手で書かず、`Engine.get_copyright_info
 | Epic Online Services Godot（EOSG） | 2.3.0（`addons/epic-online-services-godot/plugin.cfg`） | MIT | 著作権表示（Copyright (c) 2022 Delano Lourenco）とライセンス本文 | `libeosg.windows.template_release.x86_64.dll`、pck 内の `addons/epic-online-services-godot/*.gdc` | `addons/epic-online-services-godot/LICENSE.md` |
 | godot-cpp（GDExtension の C++ バインディング） | EOSG 2.3.0 のビルドに使われた版（未特定） | MIT (Expat) | 著作権表示（Godot Engine contributors）とライセンス本文。Godot 本体と同じ文面なので、Godot の表示に含めれば足りる | `libeosg.windows.template_release.x86_64.dll` に静的リンク（C++ の GDExtension はこれ無しにはビルドできない） | https://github.com/godotengine/godot-cpp |
 | EOS SDK（Epic Online Services SDK） | 1.19.1.2（DLL 内の版文字列 `1.19.1.2-53289219`） | Epic Developer Agreements（独自。OSS ではない） | OSS のようなライセンス本文は無い。分かっている義務は、Epic を免責する条項をエンドユーザー向け EULA に入れる義務（第3.1条(c)、`docs/EOS_LEGAL_REVIEW.md` 第2章）。ストアのクレジットにも同じ免責文を載せている（`docs/concept/store/itchio_page_ja.md` §9） | `EOSSDK-Win64-Shipping.dll`（Windows 版のみ。Web 版には入らない） | Epic Developer Portal の契約。文言は `docs/EULA_DRAFT.md` §4 |
-| XAudio2 再頒布版（`xaudio2_9redist.dll`） | 1.0.0.1（Microsoft Corporation） | Microsoft ソフトウェア ライセンス条項（XAudio2 再頒布版、NuGet `Microsoft.XAudio2.Redist`） | **未確認**。Microsoft の再頒布可能コードの条項は一般に「アプリと一緒に配る場合だけ再頒布してよい・改変しない・単体で配らない」といった条件だが、この DLL の条項の本文はリポジトリに無く、まだ読んでいない。KAN-45 で NuGet パッケージ同梱の LICENSE を読んで確定すること | `xaudio2_9redist.dll`（Windows 版のみ。EOS SDK の音声機能の依存として EOSG が同梱している。`eosg.gdextension` の `[dependencies]`） | https://www.nuget.org/packages/Microsoft.XAudio2.Redist |
+| XAudio2 再頒布版（`xaudio2_9redist.dll`） | 1.0.0.1（Microsoft Corporation） | Microsoft Software License Terms – Microsoft XAudio 2.9 Redistributable（NuGet `Microsoft.XAudio2.Redist` 1.2.13 同梱の `LICENSE.txt` を 2026-10-27 に読んだ） | 著作権表示の同梱義務は無い。再頒布の条件は第2条(b): (i) アプリに主要な機能を加えて配る、**(ii) 配布者とエンドユーザーに、この条項と同等以上に Microsoft を保護する条件へ同意させる（＝EULA に条項が要る。KAN-17）**、(iii) アプリの配布・利用に関する請求から Microsoft を免責・補償する。第2条(c): Microsoft の商標を推奨・提携に見える形で使わない | `xaudio2_9redist.dll`（Windows 版のみ。EOS SDK の音声機能の依存として EOSG が同梱している。`eosg.gdextension` の `[dependencies]`） | https://www.nuget.org/packages/Microsoft.XAudio2.Redist |
 | M PLUS Rounded 1c Bold | Google Fonts 版（`ui/fonts/README.md` の入手元） | SIL Open Font License 1.1 | 著作権表示（Copyright 2016 The Rounded M+ Project Authors.）と OFL 本文をフォントと一緒に配る。**サブセット化は OFL の「改変版」にあたる**。ただし OFL.txt に Reserved Font Name の指定が無いので、同じ名前のまま配ってよい。フォント単体での販売はできない（ゲームに組み込んでの販売は可） | pck 内の `.godot/imported/MPLUSRounded1c-Bold.ttf-*.fontdata`（JIS 第一水準などにサブセット済み） | `ui/fonts/OFL.txt` |
-| cloudflared | — | Apache-2.0 | **KAN-38（4.1）で同梱する方針に決まった場合だけ対象**。同梱するなら LICENSE と NOTICE を一緒に配る | 現状は同梱していない（利用者の PC の PATH にあるものを使う） | https://github.com/cloudflare/cloudflared |
+| cloudflared | CI が固定した版（`windows-release.yml` の `CLOUDFLARED_SHA256`） | Apache-2.0 | LICENSE 本文を一緒に配る。リポジトリに NOTICE ファイルは無い（2026-10-27 に GitHub で確認）ので、第4条(d) の NOTICE 表示は不要 | `cloudflared.exe`（KAN-38 で同梱に決まり、PR #10 で同梱した。Windows 版のみ） | https://github.com/cloudflare/cloudflared |
+| Microsoft Visual C++ ランタイム（`msvcp140.dll` / `vcruntime140.dll` / `vcruntime140_1.dll`） | 書き出した PC の System32 にある版 | Visual Studio の Microsoft ソフトウェア ライセンス条項の「Distributable Code」（REDIST list） | **要確認（KAN-45 で見つけた）**。Microsoft の文書（Redistribute Visual C++ Files）は「再頒布できるのは Visual Studio のライセンスを持つ利用者に限る」とし、取り出し元を `%VCINSTALLDIR%Redist\MSVC\v143` としている。今の `export_windows.ps1` は **System32 からコピーしている**ので、取り出し元を Redist フォルダへ変えるかを判断すること。Visual Studio の条項の本文はまだ読めていない（公式サイトがスクリプトで描画されるため取得できなかった）。XAudio2 と同じく EULA に Microsoft を保護する条項が要る可能性が高い | exe の隣（Windows 版のみ。`EOSSDK-Win64-Shipping.dll` の依存。PR #10 で同梱） | https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files |
 
 ### 配布物に入らないもの（参考）
 
@@ -164,7 +172,10 @@ CC0-1.0, CC-BY-4.0, Expat, glslang, FTL, HarfBuzz, IJG, MPL-2.0, MIT-0, OFL-1.1,
 - **FreeType（FTL）**: 文書のどこかに「Portions of this software are copyright © <年> The FreeType Project
   (www.freetype.org). All rights reserved.」の一文を入れることが求められている
 - **Apache-2.0（Mbed TLS ほか）**: 元のソフトウェアに NOTICE ファイルがある場合は、その内容も表示する。
-  Godot の `get_license_info()` の Apache-2.0 本文で足りるかは KAN-45 で確認すること
+  Godot 同梱分は `GODOT_LICENSES.txt` とクレジット画面に Apache-2.0 の本文と著作権者を全件載せた。
+  cloudflared には NOTICE が無い（§1）
+- **Microsoft の再頒布可能コード（XAudio2・VC++ ランタイム）**: 表示ではなく **EULA で果たす義務**がある
+  （§1。EOS SDK と同じ扱い）。`docs/EULA_DRAFT.md` のプレースホルダ一覧に入れた
 - **Godot のロゴ（CC-BY-4.0）**: `project.godot` に `boot_splash` の設定が無いので、起動時のスプラッシュは
   Godot の既定のものになる。ロゴを表示するなら CC-BY-4.0 のクレジット（§2 の表の「Godot Engine logo」）が要る
 - **EOS SDK**: OSS のライセンス本文ではなく、EULA の免責条項とストアの免責文で義務を果たす（§1）

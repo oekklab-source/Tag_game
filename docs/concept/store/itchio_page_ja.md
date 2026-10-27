@@ -91,6 +91,9 @@ Windows 10 / 11(64bit)。**キーボード・マウスが必須**で、ゲーム
 > 同じ内容でここに入れる(棚卸しは KAN-46 / 5.3)。ライセンス表記の扱いは KAN-44 / 5.1・KAN-45 / 5.2。
 
 - Godot Engine で制作
+- 使っている第三者のソフトウェア・フォントのライセンスは、ゲーム内の「クレジット・ライセンス」画面
+  (タイトル画面の左下)と、ダウンロードしたフォルダの `THIRD_PARTY_LICENSES.txt` /
+  `GODOT_LICENSES.txt` で読めます(cloudflared、Epic Online Services、M PLUS Rounded 1c ほか)
 - 本ゲームには Epic Games, Inc. が提供する Epic Online Services (EOS) が組み込まれており、
   オンライン対戦のマッチメイキング・ランキング・フレンド機能等に利用されています。
   Epic Online Services の利用に関連して、Epic Games, Inc. はいかなる明示・黙示の保証も行わず、

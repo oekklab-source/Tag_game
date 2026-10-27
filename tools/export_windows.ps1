@@ -36,6 +36,9 @@
       - .itch.toml: フォルダに exe が2つ（ReverseTag.exe と cloudflared.exe）並ぶので、
         itch アプリが cloudflared.exe を起動対象に選ばないよう起動対象を明示する
       - THIRD_PARTY_LICENSES.txt: 第三者ソフトウェアを同梱して一般公開するのに必要なライセンス表記
+        （元は licenses/。ゲーム内のクレジット画面も同じファイルを pck から読む）
+      - GODOT_LICENSES.txt: Godot 本体と同梱ライブラリの全件とライセンス本文
+        （Engine.get_copyright_info() の出力。tests/test_licenses.tscn がずれを検出する）
     どれか1つでも元ファイルが無ければ、上と同じ理由で exe を削除して exit 1 を返す
     （同梱物の欠けた配布物が手元に残って butler push されるのを防ぐ）。
 
@@ -172,7 +175,8 @@ try {
         'vcruntime140.dll'        = Join-Path $sys32 'vcruntime140.dll'
         'vcruntime140_1.dll'      = Join-Path $sys32 'vcruntime140_1.dll'
         '.itch.toml'              = Join-Path $repoRoot 'tools/dist/.itch.toml'
-        'THIRD_PARTY_LICENSES.txt' = Join-Path $repoRoot 'tools/dist/THIRD_PARTY_LICENSES.txt'
+        'THIRD_PARTY_LICENSES.txt' = Join-Path $repoRoot 'licenses/THIRD_PARTY_LICENSES.txt'
+        'GODOT_LICENSES.txt'       = Join-Path $repoRoot 'licenses/GODOT_LICENSES.txt'
     }
     $missing = @()
     foreach ($name in $bundle.Keys) {

@@ -76,6 +76,10 @@ msgstr "Reverse Tag!"
 msgid "- オンライン鬼ごっこバトル -"
 msgstr "- Online Tag Battle -"
 
+# 左下のボタンと、その先の画面の見出し(KAN-45, scenes/credits_screen)
+msgid "クレジット・ライセンス"
+msgstr "Credits & Licenses"
+
 # 右下の版数表示(KAN-32)。前半がストア版数、後半が通信プロトコル版数
 msgid "Ver %s（通信 v%d）"
 msgstr "Ver %s (Protocol v%d)"

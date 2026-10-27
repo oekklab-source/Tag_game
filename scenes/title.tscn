@@ -111,6 +111,20 @@ theme_override_font_sizes/font_size = 16
 horizontal_alignment = 2
 vertical_alignment = 2
 
+[node name="CreditsButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -52.0
+offset_right = 260.0
+offset_bottom = -12.0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 16
+text = "クレジット・ライセンス"
+flat = true
+
 [node name="FullscreenButton" type="Button" parent="."]
 visible = false
 layout_mode = 0
