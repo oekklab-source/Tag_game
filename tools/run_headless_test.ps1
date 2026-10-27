@@ -26,6 +26,18 @@
          「N FAILED」/ FAIL=1以上)を走査して成否を判定する。
          SCRIPT ERROR も失敗扱い(途中で中断したテストの偽PASSを防ぐため)。
 
+      4. 既定では --quit-after を渡さない(2026-10-19 KAN-79)。以前は 600 フレームを
+         固定で渡していたが、10ラウンド回す test_phase7_stability 等は 600 フレームで
+         終わらず、結果行を出す前にエンジンが黙って終了していた。3. の判定は
+         「FAIL が出ていなければ成功」なので、これが偽PASSになっていた。
+         tests/*.gd は全部、最後に自分で get_tree().quit() を呼ぶ。そのため
+         --quit-after が無ければ、終わり方は「テストが自分で終了する」か
+         「下のタイムアウト(exit 124)」の2つだけになり、途中で切れた結果を
+         成功と取り違えることがなくなる。実行時エラーで quit の手前に止まった
+         テストもタイムアウトとして失敗になる。
+         (各テストに「最後まで走った」目印の行を必須にする案も考えたが、
+         既存64本の出力を揃える必要があるうえ、上の仕組みで同じことが守れるので採らなかった)
+
     タイムアウトで強制終了した場合は、シーンロード失敗・awaitのハング等
     「何かがおかしい」サインとして exit code 124 を返す。
     テスト出力に失敗マーカーが見つかった場合は exit code 1 を返す。
@@ -45,8 +57,14 @@
     このタイムアウト（壁時計秒）を過ぎたら強制終了する（既定 90 秒）。
     通常のテストは数秒〜十数秒で終わる想定。長時間かかるテストは明示的に広げること。
 
+.PARAMETER QuitAfter
+    1以上を渡すと、エンジンに --quit-after <フレーム数> を付ける（既定 0 = 付けない）。
+    付けると、そのフレーム数で結果行を出す前に打ち切られても成功と判定されうる
+    （上の 4.）。テストの成否を見る用途では使わないこと。
+    自分で quit しない一時シーンを、決まったフレーム数だけ動かしたいとき用。
+
 .PARAMETER GodotArgs
-    Godotエンジンへ渡す追加の引数（--quit-after以外）。文字列配列で渡す。
+    Godotエンジンへ渡す追加の引数（--quit-after以外。それは -QuitAfter で渡す）。文字列配列で渡す。
 
 .EXAMPLE
     pwsh tools/run_headless_test.ps1 res://tests/test_phase5_persistence.tscn
@@ -59,6 +77,7 @@ param(
     [string]$ScenePath,
     [string]$GodotExe,
     [int]$TimeoutSec = 90,
+    [int]$QuitAfter = 0,
     [string[]]$GodotArgs = @()
 )
 
@@ -74,11 +93,13 @@ if (-not (Test-Path $GodotExe)) {
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
-# --quit-after は必ず「--」より前（エンジンオプション側）に置く。
+# --quit-after は既定では付けない（.DESCRIPTION の 4.）。プロセスを止めるのは
+# テスト自身の quit() か、下の WaitForExit タイムアウトの役目。
+# 付ける場合は必ず「--」より前（エンジンオプション側）に置く。
 # ここより後ろに置くとエンジンには一切効かない（本文.DESCRIPTION参照、既知の罠）。
-# 600フレームは大半のheadlessテストが数秒で終わる前提での余裕値で、
-# 実際にプロセスを止めるのは基本的に下のWaitForExitタイムアウトの役目
-$allArgs = @('--headless', '--path', $repoRoot, $ScenePath, '--quit-after', '600') + $GodotArgs
+$allArgs = @('--headless', '--path', $repoRoot, $ScenePath)
+if ($QuitAfter -gt 0) { $allArgs += @('--quit-after', "$QuitAfter") }
+$allArgs += $GodotArgs
 
 Write-Host "実行: $GodotExe $($allArgs -join ' ')" -ForegroundColor Cyan
 Write-Host "(タイムアウト ${TimeoutSec}秒。ハングした場合は自動的に強制終了する)" -ForegroundColor DarkGray

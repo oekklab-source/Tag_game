@@ -129,6 +129,8 @@ func _on_public_address_ready(addr: String) -> void:
 func _on_tunnel_failed(reason: String) -> void:
 	if reason == "not_found":
 		_tunnel_note = tr("※cloudflared が入っていないため、インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）")
+	elif reason == "launch_failed":
+		_tunnel_note = tr("※トンネル用のスクリプトを PowerShell で起動できなかったため、インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）")
 	else:
 		_tunnel_note = tr("※インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）")
 	_refresh_invite_label()

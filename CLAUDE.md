@@ -5,6 +5,27 @@
 高確率で壊す。このリポジトリはコードコメントも実質の設計書なので、既存のコメントは削除せず、
 「なぜそうなっているか（WHY）」が書かれているコメントは特に維持すること。
 
+## 進捗管理（Jira / Confluence）
+
+- **作業の状態の正は Jira KAN**（oekklab.atlassian.net、Atlassian MCP で読み書きできる）。
+  計画・判断記録・運用ルールは Confluence の「Tag Game ホーム」配下（入口は
+  「はじめに（人とAIの読み順）」、page id 491543）。リポジトリの文書には状態（済み・未了）を書かない。
+- セッション開始時は次の JQL で Claude が関わる未完了チケットを取り、issuelinks の
+  「is blocked by」が全部完了しているものだけを候補にする:
+  `project = KAN AND labels = rel-itch-1.0 AND statusCategory != Done AND labels in (who-claude, who-pair) AND issuetype != Epic ORDER BY priority DESC, key ASC`
+  スプリント運用中（土曜開始・金曜終了の1週間）は `AND sprint in openSprints()` を足し、
+  スプリント外のチケットにはオーナーの指示なしに着手しない。優先度（Highest/High/Medium/Low）の
+  付け方と、土曜の計画・金曜のレビューの手順は Confluence「優先度とスプリントの運用」（page id 1277954）。
+- チケット本文の見出し（目的 / 完了条件 / 手順・参照 / 終わったら / 由来）とラベル
+  （`rel-*` / `who-*` / `gate-*` / `kind-decision`）は Confluence の「チケットの書き方」「ラベル辞書」に従う。
+  新しい作業を見つけたら同じ形で起票し、勝手に範囲を広げない。人の判断が要るなら kind-decision で起票して止まる。
+- 担当者は2人（ハマちゃん: 決済・アカウント・法務・ストア・画像、mpahap76: 技術と Claude チケットの確認）。
+  起票時は担当者・初期見積もり（担当者が使う時間）・優先度も入れる。範囲は「優先度とスプリントの運用」。
+  ハマちゃんは Claude と直接話さず Jira のコメントで結果を返すので、開始時に担当チケットの新しいコメントも読む。
+  チケットの一覧・担当・見積もりを Confluence に手書きしない（Jira マクロで表示する）。
+- 終了時は完了条件を確かめてから「完了」にし、コメントを
+  `[Claude] YYYY-MM-DD <何をしたか> / 証跡: <commit等> / 次: <誰が何を>` で残す。コミットメッセージに `KAN-xx` を入れる。
+
 ## テストの流し方
 
 **推奨: `tools/run_headless_test.ps1` を使う**（下記の罠を機械的に回避し、ハング時は
@@ -14,6 +35,11 @@ OSレベルのタイムアウトで自動的に強制終了する。自分が起
 ```powershell
 pwsh tools/run_headless_test.ps1 res://tests/<name>.tscn
 ```
+
+ラッパーは既定で `--quit-after` を**付けない**（2026-10-19 KAN-79）。以前は 600 フレームを
+固定で渡しており、10ラウンド回す `test_phase7_stability` 等が結果行を出す前に打ち切られて
+偽PASSになっていた。テストは自分で `get_tree().quit()` して終わるか、`-TimeoutSec`（既定90秒）で
+強制終了されて exit 124 になる。フレーム数で止めたい一時シーンだけ `-QuitAfter <N>` を使う。
 
 素の `godot` コマンドを直接使う場合は、以下の罠に注意すること:
 
@@ -51,7 +77,8 @@ godot --headless --path . res://tests/<name>.tscn --quit-after 600
   （成功時にも必ず出る `FAIL=0` だけは除外。大文字小文字は区別するので、
   エンジンの `Failed to load script` 等は拾わない）。新しいテストを書くときは、
   失敗時に大文字 `FAIL` を必ず出力すること（`_assert()` ヘルパの踏襲が最も確実）。
-  成功時の行に `FAIL` を含めてはいけない。
+  成功時の行に `FAIL` を含めてはいけない。どの経路でも最後に `get_tree().quit()` を呼ぶこと
+  （呼ばないとラッパーではタイムアウト扱いになる）。
   `SCRIPT ERROR` も失敗扱いにしている。実行時エラーでテスト関数が中断すると
   結果行が出ないまま終わり、偽PASSになるため（`tests/debug_controls.tscn` が
   消えた定数の参照で長期間そうなっていた。2026-09-25 修正）。

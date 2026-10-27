@@ -18,7 +18,7 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
     「見えていないのに通報される」不公平が起きないため）
   - 視認している鬼は Runner の**正確な位置**を追う
   - **誰か一人が視認した瞬間、Runner がいる「ゾーン」だけが全鬼に共有される**。
-    見失っても最後の目撃ゾーンは **20秒** 残り、その後 `NO INTEL` に戻る
+    見失っても最後の目撃ゾーンは **16秒** 残り、その後 `NO INTEL` に戻る
 - **索敵情報の非対称**:
   - Hunter は共有された**ゾーン名と色だけ**。`SPOTTED` / `LAST SEEN ○○ 12s` / `NO INTEL` の3状態。
     逃走者の方向・距離・マーカーは無し
@@ -32,7 +32,7 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
   未定のまま開始すると従来どおりランダムに選ばれる
 - 結果表示の5秒後は**準備中に戻って止まる**。役割を選び直す時間を作るため、
   次のラウンドはホストが Enter を押すまで始まらない
-- **ソロモード**: ホスト1人だけで Enter を押すと自分が Runner になり、**CPU の鬼が6人**出現する。
+- **ソロモード**: ホスト1人だけで Enter を押すと自分が Runner になり、**CPU の鬼が3人**出現する（`MAX_HUNTERS`）。
   CPU は情報が無い間はマップ全体を**巡回して探し**、通報があればその**ゾーンを捜索**し、
   自分の目で見つけたら**追跡**する（人間の鬼とまったく同じ情報しか持たない）
 - **デバッグ: CPU逃走者**（ロビーのトグル）: 役割を逆にして、自分が鬼・CPU が逃走者になる。
@@ -1074,6 +1074,10 @@ python -m http.server 8123 --directory export/web
    手動で `pwsh tools/serve.ps1` を実行する必要は無い。Windows デスクトップ版限定で、
    cloudflared が無い・途中で落ちた等で張れなかったときは、ロビーパネルの招待リンクの下に
    注記が出るだけでゲーム側は止まらない（LAN 内の相手はそのまま参加できる）。
+   PowerShell は `-ExecutionPolicy Bypass`（そのプロセスだけに効く）で起動する。素の Windows 11 の
+   Windows PowerShell 5.1 は既定の実行ポリシーが Restricted で、指定しないと `serve.ps1` が
+   実行されないため。それでも起動できなかった（グループポリシーで禁止されている等）ときは、
+   PowerShell が何も書かずに終わったことを検知して、タイムアウトを待たずに注記を出す。
    トンネルは部屋を抜けた・アプリを閉じたときにゲーム側が止める。強制終了やクラッシュで
    ゲームの後始末が走らなかった場合も、`serve.ps1` がゲームのプロセスを見張っていて
    自分で cloudflared を止める）
@@ -1140,6 +1144,14 @@ pwsh tools/export_windows.ps1
 false にする（判断が `export_presets.cfg` の差分に残る）。Web 版は認証情報を同梱しないので、
 このガードの対象外。
 
+ラッパーはもう1つ、**配布物に開発用ファイルが入っていないか**も検査する。プリセットの
+`exclude_filter`（Web・Windows 共通で `tests/*` `export/*` `service/*` `server/*` `docs/*`
+`tools/blender/*` `tools/*.gd` `tools/*.py` `skills-lock.json`）が空だった頃の exe には、
+`tests/shots` の確認用 PNG（開発機の実プロフィールが写り込みうる）や `service/*/node_modules`
+まで500件以上入っていた。書き出しログの savepack 行（pck に入れたファイルの全件）を走査し、
+禁止パスがあれば exe を消して exit 1 にする。`tools/` を丸ごと除外しないのは、
+`exclude_filter` が `include_filter` の後に効き、同梱が必要な `tools/serve.ps1` まで消えるため。
+
 ラッパーは**書き出し中に `SCRIPT ERROR` が出た場合も** exe を削除して exit 1 で止める。
 GDScript にパースエラーがあっても Godot は書き出しを完走するため、素のコマンドだと
 Autoload を読めない exe が「成功」として出力される（2026-10-04 実測。編集途中のスクリプトが
@@ -1182,6 +1194,20 @@ Autoload を読めない exe が「成功」として出力される（2026-10-0
 [network_manager.gd](autoload/network_manager.gd) の `_prepare_tunnel_script()` が
 `user://serve.ps1` へ実ファイルとして書き出してから起動するため、配布物として
 別途置く必要は無い）。
+
+### セーブの保存先（タイトルを変えても動かさない）
+
+Windows 版（エディタ実行・headless テストも含む）の `user://` は **`%APPDATA%\TagGame\`**。
+`project.godot` の `config/use_custom_user_dir=true` と `config/custom_user_dir_name="TagGame"`
+で、タイトル（`config/name`）から切り離して固定している。既定のままだと
+`%APPDATA%\Godot\app_userdata\<config/name>\` になり、公開後にタイトルを変えた瞬間に
+`profile.json`（購入済みジェム・戦績・名前）と `settings.json` が見えなくなる。
+**`custom_user_dir_name` は初回公開後に変えてはいけない**（変えると同じ理由でセーブが消えて見える）。
+Web 版の `user://` はブラウザの IndexedDB でこの設定の影響を受けない。
+
+2026-10-16 以前の開発機のセーブは `%APPDATA%\Godot\app_userdata\3D Chase Game\` に残っている。
+引き継ぐときは、ゲームを閉じてから `profile.json` と `settings.json` を `%APPDATA%\TagGame\` へコピーする
+（`serve.ps1`・`tunnel_*`・`logs`・`eosg-cache`・`shader_cache` などは起動時に作り直されるので不要）。
 
 ### butler でのアップロード
 
@@ -1455,7 +1481,8 @@ autoload/eos_credentials_check.gd eos_credentials.cfg の検証（実行時の�
                               EosManager と書き出しガードで共有
 addons/tag_game_export_guard/ Windows 書き出し時に eos_credentials.cfg の不備を知らせる
                               エクスポートプラグイン（止めるのは tools/export_windows.ps1）
-tools/export_windows.ps1      Windows 版の書き出し。認証情報の不備を検出したら exe を消して失敗させる。
+tools/export_windows.ps1      Windows 版の書き出し。認証情報の不備・配布物への開発用ファイル混入を
+                              検出したら exe を消して失敗させる。
                               cloudflared・VC++ ランタイム・tools/dist/ の中身を配布フォルダへ同梱する
 tools/dist/                   配布フォルダへそのままコピーするファイル（.itch.toml、第三者ライセンス表記）
 .github/workflows/windows-release.yml

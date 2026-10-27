@@ -151,7 +151,7 @@ func _test_intel_sharing(world: Node) -> void:
 	GameManager._set_intel(4, GameManager.INTEL_TIME, true)
 	_assert(GameManager.spotted == true, "視認発生 -> spotted == true")
 	_assert(GameManager.spotted_zone == 4, "目撃ゾーン -> spotted_zone == 4")
-	_assert(is_equal_approx(GameManager.intel_left, GameManager.INTEL_TIME), "intel_left == 20.0s")
+	_assert(is_equal_approx(GameManager.intel_left, GameManager.INTEL_TIME), "intel_left == INTEL_TIME")
 
 	# 見失う (spotted=false, spotted_zone=4 のまま減衰)
 	GameManager._set_intel(4, 15.0, false)
@@ -160,7 +160,7 @@ func _test_intel_sharing(world: Node) -> void:
 
 	# 時間切れ
 	GameManager._set_intel(-1, 0.0, false)
-	_assert(GameManager.spotted_zone == -1, "20秒経過後 -> spotted_zone == -1 (NO INTEL)")
+	_assert(GameManager.spotted_zone == -1, "INTEL_TIME 経過後 -> spotted_zone == -1 (NO INTEL)")
 
 
 ## 5. タッチ・接触判定 (Tag / Catch) 検証

@@ -34,18 +34,26 @@
 
 ## B. 生成AIコンテンツ(Generative AI Content)の開示
 
-**該当あり。**
+**該当あり。** 素材ごとの一覧(生成ツール・出典・製品に残っているか)は
+[docs/AI_GENERATED_ASSETS.md](AI_GENERATED_ASSETS.md) を正とし、ここには回答に使う要点だけを書く
+(2026-10-16 に KAN-46 で棚卸しし直した。以前の版は BGM しか挙げていなかった)。
 
-- `assets/audio/bgm/title_bgm.ogg`(タイトル/ロビー画面BGM)は、生成AIツール(Web版Gemini)を
+- **音声**: `assets/audio/bgm/title_bgm.ogg`(タイトル/ロビー画面BGM)は、生成AIツール(Web版Gemini)を
   用いて制作された音源である。`docs/concept/audio/title_bgm/REVIEW.md`の「2026-09-14
   レビュー(Web版Gemini・第4版)」で**PASS**判定を受けた後、ゲームに組み込み・コミット済み
   (現在`res://assets/audio/bgm/title_bgm.ogg`としてビルドに同梱されている)。
-- この音源は**事前生成・ビルド同梱**のコンテンツであり、プレイ中にリアルタイムで生成される
+- **画像(間接)**: 衣装2種(オーバーオール・黒影忍者)は、生成AIで作った設定画
+  (`tools/blender/references/*_turnaround_v1.png`、プロンプトは同名の`.prompt.txt`)を見て
+  Blender で3D化した。設定画そのものはビルドに入らない。主人公の元絵(`tools/blender/reference.png`)と
+  バスケ衣装の設定画(`basketball_turnaround.png`)も生成AIで作ったもの(2026-10-19 オーナー申告。ツール名の記録なし)。
+- **画像(コード)**: 仮アイコン `icon.svg`(と Web 版のホーム画面アイコン)は Claude Code が SVG をコードとして書いた。
+- **画像(予定)**: ショップの店員さん・壁の絵、カバー画像・アプリアイコンは生成AIで作る予定。
+  製品に入った時点で、ここと AI_GENERATED_ASSETS.md に追記する。
+- **コード・テキスト**: ゲームのコード、3D モデルを組み立てる Blender スクリプト、UI 文言と英訳、
+  ストア文面・文書の大半は Claude Code(生成AI)が書いた。
+- いずれも**事前生成・ビルド同梱**のコンテンツであり、プレイ中にリアルタイムで生成される
   ものではない(Valveの区分でいう「pre-shipped AI-generated content」に該当し、
   「live-generated-at-runtime content」ではない)。
-- 将来、[docs/concept/store/app_icon/SPEC.md](concept/store/app_icon/SPEC.md)等の画像素材が
-  生成AIツールで制作され実際に`res://icon.ico`等としてゲーム/ストア素材に組み込まれた場合、
-  同様の開示が追加で必要になる(本ドラフト作成時点では未制作のため対象外)。
 
 ## C. ドイツ/USK(年齢レーティング必須化)への対応
 
@@ -69,7 +77,8 @@
 - [ ] ゲームの正式名称(現状「3D Chase Game」は`project.godot`上の暫定名)
 - [ ] 提出直前に、実際にSteamworksパートナーポータルの調査票フォームを開き、設問文言・区分が
       本ドラフトの想定と一致しているか再確認すること(Valveがフォーム内容を変更する可能性がある)
-- [ ] app_icon等の画像素材が生成AIツールで制作・組み込まれた場合、B節への追記
+- [ ] app_icon・店員さん等の画像素材が生成AIツールで制作・組み込まれた場合、B節と[docs/AI_GENERATED_ASSETS.md](AI_GENERATED_ASSETS.md)への追記
+- [ ] `tools/blender/reference.png`・`basketball_turnaround.png` の出所の確認(B節)
 
 ## 出典
 
