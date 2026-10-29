@@ -49,6 +49,8 @@ const COSTUME_SCENE := "res://scenes/costume_screen.tscn"
 const SHOP_SCENE := "res://scenes/shop_screen.tscn"
 const FRIEND_SCENE := "res://scenes/friend_screen.tscn"
 const SETTINGS_SCENE := "res://scenes/settings_screen.tscn"
+## タイトルのキャラはカメラを寄せて大きく見せる(costume_preview.gd の set_zoom。小さいほど寄る)
+const HERO_ZOOM := 0.8
 
 ## C-05: ?s= 経由の自動参加直前に挟む名前確認ダイアログの、参加先アドレスの一時退避
 var _pending_join_server := ""
@@ -95,8 +97,12 @@ func _ready() -> void:
 	# H-09: ボタン文言を実際の遷移先(Web=DirectConnectタブ既定, デスクトップ=ロビー全体)に合わせる
 	# (ボタンは絵だけにしたので、文言はツールチップで出す)
 	play_button.tooltip_text = tr("参加する（リンク/アドレス指定）") if OS.has_feature("web") else tr("オンラインプレイ（部屋を探す・作る）")
+	# 絵の下の短い名前も同じ分岐にする(.tscn の既定はデスクトップ側の「オンライン」)
+	if OS.has_feature("web"):
+		play_button.text = tr("参加")
 
 	hero.set_transparent_background()
+	hero.set_zoom(HERO_ZOOM)
 	_update_hero()
 
 	# 初期状態ではダイアログを隠す（①きせかえは専用シーンへ遷移するため、

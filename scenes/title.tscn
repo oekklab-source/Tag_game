@@ -93,8 +93,8 @@ grow_vertical = 2
 theme = ExtResource("1_theme")
 script = ExtResource("2_script")
 
-; 画面の作り: 左にロゴと自分のキャラ、右に絵だけのボタン。文字は名前・レートの数字と
-; 接続エラーだけに絞ってある（ボタンの意味は tooltip_text で補う）
+; 画面の作り: 左にロゴと自分のキャラ、右に絵のボタン。文字は名前・レートの数字、
+; 接続エラー、ボタンの絵の下の短い名前だけに絞ってある（タッチ端末ではツールチップが出ないため）
 [node name="Background" type="ColorRect" parent="."]
 material = SubResource("ShaderMaterial_bg")
 layout_mode = 1
@@ -108,7 +108,7 @@ grow_vertical = 2
 [node name="Hero" parent="." instance=ExtResource("9_preview")]
 layout_mode = 1
 anchors_preset = -1
-anchor_top = 0.4
+anchor_top = 0.3
 anchor_right = 0.42
 anchor_bottom = 1.0
 grow_horizontal = 1
@@ -121,8 +121,8 @@ layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.02
 anchor_top = 0.025
-anchor_right = 0.4
-anchor_bottom = 0.45
+anchor_right = 0.38
+anchor_bottom = 0.36
 mouse_filter = 2
 texture = ExtResource("8_logo")
 expand_mode = 1
@@ -187,16 +187,16 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_badge_focus")
 [node name="CenterMenu" type="CenterContainer" parent="."]
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.48
+anchor_left = 0.42
 anchor_top = 0.1
-anchor_right = 0.98
+anchor_right = 0.99
 anchor_bottom = 0.9
 grow_horizontal = 2
 grow_vertical = 2
 
 [node name="VBox" type="VBoxContainer" parent="CenterMenu"]
 layout_mode = 2
-theme_override_constants/separation = 30
+theme_override_constants/separation = 24
 
 ; 主役の2つ。あそぶ＝ピンク、ソロ＝シアンで、黄色い小さいボタンと見分ける
 [node name="BigRow" type="HBoxContainer" parent="CenterMenu/VBox"]
@@ -205,15 +205,19 @@ alignment = 1
 theme_override_constants/separation = 30
 
 [node name="PlayButton" type="Button" parent="CenterMenu/VBox/BigRow"]
-custom_minimum_size = Vector2(320, 300)
+custom_minimum_size = Vector2(400, 360)
 layout_mode = 2
+theme_override_font_sizes/font_size = 34
+text = "オンライン"
 icon = ExtResource("10_play")
 script = ExtResource("7_ibtn")
 base_color = Color(1, 0.31, 0.64, 1)
 
 [node name="SoloButton" type="Button" parent="CenterMenu/VBox/BigRow"]
-custom_minimum_size = Vector2(320, 300)
+custom_minimum_size = Vector2(400, 360)
 layout_mode = 2
+theme_override_font_sizes/font_size = 34
+text = "ソロ練習"
 tooltip_text = "ソロ練習 (VS CPU・レート変動なし)"
 icon = ExtResource("11_solo")
 script = ExtResource("7_ibtn")
@@ -225,29 +229,37 @@ alignment = 1
 theme_override_constants/separation = 22
 
 [node name="ProfileButton" type="Button" parent="CenterMenu/VBox/SmallRow"]
-custom_minimum_size = Vector2(150, 150)
+custom_minimum_size = Vector2(180, 180)
 layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "きせかえ"
 tooltip_text = "きせかえ"
 icon = ExtResource("12_costume")
 script = ExtResource("7_ibtn")
 
 [node name="ShopButton" type="Button" parent="CenterMenu/VBox/SmallRow"]
-custom_minimum_size = Vector2(150, 150)
+custom_minimum_size = Vector2(180, 180)
 layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "ショップ"
 tooltip_text = "ショップ"
 icon = ExtResource("13_shop")
 script = ExtResource("7_ibtn")
 
 [node name="FriendButton" type="Button" parent="CenterMenu/VBox/SmallRow"]
-custom_minimum_size = Vector2(150, 150)
+custom_minimum_size = Vector2(180, 180)
 layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "フレンド"
 tooltip_text = "フレンド"
 icon = ExtResource("14_friends")
 script = ExtResource("7_ibtn")
 
 [node name="RankingButton" type="Button" parent="CenterMenu/VBox/SmallRow"]
-custom_minimum_size = Vector2(150, 150)
+custom_minimum_size = Vector2(180, 180)
 layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "ランキング"
 tooltip_text = "ランキング"
 icon = ExtResource("15_ranking")
 script = ExtResource("7_ibtn")
@@ -286,8 +298,8 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -236.0
-offset_top = -128.0
+offset_left = -284.0
+offset_top = -152.0
 offset_right = -28.0
 offset_bottom = -32.0
 grow_horizontal = 0
@@ -296,8 +308,10 @@ alignment = 2
 theme_override_constants/separation = 16
 
 [node name="SettingsButton" type="Button" parent="CornerRow"]
-custom_minimum_size = Vector2(96, 96)
+custom_minimum_size = Vector2(120, 120)
 layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "設定"
 tooltip_text = "設定"
 icon = ExtResource("16_settings")
 script = ExtResource("7_ibtn")
@@ -305,8 +319,10 @@ base_color = Color(1, 1, 1, 1)
 icon_margin = 10
 
 [node name="QuitButton" type="Button" parent="CornerRow"]
-custom_minimum_size = Vector2(96, 96)
+custom_minimum_size = Vector2(120, 120)
 layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "終了"
 tooltip_text = "ゲーム終了"
 icon = ExtResource("17_quit")
 script = ExtResource("7_ibtn")

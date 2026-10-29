@@ -638,6 +638,8 @@ UI が全部豆腐（□）になるので **`ui/fonts/` に丸ゴシックを�
 - プレイヤー名、数字（レート・タイマー・距離・人数・価格）、キーの刻印（W A S D など）
 - 通信エラー・版数の食い違いなど**原因を伝える文**、購入や終了の**確認ダイアログ**の本文とボタン
 - リザルトの大見出し1語（`hud.result_copy()` の1つ目）、入力欄、言語などの選択肢
+- タイトル画面のボタンの絵の下の短い名前（オンライン・ソロ練習など）。タッチ端末ではツールチップが
+  出ず、絵だけでは何のボタンか伝わりにくかったため（2026-10-16）
 
 絵とロゴはすべて Blender でレンダリングした PNG で、`tools/blender/build_ui_art.py` が書き出す。
 
@@ -1510,7 +1512,8 @@ scenes/hud/web_screen.gd      Web版の画面まわり(全画面・ホーム画�
 web/                          GitHub Pagesにだけ置くファイル(ホーム画面追加用のmanifestとアイコン)
 ui/pop_theme.tres             全体に適用される POP テーマ（黄色い板＋濃い紫のふち。配色は build_ui_art.py と揃える）
 ui/pop_background.gdshader    メニュー画面の背景（斜めの縞がゆっくり流れる。画像なし）
-ui/icon_button.gd             絵だけのボタン（Button に付ける。乗せると膨らみ押すと沈む。意味は tooltip_text）
+ui/icon_button.gd             絵のボタン（Button に付ける。乗せると膨らみ押すと沈む。意味は tooltip_text。
+                              text を入れると絵の下に短い名前を出す）
 ui/key_hint.gd                キー操作のヒントを「キーの絵＋動作の絵」で組み立てる部品
 ui/logo/, ui/icons/           ロゴ「IT CHASE」とアイコンの PNG（build_ui_art.py の出力）
 tools/blender/build_ui_art.py ロゴとアイコンを Blender で描いて PNG に書き出す（blender -b -P で実行）

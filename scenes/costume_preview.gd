@@ -95,6 +95,12 @@ func set_transparent_background() -> void:
 	world_env.environment = env
 
 
+## カメラを注視点へ寄せる（factor < 1 で寄る。タイトル画面でキャラを大きく見せる用）
+func set_zoom(factor: float) -> void:
+	var pos := CAMERA_LOOK_AT + (CAMERA_POS - CAMERA_LOOK_AT) * factor
+	_camera.look_at_from_position(pos, CAMERA_LOOK_AT, Vector3.UP)
+
+
 ## 未所持アイテムを試着中であることのバッジ表示切替
 func set_locked(locked: bool) -> void:
 	_lock_badge.visible = locked

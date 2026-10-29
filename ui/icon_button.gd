@@ -1,6 +1,7 @@
 extends Button
 
 ## 絵だけのボタン。文字の代わりに icon を1枚載せ、意味は tooltip_text で補う。
+## text を入れると絵の下に短い名前として出す（タイトル画面。ツールチップの出ないタッチ端末向け）。
 ## 乗せると少し膨らみ、押すと沈む（Tween で scale を動かすだけ）。
 ##
 ## 板の色と余白はテーマ(ui/pop_theme.tres)の Button を元に、このボタンのぶんだけ上書きする。
@@ -22,6 +23,9 @@ var _tween: Tween
 func _ready() -> void:
 	expand_icon = true
 	icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# expand_icon のまま上寄せにすると、絵が文字の上の残りを埋める
+	if not text.is_empty():
+		vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 	for state: String in ["normal", "hover", "pressed", "disabled"]:
 		var box := get_theme_stylebox(state).duplicate() as StyleBoxFlat
 		if box == null:

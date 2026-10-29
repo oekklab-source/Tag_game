@@ -78,6 +78,13 @@ msgstr "Online Play (Find or Create a Room)"
 msgid "ソロ練習 (VS CPU・レート変動なし)"
 msgstr "Solo Practice (VS CPU, Unrated)"
 
+# タイトル画面のボタンの絵の下に出す短い名前
+msgid "ソロ練習"
+msgstr "Solo"
+
+msgid "終了"
+msgstr "Quit"
+
 msgid "きせかえ"
 msgstr "Wardrobe"
 
