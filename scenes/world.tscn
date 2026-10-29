@@ -25,6 +25,7 @@ sky_material = SubResource("sky_mat")
 ; ここを下げると画面全体が白くぼやけて「ふわふわ」ではなく「ボケ」になる。
 ;
 ; Web で重い場合は shadow より先に glow_enabled を切ると効果が大きい。
+; スマホのブラウザでは実際に PhonePerf.apply_world()（scenes/hud/phone_perf.gd）が切っている。
 [sub_resource type="Environment" id="env"]
 background_mode = 2
 sky = SubResource("sky")

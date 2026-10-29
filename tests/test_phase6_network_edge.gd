@@ -23,6 +23,7 @@ func _ready() -> void:
 	await _test_lobby_disconnect()
 	await _test_runner_disconnect_during_round()
 	await _test_version_mismatch()
+	await _test_tunnel_launch_failed()
 
 	print("==================================================")
 	print("Phase 6 結果: PASS=%d, FAIL=%d" % [passed_count, failed_count])
@@ -77,6 +78,47 @@ func _test_version_mismatch() -> void:
 
 	_assert(GameManager.peer_notice != "", "バージョン不一致 -> peer_notice に警告が表示")
 	_assert(GameManager._peer_notice_left == 20.0, "警告のタイマーが 20.0s にセット")
+
+
+## 4. トンネル用 PowerShell が何も書かずに終わった（実行ポリシーで serve.ps1 が拒否された等）
+## ときに、タイムアウトを待たずに "launch_failed" として知らせること（KAN-39）。
+## headless では _launch_tunnel() 自体が走らないので、ポーリングの1回分を直接呼ぶ
+func _test_tunnel_launch_failed() -> void:
+	print("\n--- [4] トンネル用 PowerShell の起動失敗の検知 ---")
+	var reasons: Array[String] = []
+	var on_failed := func(r: String) -> void: reasons.append(r)
+	NetworkManager.tunnel_failed.connect(on_failed)
+	var saved_pid: int = NetworkManager._tunnel_pid
+	NetworkManager._remove_user_file(NetworkManager.TUNNEL_HOST_FILE)
+	NetworkManager._remove_user_file(NetworkManager.TUNNEL_ERROR_FILE)
+
+	# (a) PowerShell がもう居ない・ホスト名もエラーも無い → launch_failed
+	NetworkManager._tunnel_pid = -1
+	NetworkManager._on_tunnel_poll_tick()
+	_assert(reasons == ["launch_failed"], "PowerShell が居ない＋記録なし -> launch_failed (実際: %s)" % [reasons])
+
+	# (b) serve.ps1 がエラーを書いて終わった場合は、そちらの理由を優先する
+	reasons.clear()
+	var f := FileAccess.open(NetworkManager.TUNNEL_ERROR_FILE, FileAccess.WRITE)
+	f.store_string("not_found\ncloudflared が見つからない")
+	f.close()
+	NetworkManager._on_tunnel_poll_tick()
+	_assert(reasons == ["not_found"], "エラーの記録があれば -> その理由 (not_found) を優先 (実際: %s)" % [reasons])
+	NetworkManager._remove_user_file(NetworkManager.TUNNEL_ERROR_FILE)
+
+	# (c) PowerShell がまだ生きていれば（cloudflared の起動待ち）何も知らせない
+	reasons.clear()
+	var alive_pid := OS.create_process("ping", ["-n", "6", "127.0.0.1"], false)
+	_assert(alive_pid != -1, "生きている子プロセスを用意できた")
+	NetworkManager._tunnel_pid = alive_pid
+	NetworkManager._on_tunnel_poll_tick()
+	_assert(reasons.is_empty(), "PowerShell が生きている間は失敗扱いにしない (実際: %s)" % [reasons])
+	if alive_pid != -1:
+		OS.kill(alive_pid)
+
+	NetworkManager._tunnel_pid = saved_pid
+	NetworkManager._tunnel_poll_elapsed = 0.0
+	NetworkManager.tunnel_failed.disconnect(on_failed)
 
 # --- 実セーブ(user://profile.json / settings.json)とクラウドセーブの保護 ---
 # ラウンドを回さないテストでも、EOS にログインできる環境では起動時のクラウドセーブ同期が

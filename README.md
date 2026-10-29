@@ -18,7 +18,7 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
     「見えていないのに通報される」不公平が起きないため）
   - 視認している鬼は Runner の**正確な位置**を追う
   - **誰か一人が視認した瞬間、Runner がいる「ゾーン」だけが全鬼に共有される**。
-    見失っても最後の目撃ゾーンは **20秒** 残り、その後 `NO INTEL` に戻る
+    見失っても最後の目撃ゾーンは **16秒** 残り、その後 `NO INTEL` に戻る
 - **索敵情報の非対称**:
   - Hunter は共有された**ゾーン名と色だけ**。`SPOTTED` / `LAST SEEN ○○ 12s` / `NO INTEL` の3状態。
     逃走者の方向・距離・マーカーは無し
@@ -32,7 +32,7 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
   未定のまま開始すると従来どおりランダムに選ばれる
 - 結果表示の5秒後は**準備中に戻って止まる**。役割を選び直す時間を作るため、
   次のラウンドはホストが Enter を押すまで始まらない
-- **ソロモード**: ホスト1人だけで Enter を押すと自分が Runner になり、**CPU の鬼が6人**出現する。
+- **ソロモード**: ホスト1人だけで Enter を押すと自分が Runner になり、**CPU の鬼が3人**出現する（`MAX_HUNTERS`）。
   CPU は情報が無い間はマップ全体を**巡回して探し**、通報があればその**ゾーンを捜索**し、
   自分の目で見つけたら**追跡**する（人間の鬼とまったく同じ情報しか持たない）
 - **デバッグ: CPU逃走者**（ロビーのトグル）: 役割を逆にして、自分が鬼・CPU が逃走者になる。
@@ -930,6 +930,40 @@ godot --headless --path . res://scenes/world.tscn -- client 127.0.0.1
 一番効く。次が `Sun` の `shadow_enabled`。頂点が重い時は
 `world_builder.gd` の `MESH_SEGMENT_M` を上げる（下の「巨大な面は分割する」を参照）。
 
+### スマホでの軽量化（PC には効かない）
+
+2026-10-05、iPhone 15 Pro Max で「本体が熱くなる」との報告を受けて、
+**スマホのブラウザだけ**描画と処理を軽くした（[scenes/hud/phone_perf.gd](scenes/hud/phone_perf.gd)）。
+PC 版（exe・PC のブラウザ）では困っていないので、PC の見た目と挙動は変えない。
+軽量化はすべて `PhonePerf.enabled()` が true のときだけ行う。
+
+**なぜ必要だったか**: `project.godot` は描画設定を何も上書きしていないので、Web 版はエンジンの
+既定のまま動いていた。hiDPI が有効なので、3D を端末の実ピクセルで描いていた
+（iPhone 15 Pro Max の横持ちで約 2796x1290）。フレームレートの上限も無かった。
+Godot 自身のスマホ向け既定値（project.godot の `.mobile` 上書き）は、ネイティブの Android/iOS
+書き出しにしか効かない。ブラウザで開いたスマホは「PC と同じ既定値」になる。
+
+**判定**: Web で動いていて、Godot の機能タグ `web_ios` / `web_android` が立っているとき
+（`navigator.userAgent` の部分一致）。iPadOS の Safari は既定で Mac の UA を名乗るので、
+`web_macos` かつタッチ画面がある場合も含める（Mac にタッチ画面は無い）。
+
+| 何を | スマホでの値 | 理由 |
+| --- | --- | --- |
+| 3D の解像度 | 画面の短い辺を 720px に（倍率の下限 0.5） | 一番効く。iPhone 15 Pro Max では描く画素が約 1/3 になる。UI は別に実解像度で描くので、文字はぼやけない。画面を回したら計算し直す |
+| フレームレート | 30fps（`Engine.max_fps`） | 描画回数が半分になる。**物理の刻み（60Hz）は変えない**（下の「権威モデル」の、物理 delta が全ピアで固定値という前提） |
+| グロー | 切る | 上の「最初に切る」。ネオン材のにじみは消えるが、色と明るさは残る |
+| 影 | 解像度 2048・縁はハード | Godot のスマホ向け既定値と同じ。影そのものは残す（長い影が距離感の手がかり） |
+| ミニマップ | 1/15 秒ごとに描き直す | 毎フレーム全マーカーを描き直していた |
+| ダッシュパネル | 画面外では虹の波を止める | 8 枚 x 9 マテリアルを毎フレーム書き換えていた。位相は `world_time` から計算するので、画面に戻った瞬間から正しく光る |
+| ロビー一覧のプレビュー | 1 枚描いたらアニメを止める | 試合中は隠れたまま残っていて、骨の計算だけ回り続けていた |
+
+スマホはホストになれない（ブラウザでは待ち受けられない）ので、CPU AI・視界判定・ナビは元々スマホでは動いていない。
+
+**PC から確かめる**: ユーザー引数 `--phone-perf` を付けると、PC でもスマホ扱いになる
+（`godot --path . res://scenes/world.tscn -- --phone-perf`）。自動テストは `tests/phone_perf.tscn`。
+
+まだ熱いときの次の手は、影を切る（`Sun` の `shadow_enabled`）か、`TARGET_3D_HEIGHT` を下げること。
+
 ドローコールは `tests/screenshot.tscn` が固定アングルで実測する
 （`Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME`）。ゾーンをテーマ化した際の実測値:
 
@@ -1089,6 +1123,10 @@ python -m http.server 8123 --directory export/web
    手動で `pwsh tools/serve.ps1` を実行する必要は無い。Windows デスクトップ版限定で、
    cloudflared が無い・途中で落ちた等で張れなかったときは、ロビーパネルの招待リンクの下に
    注記が出るだけでゲーム側は止まらない（LAN 内の相手はそのまま参加できる）。
+   PowerShell は `-ExecutionPolicy Bypass`（そのプロセスだけに効く）で起動する。素の Windows 11 の
+   Windows PowerShell 5.1 は既定の実行ポリシーが Restricted で、指定しないと `serve.ps1` が
+   実行されないため。それでも起動できなかった（グループポリシーで禁止されている等）ときは、
+   PowerShell が何も書かずに終わったことを検知して、タイムアウトを待たずに注記を出す。
    トンネルは部屋を抜けた・アプリを閉じたときにゲーム側が止める。強制終了やクラッシュで
    ゲームの後始末が走らなかった場合も、`serve.ps1` がゲームのプロセスを見張っていて
    自分で cloudflared を止める）
@@ -1155,6 +1193,14 @@ pwsh tools/export_windows.ps1
 false にする（判断が `export_presets.cfg` の差分に残る）。Web 版は認証情報を同梱しないので、
 このガードの対象外。
 
+ラッパーはもう1つ、**配布物に開発用ファイルが入っていないか**も検査する。プリセットの
+`exclude_filter`（Web・Windows 共通で `tests/*` `export/*` `service/*` `server/*` `docs/*`
+`tools/blender/*` `tools/*.gd` `tools/*.py` `skills-lock.json`）が空だった頃の exe には、
+`tests/shots` の確認用 PNG（開発機の実プロフィールが写り込みうる）や `service/*/node_modules`
+まで500件以上入っていた。書き出しログの savepack 行（pck に入れたファイルの全件）を走査し、
+禁止パスがあれば exe を消して exit 1 にする。`tools/` を丸ごと除外しないのは、
+`exclude_filter` が `include_filter` の後に効き、同梱が必要な `tools/serve.ps1` まで消えるため。
+
 ラッパーは**書き出し中に `SCRIPT ERROR` が出た場合も** exe を削除して exit 1 で止める。
 GDScript にパースエラーがあっても Godot は書き出しを完走するため、素のコマンドだと
 Autoload を読めない exe が「成功」として出力される（2026-10-04 実測。編集途中のスクリプトが
@@ -1197,6 +1243,20 @@ Autoload を読めない exe が「成功」として出力される（2026-10-0
 [network_manager.gd](autoload/network_manager.gd) の `_prepare_tunnel_script()` が
 `user://serve.ps1` へ実ファイルとして書き出してから起動するため、配布物として
 別途置く必要は無い）。
+
+### セーブの保存先（タイトルを変えても動かさない）
+
+Windows 版（エディタ実行・headless テストも含む）の `user://` は **`%APPDATA%\TagGame\`**。
+`project.godot` の `config/use_custom_user_dir=true` と `config/custom_user_dir_name="TagGame"`
+で、タイトル（`config/name`）から切り離して固定している。既定のままだと
+`%APPDATA%\Godot\app_userdata\<config/name>\` になり、公開後にタイトルを変えた瞬間に
+`profile.json`（購入済みジェム・戦績・名前）と `settings.json` が見えなくなる。
+**`custom_user_dir_name` は初回公開後に変えてはいけない**（変えると同じ理由でセーブが消えて見える）。
+Web 版の `user://` はブラウザの IndexedDB でこの設定の影響を受けない。
+
+2026-10-16 以前の開発機のセーブは `%APPDATA%\Godot\app_userdata\3D Chase Game\` に残っている。
+引き継ぐときは、ゲームを閉じてから `profile.json` と `settings.json` を `%APPDATA%\TagGame\` へコピーする
+（`serve.ps1`・`tunnel_*`・`logs`・`eosg-cache`・`shader_cache` などは起動時に作り直されるので不要）。
 
 ### butler でのアップロード
 
@@ -1470,7 +1530,8 @@ autoload/eos_credentials_check.gd eos_credentials.cfg の検証（実行時の�
                               EosManager と書き出しガードで共有
 addons/tag_game_export_guard/ Windows 書き出し時に eos_credentials.cfg の不備を知らせる
                               エクスポートプラグイン（止めるのは tools/export_windows.ps1）
-tools/export_windows.ps1      Windows 版の書き出し。認証情報の不備を検出したら exe を消して失敗させる。
+tools/export_windows.ps1      Windows 版の書き出し。認証情報の不備・配布物への開発用ファイル混入を
+                              検出したら exe を消して失敗させる。
                               cloudflared・VC++ ランタイム・tools/dist/ の中身を配布フォルダへ同梱する
 tools/dist/                   配布フォルダへそのままコピーするファイル（.itch.toml、第三者ライセンス表記）
 .github/workflows/windows-release.yml
@@ -1509,6 +1570,7 @@ scenes/hud/minimap.gd         hud.tscnの$MapPanel。9ゾーンミニマップ�
 scenes/hud/lobby_panel.gd     hud.tscnの$Lobby。ロビー名簿・定員変更・役割選択ボタン
 scenes/hud/touch_controls.tscn(.gd) スマホのタッチ操作(追従スティック・ボタン・視点ドラッグ)。大きさはdpで決める
 scenes/hud/web_screen.gd      Web版の画面まわり(全画面・ホーム画面起動の判定・safe area・dp換算)
+scenes/hud/phone_perf.gd      スマホのブラウザだけの軽量化(3D解像度・30fps・グロー・影)。PCには効かない
 web/                          GitHub Pagesにだけ置くファイル(ホーム画面追加用のmanifestとアイコン)
 ui/pop_theme.tres             全体に適用される POP テーマ（黄色い板＋濃い紫のふち。配色は build_ui_art.py と揃える）
 ui/pop_background.gdshader    メニュー画面の背景（斜めの縞がゆっくり流れる。画像なし）
@@ -1549,6 +1611,11 @@ autoload/costume_catalog.gd   ④コスチューム（部位の塗り分けレ�
 autoload/hat_catalog.gd       ⑤帽子（新規ジオメトリの部位）の定義データ。CostumeCatalog と対
 scenes/costume_preview.tscn(.gd) プロフィール設定の3Dプレビュー（ターンテーブル、SubViewport）
 scenes/costume_screen.tscn(.gd)  プロフィール設定（名前・キャラクター/スキン柄/カラー/帽子・戦績）
+scenes/outfit_cards.gd        きせかえ画面とショップで共通のカード部品・色パレット（OutfitCards）
+scenes/shop_screen.tscn(.gd)  ショップ。試着しながらコーデを組み、未所持の物をまとめて買ってそのまま着る
+scenes/shop_stage.tscn(.gd)   ショップの3D舞台（店内・試着台・カウンターの店員さん。店員さんは試着されると
+                              接客位置まで出てきてアバターを見て反応し、普段はお客さん(カメラ)を向く）
+tools/blender/references/SHOP_ART_PROMPTS.md  店員さん・店内の絵を Gemini で起こすためのプロンプト（3D化の元絵）
 tests/map_connectivity.tscn   ナビメッシュの連結性・滑り台の一方通行・走路の貫通の検証
 tests/item_drop.tscn          アイテムがラウンド外でも置けることの検証
 tests/bumper.tscn             バンパーが四方と真上から弾き返すことの検証
@@ -1567,9 +1634,12 @@ tests/net_roles.tscn          2ピアで役割選択と湧き位置の分散を�
 tests/net_live.tscn           実際の起動経路と実キー入力で通信対戦が始まるかの検証
 tests/uishot.tscn             UI（タイトル/ロビー/対戦中/リザルト/各画面）を PNG 書き出し（--headless 不可、--locale en で英語）
 tests/quit_menu.tscn          Esc の終了確認メニューの開閉・既定フォーカス・キーリピートの検証
+tests/phone_perf.tscn         スマホ向け軽量化の判定・適用と、PC では何も変わらないことの検証
 tests/test_i18n.tscn          翻訳の整合性（未登録 msgid・訳し忘れ・書式指定・フォントの字形・言語設定）の検証
 tests/host_conflict.tscn      ポートが埋まっているときホストを弾いて理由を出すかの検証
 tests/costume_model.tscn      ④コスチューム・⑤帽子のデータモデル（所持・移行・整合性）を検証
+tests/shop_fitting.tscn       ショップの試着・まとめ買い・着替え・元に戻す・プレゼント可否の検証
+tests/shop_clerk.tscn         ショップの店員さんの動き（見る相手・歩く・反応・吹き出しの追従）の検証
 tests/test_eos_credentials_check.tscn eos_credentials.cfg の検証ロジック（起動可否と出荷可否の境界）
 tests/hat_placement.gd        ⑤帽子の装着位置（Chestボーン基準オフセット）を目視調整するスクリプト
                               （godot --path . --script res://tests/hat_placement.gd -- <出力先>）

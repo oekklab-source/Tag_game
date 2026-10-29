@@ -22,6 +22,10 @@ const CAMERA_LOOK_AT := Vector3(0.0, 0.85, 0.0)
 var _dragging := false
 var _time_since_drag := 0.0
 var _interactive := true
+## スマホで静止画にしたあと、キャラのアニメを止めるまでの残りフレーム数(0=止める予定なし)。
+## request_static_render() を参照
+var _freeze_frames := 0
+var _anim_frozen := false
 
 
 func _ready() -> void:
@@ -34,6 +38,11 @@ func _ready() -> void:
 ## ダイアログが非表示の間は回転計算もレンダリングも止め、README のドローコール
 ## 意識(グロー/シャドウを先に切る、常時レンダリングを避ける)に沿って負荷を抑える
 func _process(delta: float) -> void:
+	if _freeze_frames > 0:
+		_freeze_frames -= 1
+		if _freeze_frames == 0:
+			_humanoid.process_mode = Node.PROCESS_MODE_DISABLED
+			_anim_frozen = true
 	if not is_visible_in_tree() or _dragging or not _interactive:
 		return
 	_time_since_drag += delta
@@ -56,6 +65,20 @@ func set_interactive(enabled: bool) -> void:
 ## 見た目を変える(再度show_costume等を呼ぶ)場合は、もう一度これも呼び直すこと
 func request_static_render() -> void:
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	# 描画を止めても、中のキャラの Idle アニメ(骨の計算)は回り続ける。ロビー一覧のプレビューは
+	# 試合中も隠れたまま残るので、スマホだけはその分も止める(発熱対策。PC は今までどおり)。
+	# 今のフレームの終わりに1枚描かれるので、2フレーム後に止めれば画は変わらない。
+	# await で待たないのは、待つ間に一覧が作り直されてこのノードが消えるとエラーになるため
+	if PhonePerf.enabled():
+		_freeze_frames = 2
+
+
+## 見た目を変える前に、止めていたアニメを動かし直す(request_static_render の逆)
+func _unfreeze_anim() -> void:
+	_freeze_frames = 0
+	if _anim_frozen:
+		_humanoid.process_mode = Node.PROCESS_MODE_INHERIT
+		_anim_frozen = false
 
 
 func _on_gui_input(event: InputEvent) -> void:
@@ -69,16 +92,19 @@ func _on_gui_input(event: InputEvent) -> void:
 
 ## 着せ替えのキャラ（Humanoid.SKINS の添字）を即座に反映する
 func show_skin(id: int) -> void:
+	_unfreeze_anim()
 	_humanoid.set_skin(id)
 
 
 ## コスチュームを即座に反映する（未所持IDでも可＝試着用途）
 func show_costume(id: StringName, colors: PackedColorArray) -> void:
+	_unfreeze_anim()
 	_humanoid.apply_costume(id, colors)
 
 
 ## ⑤帽子を即座に反映する（未所持IDでも可＝試着用途）
 func show_hat(id: StringName) -> void:
+	_unfreeze_anim()
 	_humanoid.apply_hat(id)
 
 

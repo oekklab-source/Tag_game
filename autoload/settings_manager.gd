@@ -41,6 +41,8 @@ func _ready() -> void:
 	apply_master_volume()  # 起動直後からMasterバスに反映しておく
 	apply_language()
 	apply_text_size()
+	# スマホのブラウザだけ 30fps に抑える(発熱対策。PC では何もしない。scenes/hud/phone_perf.gd)
+	PhonePerf.apply_global()
 
 
 ## メモリへの反映のみ。ディスクへの保存は呼び出し側の責務

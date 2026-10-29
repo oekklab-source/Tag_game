@@ -79,6 +79,7 @@ var public_address := ""
 signal public_address_ready(addr: String)
 ## Cloudflare Tunnel を張れなかった（インターネット越しの参加者はつながれない。LAN内なら可）。
 ## reason は "not_found"（cloudflared未インストール）/ "exited"（途中で終了）/ "timeout"
+## / "launch_failed"（serve.ps1 自体が走らなかった。実行ポリシーで拒否された等）
 signal tunnel_failed(reason: String)
 ## URL の ?s= による自動参加は1回だけ。接続失敗時は leave() が title.tscn へ戻すので、
 ## ガードが無いと同じアドレスへ無限に再接続しに行く
@@ -339,9 +340,11 @@ func _launch_tunnel() -> void:
 	# create_process は PID をそのまま返す（失敗時 -1）。辞書ではない
 	# pwsh (PowerShell Core) が入っていない環境向けに、Windows PowerShell へフォールバックする
 	# (tools/serve.ps1 自体はどちらでも動く内容で書かれている)
-	# -ExecutionPolicy Bypass は -File より前に置かないと効かない（pwsh / powershell 共通）。
-	# Windows クライアントの既定（Restricted）のままだと serve.ps1 が実行されず、何も書き出されない
-	# まま timeout で失敗する。開発機は RemoteSigned 等に変えてあるので、配布先でしか気付けない
+	# -ExecutionPolicy Bypass が要るのは、pwsh の無い素の Windows 11 では Windows PowerShell 5.1 の
+	# 既定の実行ポリシーが Restricted で、-File のスクリプトが一切実行されないため（KAN-39）。
+	# そのままだと serve.ps1 が何も書き出さずに終わる（_on_tunnel_poll_tick の launch_failed）。
+	# 開発機は RemoteSigned 等に緩めてあるので、配布先でしか気付けない。この指定はこのプロセスだけに効き、
+	# システムやユーザーの設定は変えない。-File より前に置くこと（後ろはスクリプトへの引数になる。pwsh / powershell 共通）
 	var ps_args := ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path, "-HostAddrFile", host_file,
 		"-ParentPid", str(OS.get_process_id()),
 		"-PidFile", ProjectSettings.globalize_path(TUNNEL_PID_FILE),
@@ -453,6 +456,18 @@ func _on_tunnel_poll_tick() -> void:
 		var reason := err.get_slice("\n", 0).strip_edges()
 		push_warning("[NetworkManager] トンネルを張れませんでした: %s" % err)
 		tunnel_failed.emit(reason)
+		_stop_tunnel_poll()
+		return
+	# serve.ps1 はトンネルを張ったあとも親が終わるまで居続けるので、ホスト名もエラーも無いまま
+	# PowerShell が終わっていたら、スクリプト自体が走らなかった（実行ポリシーでの拒否など）。
+	# serve.ps1 はエラーを書けないので、ここで拾わないとタイムアウトまで理由不明のまま待たされる。
+	# 直接の子なので OS.is_process_running() が効く（孫の cloudflared には効かない。_stop_tunnel 参照）
+	if _tunnel_pid == -1 or not OS.is_process_running(_tunnel_pid):
+		# 書き終えて終了した直後に上の読み取りとすれ違った場合に備えて、もう一度だけ見る
+		if not _read_user_file(TUNNEL_ERROR_FILE).is_empty():
+			return
+		push_warning("[NetworkManager] トンネル用の PowerShell が何も書かずに終了しました")
+		tunnel_failed.emit("launch_failed")
 		_stop_tunnel_poll()
 		return
 	if _tunnel_poll_elapsed >= TUNNEL_POLL_TIMEOUT:
