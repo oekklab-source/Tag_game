@@ -87,13 +87,16 @@ For details, see (currently in Japanese):
 
 ## 9. Credits
 
-> TODO(KAN-47 / 5.4): 日本語版と同じく、生成 AI の利用に関する一文を、5.4 で決まる itch.io の AI 開示の回答と
-> 同じ内容でここに入れる。
+> 生成 AI の一文は日本語版と同じ範囲(KAN-47。2026-10-25 に Yes・4区分すべてと決定)。
+> 根拠は [docs/AI_GENERATED_ASSETS.md](../../AI_GENERATED_ASSETS.md)。
 
 - Made with Godot Engine
 - Licenses for the third-party software and fonts we use (cloudflared, Epic Online Services,
   M PLUS Rounded 1c and more) are in the in-game "Credits & Licenses" screen (bottom left of the title screen)
   and in `THIRD_PARTY_LICENSES.txt` / `GODOT_LICENSES.txt` in the downloaded folder.
+- Generative AI was used to make this game: the title music, the concept art for the characters
+  and costumes (used as references for the 3D models), most of the program code, and the in-game text
+  and this page's text.
 - This game uses Epic Online Services (EOS) provided by Epic Games, Inc. for matchmaking, rankings,
   friends and other online features. Epic Games, Inc. expressly disclaims all representations, warranties,
   conditions and liabilities, express or implied, in connection with Epic Online Services.
