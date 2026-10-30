@@ -1,4 +1,4 @@
-# 3D Chase Game - 英語訳 (L-09)
+# Reverse Tag! - 英語訳 (L-09)
 #
 # msgid は日本語の原文そのもの。日本語ロケールではこのファイルは使われず、tr() は原文を返す。
 # ja 以外のロケールは project.godot の locale/fallback="en" によりこのファイルで表示される。
@@ -19,7 +19,7 @@
 #       訳文で新しく使う文字がフォントにあるかは tests/test_i18n の [6] が検査する。
 msgid ""
 msgstr ""
-"Project-Id-Version: 3D Chase Game\n"
+"Project-Id-Version: Reverse Tag!\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -69,8 +69,20 @@ msgid "保存してもどる"
 msgstr "Save & Back"
 
 # --- タイトル画面 (scenes/title) ---
+# 正式タイトル(KAN-50 で決定)。日本語名と英語名は別物なので、直訳ではなく英語名を当てる
+msgid "逆転鬼ごっこ"
+msgstr "Reverse Tag!"
+
 msgid "- オンライン鬼ごっこバトル -"
 msgstr "- Online Tag Battle -"
+
+# 左下のボタンと、その先の画面の見出し(KAN-45, scenes/credits_screen)
+msgid "クレジット・ライセンス"
+msgstr "Credits & Licenses"
+
+# 右下の版数表示(KAN-32)。前半がストア版数、後半が通信プロトコル版数
+msgid "Ver %s（通信 v%d）"
+msgstr "Ver %s (Protocol v%d)"
 
 msgid "オンラインプレイ (EOS P2P)"
 msgstr "Online Play (EOS P2P)"
@@ -370,14 +382,23 @@ msgstr "Remove %s from the lobby?"
 msgid "招待リンク: %s"
 msgstr "Invite link: %s"
 
-msgid "※cloudflared が入っていないため、インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）"
-msgstr "* cloudflared is not installed, so an internet invite link could not be created (only players on the same LAN can join)."
+msgid "※ゲームのフォルダに cloudflared.exe が無いため、インターネット越しの参加リンクを作れませんでした。ダウンロードしたファイルをフォルダごと展開し直すか、ウイルス対策ソフトが cloudflared.exe を隔離していないか確かめてください（同じLAN内の相手は参加できます）"
+msgstr "* cloudflared.exe is missing from the game folder, so an internet invite link could not be created. Extract the whole downloaded folder again, or check that your antivirus has not quarantined cloudflared.exe (players on the same LAN can still join)."
 
-msgid "※トンネル用のスクリプトを PowerShell で起動できなかったため、インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）"
-msgstr "* The tunnel script could not be started in PowerShell, so an internet invite link could not be created (only players on the same LAN can join)."
+msgid "※cloudflared が入っていないため、インターネット越しの参加リンクを作れませんでした。winget install --id Cloudflare.cloudflared で入れてから部屋を作り直してください（同じLAN内の相手は参加できます）"
+msgstr "* cloudflared is not installed, so an internet invite link could not be created. Install it with winget install --id Cloudflare.cloudflared and create the room again (players on the same LAN can still join)."
 
-msgid "※インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）"
-msgstr "* Could not create an internet invite link (only players on the same LAN can join)."
+msgid "※トンネル用のスクリプトを PowerShell で起動できなかったため、インターネット越しの参加リンクを作れませんでした。PC の設定で PowerShell の実行が止められている可能性があります（同じLAN内の相手は参加できます）"
+msgstr "* The tunnel script could not be started in PowerShell, so an internet invite link could not be created. PowerShell may be blocked by this PC's settings (players on the same LAN can still join)."
+
+msgid "※トンネル（cloudflared）が途中で止まりました。インターネット接続と、ファイアウォールやウイルス対策ソフトが cloudflared.exe の通信を止めていないかを確かめて、部屋を作り直してください（同じLAN内の相手は参加できます）"
+msgstr "* The tunnel (cloudflared) stopped. Check your internet connection and that your firewall or antivirus is not blocking cloudflared.exe, then create the room again (players on the same LAN can still join)."
+
+msgid "※時間内にインターネット越しの参加リンクを作れませんでした。インターネット接続を確かめて、部屋を作り直してください（同じLAN内の相手は参加できます）"
+msgstr "* An internet invite link could not be created in time. Check your internet connection and create the room again (players on the same LAN can still join)."
+
+msgid "※インターネット越しの参加リンクを作れませんでした。部屋を作り直してください（同じLAN内の相手は参加できます）"
+msgstr "* Could not create an internet invite link. Create the room again (players on the same LAN can still join)."
 
 msgid "（うち CPU の鬼 %d人）"
 msgstr " (incl. CPU Chasers: %d)"

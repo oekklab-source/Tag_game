@@ -91,6 +91,9 @@ Windows 10 / 11(64bit)。**キーボード・マウスが必須**で、ゲーム
 > 同じ内容でここに入れる(棚卸しは KAN-46 / 5.3)。ライセンス表記の扱いは KAN-44 / 5.1・KAN-45 / 5.2。
 
 - Godot Engine で制作
+- 使っている第三者のソフトウェア・フォントのライセンスは、ゲーム内の「クレジット・ライセンス」画面
+  (タイトル画面の左下)と、ダウンロードしたフォルダの `THIRD_PARTY_LICENSES.txt` /
+  `GODOT_LICENSES.txt` で読めます(cloudflared、Epic Online Services、M PLUS Rounded 1c ほか)
 - 本ゲームには Epic Games, Inc. が提供する Epic Online Services (EOS) が組み込まれており、
   オンライン対戦のマッチメイキング・ランキング・フレンド機能等に利用されています。
   Epic Online Services の利用に関連して、Epic Games, Inc. はいかなる明示・黙示の保証も行わず、
@@ -100,9 +103,8 @@ Windows 10 / 11(64bit)。**キーボード・マウスが必須**で、ゲーム
 
 ## 掲載時の注意(プレースホルダ)
 
-- タイトルは`project.godot`上の暫定名称「3D Chase Game」のまま執筆している。
-  正式名称確定後、本文中の表記を一斉に差し替えること
-  (`tag-game-ux-fix-roadmap.md`のPhase 5 I5-6参照)。
+- タイトルは「Reverse Tag!」(日本語表記「逆転鬼ごっこ」)。2026-10-25 に KAN-50 で確定した。
+  本文はタイトル名を書かずに成立させてあるので、ページのタイトル欄にだけ入れればよい。
 - 投げ銭(Pay What You Want)の最低支払額はitch.io側のダッシュボードで別途設定する
   (このページ本文には金額を書いていない)。
 - スクリーンショットは[docs/concept/store/screenshots/](screenshots/)の5枚

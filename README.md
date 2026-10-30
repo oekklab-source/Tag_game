@@ -1,4 +1,4 @@
-# 3D Chase Game（Godot 4 / WebSocket オンライン鬼ごっこ）
+# Reverse Tag! ／ 逆転鬼ごっこ（Godot 4 / WebSocket オンライン鬼ごっこ）
 
 PC がホスト（WebSocket サーバ）、Web ブラウザがクライアントとして参加する
 3D 三人称視点のオンライン・チェイスゲーム。マリオ風のカラフルでポップな
@@ -1074,6 +1074,12 @@ python -m http.server 8123 --directory export/web
    手動で `pwsh tools/serve.ps1` を実行する必要は無い。Windows デスクトップ版限定で、
    cloudflared が無い・途中で落ちた等で張れなかったときは、ロビーパネルの招待リンクの下に
    注記が出るだけでゲーム側は止まらない（LAN 内の相手はそのまま参加できる）。
+   注記は理由（`not_found` / `launch_failed` / `exited` / `timeout`）ごとに、プレイヤーが次に
+   何をすればよいかまで書く（[lobby_panel.gd](scenes/hud/lobby_panel.gd) の `tunnel_failure_note()`、KAN-40）。
+   配布版は exe の隣に `cloudflared.exe` を同梱しているので、`not_found` は「フォルダごと展開し直す／
+   ウイルス対策ソフトの隔離を確かめる」、エディタ実行では「winget で入れる」と案内を分けている。
+   ゲーム終了時の後始末は、同梱版でも PATH 版でも同じ PID ファイル経路で cloudflared を止める
+   （どこから起動したかに依らない）。
    PowerShell は `-ExecutionPolicy Bypass`（そのプロセスだけに効く）で起動する。素の Windows 11 の
    Windows PowerShell 5.1 は既定の実行ポリシーが Restricted で、指定しないと `serve.ps1` が
    実行されないため。それでも起動できなかった（グループポリシーで禁止されている等）ときは、
@@ -1132,7 +1138,7 @@ python -m http.server 8123 --directory export/web
 pwsh tools/export_windows.ps1
 ```
 
-中身は `godot --headless --export-release "Windows Desktop" export/windows/TagGame.exe` だが、
+中身は `godot --headless --export-release "Windows Desktop" export/windows/ReverseTag.exe` だが、
 **素の godot コマンドを直接叩かないこと**。
 [addons/tag_game_export_guard/](addons/tag_game_export_guard/export_guard.gd) が
 `eos_credentials.cfg` の不備を検出すると、`[TagGameExportGuard] BLOCKED` を出力する。
@@ -1159,7 +1165,7 @@ Autoload を読めない exe が「成功」として出力される（2026-10-0
 
 `export/` は `.gitignore` 対象なので追加設定は不要。出力される配布物一式（実測済み）:
 
-- `TagGame.exe`（`binary_format/embed_pck=true` のため `.pck` は分離されない）
+- `ReverseTag.exe`（`binary_format/embed_pck=true` のため `.pck` は分離されない）
 - `EOSSDK-Win64-Shipping.dll`
 - `libeosg.windows.template_release.x86_64.dll`
 - `xaudio2_9redist.dll`
@@ -1176,10 +1182,14 @@ Autoload を読めない exe が「成功」として出力される（2026-10-0
 - `msvcp140.dll` / `vcruntime140.dll` / `vcruntime140_1.dll` — `EOSSDK-Win64-Shipping.dll` が
   依存する VC++ ランタイム。Visual C++ 再頒布可能パッケージが入っていない PC では、これが無いと
   GDExtension を読み込めず、**クラッシュせずに黙って EOS オフラインモードになる**
-- `.itch.toml` — itch アプリに起動対象（`TagGame.exe`）を教える。exe が2つ並ぶので、
+- `.itch.toml` — itch アプリに起動対象（`ReverseTag.exe`）を教える。exe が2つ並ぶので、
   書かないと `cloudflared.exe` を起動対象に選ばれうる（元は [tools/dist/](tools/dist/)）
-- `THIRD_PARTY_LICENSES.txt` — Godot・cloudflared・EOSG・フォント等のライセンス表記
-  （元は [tools/dist/](tools/dist/)。同梱物を足したらここにも足すこと）
+- `THIRD_PARTY_LICENSES.txt` — Godot・cloudflared・EOSG・EOS SDK・XAudio2・VC++ ランタイム・フォントの
+  ライセンス表記（元は [licenses/](licenses/)。ゲーム内のクレジット画面も同じファイルを `.pck` から読む。
+  同梱物を足したらここにも、`tests/test_licenses.gd` の `REQUIRED_ENTRIES` にも足すこと）
+- `GODOT_LICENSES.txt` — Godot 本体と同梱ライブラリの全件とライセンス本文（元は [licenses/](licenses/)。
+  `Engine.get_copyright_info()` の出力そのもので、Godot を上げてずれたら `tests/test_licenses.tscn` が
+  FAIL する。作り直しは `godot --headless --path . res://tests/test_licenses.tscn -- --write`）
 
 トンネルの起動には、もう1つ配布先でだけ効く条件がある。`_launch_tunnel()` は
 `powershell -ExecutionPolicy Bypass -File ...` で `serve.ps1` を起動する。Windows の既定の
@@ -1187,7 +1197,7 @@ Autoload を読めない exe が「成功」として出力される（2026-10-0
 配布先ではスクリプトが1行も走らず、トンネルは `timeout` で失敗する
 （開発機は RemoteSigned 等に変えてあるので、外しても気付けない）。
 
-いずれも `TagGame.exe` と同じフォルダに並ぶ（サブフォルダは作られない）。
+いずれも `ReverseTag.exe` と同じフォルダに並ぶ（サブフォルダは作られない）。
 `eos_credentials.cfg` と `tools/serve.ps1` はこのフォルダには出てこない
 （`export_presets.cfg` の `include_filter` で `.pck` 内の `res://` パスへ同梱され、
 実行時に読まれる設計。特に `tools/serve.ps1` は起動のたびに
@@ -1229,8 +1239,8 @@ butler status <ユーザー名>/<プロジェクト>:windows
 
 | 版数 | 実体 | 上げるタイミング |
 |---|---|---|
-| `PROTOCOL_VERSION` | [autoload/game_manager.gd](autoload/game_manager.gd) の定数（現在13）。ロビー画面の `v13` 表示 | RPC の名前・引数・ノードパスを変えたときだけ（`### 通信の版数` 参照） |
-| `application/config/version` | `project.godot`（現在 `0.1.0`）。exe のファイルプロパティ、`butler --userversion` | itch.io へ新しいビルドを上げるたびに（見た目だけの修正でも上げる） |
+| `PROTOCOL_VERSION` | [autoload/game_manager.gd](autoload/game_manager.gd) の定数（現在13）。ロビー画面の `v13` 表示、タイトル画面右下の `（通信 v13）` | RPC の名前・引数・ノードパスを変えたときだけ（`### 通信の版数` 参照） |
+| `application/config/version` | `project.godot`（現在 `0.1.0`）。タイトル画面右下の `Ver 0.1.0`、exe のファイルプロパティ、`butler --userversion` | itch.io へ新しいビルドを上げるたびに（見た目だけの修正でも上げる） |
 
 見た目の修正だけをリリースしても `PROTOCOL_VERSION` は変える必要が無く、
 逆に RPC を変えていないのにストア更新のたびに `PROTOCOL_VERSION` を上げる必要も無い。
@@ -1483,8 +1493,9 @@ addons/tag_game_export_guard/ Windows 書き出し時に eos_credentials.cfg の
                               エクスポートプラグイン（止めるのは tools/export_windows.ps1）
 tools/export_windows.ps1      Windows 版の書き出し。認証情報の不備・配布物への開発用ファイル混入を
                               検出したら exe を消して失敗させる。
-                              cloudflared・VC++ ランタイム・tools/dist/ の中身を配布フォルダへ同梱する
-tools/dist/                   配布フォルダへそのままコピーするファイル（.itch.toml、第三者ライセンス表記）
+                              cloudflared・VC++ ランタイム・tools/dist/ と licenses/ の中身を配布フォルダへ同梱する
+tools/dist/                   配布フォルダへそのままコピーするファイル（.itch.toml）
+licenses/                     第三者ライセンス表記。配布フォルダへ同梱し、クレジット画面も読む（KAN-45）
 .github/workflows/windows-release.yml
                               v* タグの push で Windows 版をビルドし、butler で itch.io へ上げる
 autoload/music_manager.gd     タイトル/ロビー系画面のBGMを保持するAutoload。change_scene_to_file()を
@@ -1526,6 +1537,7 @@ ui/pop_theme.tres             全体に適用される POP テーマ
 locale/en.po                  英語の翻訳（msgid は日本語の原文。書き方は「表示言語」節）
 autoload/settings_manager.gd  マウス感度・音量・タッチ操作・表示言語・文字サイズの設定（user://settings.json）
 scenes/settings_screen.tscn(.gd) 設定画面
+scenes/credits_screen.tscn(.gd) クレジット・ライセンス画面（タイトル画面の左下から開く）
 tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
 tools/blender/character_common.py 着せ替えで共通の骨格・リグ・アニメ・書き出し。
                               服が増えてもここは触らない
@@ -1579,6 +1591,8 @@ tests/uishot.tscn             UI（タイトル/ロビー/対戦中/リザルト
 tests/quit_menu.tscn          Esc の終了確認メニューの開閉・既定フォーカス・キーリピートの検証
 tests/phone_perf.tscn         スマホ向け軽量化の判定・適用と、PC では何も変わらないことの検証
 tests/test_i18n.tscn          翻訳の整合性（未登録 msgid・訳し忘れ・書式指定・フォントの字形・言語設定）の検証
+tests/test_licenses.tscn      ライセンス表記（GODOT_LICENSES.txt と Godot の出力のずれ・同梱物の抜け・クレジット画面）の検証
+tools/run_all_tests.ps1       tests/*.tscn をまとめて流して集計する（headless 系と2プロセス系。分類は CLAUDE.md）
 tests/host_conflict.tscn      ポートが埋まっているときホストを弾いて理由を出すかの検証
 tests/costume_model.tscn      ④コスチューム・⑤帽子のデータモデル（所持・移行・整合性）を検証
 tests/shop_fitting.tscn       ショップの試着・まとめ買い・着替え・元に戻す・プレゼント可否の検証

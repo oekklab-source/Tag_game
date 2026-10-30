@@ -127,13 +127,26 @@ func _on_public_address_ready(addr: String) -> void:
 ## トンネルは窓を出さずに裏で張るので、張れなかったことはここでしか伝わらない
 ## （以前は PowerShell の窓にエラーが出ていた）
 func _on_tunnel_failed(reason: String) -> void:
-	if reason == "not_found":
-		_tunnel_note = tr("※cloudflared が入っていないため、インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）")
-	elif reason == "launch_failed":
-		_tunnel_note = tr("※トンネル用のスクリプトを PowerShell で起動できなかったため、インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）")
-	else:
-		_tunnel_note = tr("※インターネット越しの参加リンクを作れませんでした（同じLAN内の相手だけ参加できます）")
+	_tunnel_note = tunnel_failure_note(reason, OS.has_feature("template"))
 	_refresh_invite_label()
+
+
+## KAN-40: 張れなかった理由ごとに「プレイヤーが次に何をすればよいか」まで書く。
+## exported は書き出した配布版か（エディタ実行では false）。配布版は exe の隣に cloudflared.exe を
+## 同梱しているので、not_found は「入れていない」ではなく「フォルダが欠けた／隔離された」を意味する
+static func tunnel_failure_note(reason: String, exported: bool) -> String:
+	match reason:
+		"not_found":
+			if exported:
+				return TranslationServer.translate("※ゲームのフォルダに cloudflared.exe が無いため、インターネット越しの参加リンクを作れませんでした。ダウンロードしたファイルをフォルダごと展開し直すか、ウイルス対策ソフトが cloudflared.exe を隔離していないか確かめてください（同じLAN内の相手は参加できます）")
+			return TranslationServer.translate("※cloudflared が入っていないため、インターネット越しの参加リンクを作れませんでした。winget install --id Cloudflare.cloudflared で入れてから部屋を作り直してください（同じLAN内の相手は参加できます）")
+		"launch_failed":
+			return TranslationServer.translate("※トンネル用のスクリプトを PowerShell で起動できなかったため、インターネット越しの参加リンクを作れませんでした。PC の設定で PowerShell の実行が止められている可能性があります（同じLAN内の相手は参加できます）")
+		"exited":
+			return TranslationServer.translate("※トンネル（cloudflared）が途中で止まりました。インターネット接続と、ファイアウォールやウイルス対策ソフトが cloudflared.exe の通信を止めていないかを確かめて、部屋を作り直してください（同じLAN内の相手は参加できます）")
+		"timeout":
+			return TranslationServer.translate("※時間内にインターネット越しの参加リンクを作れませんでした。インターネット接続を確かめて、部屋を作り直してください（同じLAN内の相手は参加できます）")
+	return TranslationServer.translate("※インターネット越しの参加リンクを作れませんでした。部屋を作り直してください（同じLAN内の相手は参加できます）")
 
 
 func _refresh_invite_label() -> void:

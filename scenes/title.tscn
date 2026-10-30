@@ -93,6 +93,38 @@ grow_horizontal = 2
 grow_vertical = 2
 texture = SubResource("GradientTexture2D_bg")
 
+[node name="VersionLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -480.0
+offset_top = -44.0
+offset_right = -16.0
+offset_bottom = -12.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_colors/font_color = Color(1, 1, 1, 0.55)
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 2
+vertical_alignment = 2
+
+[node name="CreditsButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -52.0
+offset_right = 260.0
+offset_bottom = -12.0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 16
+text = "クレジット・ライセンス"
+flat = true
+
 [node name="FullscreenButton" type="Button" parent="."]
 visible = false
 layout_mode = 0
@@ -161,7 +193,7 @@ theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.8)
 theme_override_constants/shadow_offset_x = 3
 theme_override_constants/shadow_offset_y = 3
 theme_override_font_sizes/font_size = 52
-text = "3D CHASE GAME"
+text = "逆転鬼ごっこ"
 horizontal_alignment = 1
 
 [node name="Subtitle" type="Label" parent="CenterMenu/VBox"]
