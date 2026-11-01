@@ -16,17 +16,23 @@ ranking_dialog / room_match_dialog / migration_overlay
 ([tests/uishot.gd](../../../tests/uishot.gd)参照)。
 
 ## 枚数・選定案
-itch.io推奨は3〜5枚。候補:
+itch.io推奨は3〜5枚。今の5枚と、撮り方:
 
 1. タイトル画面(`title.png`)
-2. ロビー(`lobby.png` または `lobby_picked.png`、役割が決まっている見た目)
-3. 鬼視点の追跡または逃走者視点(`playing.png`)
-4. エモート(`emote.png`、連携要素が伝わる)
-5. リザルト(`result.png`)
+2. ロビー(`lobby_picked.png`、役割が決まっている見た目)
+3. 逃走者視点のラウンド開始直後(`playing.png`、マップと滑り台が見える。Web版の OGP 画像にも使う)
+4. Reverse Tag の対戦中(`reverse_tag.png`、鬼が画面に入っている)
+5. ショップ(`shop.png`、見た目アイテムと店員さん)
+
+`tests/uishot.gd` の `playing` はカウントダウン中で相手が写らないので、3・4はソロ練習を動かして撮った。
+1・2は下の理由で、名前とレートをダミーにして撮った。
 
 ## 写り込みの禁止事項(公開前に必ず確認)
 - 招待リンク行(`InviteRow`)に実トンネルURL(`?s=xxxx.trycloudflare.com`)が写っていないか
 - 実プレイヤー名・EOSのID・フレンドコードが写っていないか
+- レートの実値が写っていないか。`tests/uishot.gd` は開発機の実プロフィールを読むので、そのまま撮ると
+  タイトルとロビーに実際の名前とレートが出る。撮影の前に `ProfileManager.player_name` と `rating` を
+  メモリ上でダミーに置き換える(`save_guard` があるので実セーブには残らない)
 - `tests/uishot.gd`の標準実行では`NetworkManager.public_address`を設定しないため
   `lobby.png`に招待リンク行自体が出ない想定だが、撮影時に目視で再確認すること
 

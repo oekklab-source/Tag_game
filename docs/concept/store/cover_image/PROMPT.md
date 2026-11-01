@@ -39,9 +39,9 @@ No text, no letters, no numbers, no logo, no weapons, no violence, no vehicles, 
 
 | 項目 | 値 |
 | --- | --- |
-| 生成日 | |
-| ツール名・モデル | |
-| 使ったプロンプト | 上のまま / 変えた場合はここに全文 |
-| 採用したファイル | `docs/concept/store/cover_image/` 配下のファイル名 |
-| 文字入れ | なし / あり(使ったソフト) |
-| 生成した人 | |
+| 生成日 | 2026-11-01 |
+| ツール名・モデル | Claude Code(Claude Opus 5.5)。画像生成ツールは使っていない。Blender のスクリプト `tools/blender/build_cover_art.py` でシーンを組み、Blender 5.2 の EEVEE で書き出した。キャラは `tools/blender/fallguy.blend` のゲーム内モデル |
+| 使ったプロンプト | 上のプロンプトは画像生成ツールに渡さず、構図・配色の指示として使った |
+| 採用したファイル | `cover_v1.png`(文字なし)、`cover_v1_title.png`(タイトル入り) |
+| 文字入れ | `cover_v1_title.png` のみあり。ゲームのロゴ `ui/logo/reverse_tag_logo.png` を Python(Pillow)で重ねた |
+| 生成した人 | Claude Code(ハマちゃんの依頼) |
