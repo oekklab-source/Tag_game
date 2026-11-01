@@ -11,6 +11,8 @@ Web 版（GitHub Pages）にだけ置くファイル。Godot の書き出しに�
 
 - **Service Worker は置かない。** Service Worker はビルドをキャッシュするので、
   Web 版だけ古い版数のまま残る事故（2026-09-28、ホスト v11 / Web 版 v9）を起こしやすいため。
-- アイコンは `icon.svg` から書き出した仮のもの。正式なアイコン（[docs/OWNER_TASKS.md](../docs/OWNER_TASKS.md) A-3）ができたら差し替える。
+- アイコンはオーナー提供の正式なアイコン（元絵は `docs/concept/store/app_icon/reverse_tag_icon_1024.png`、
+  exe 用はリポジトリ直下の `icon.png` / `icon.ico`）を縮めたもの。`apple-touch-icon.png` だけは角を透明にしない
+  （iPhone は自分で角を丸め、透明な部分を黒く塗るため）。
   正式タイトルが決まったら `manifest.webmanifest` の `name` / `short_name` と、
   `export_presets.cfg` の `apple-mobile-web-app-title` も差し替える。
