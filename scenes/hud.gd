@@ -922,6 +922,11 @@ func _on_state_changed(new_state: int) -> void:
 	if new_state == GameManager.State.WAITING:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		_rating_applied = false
+		# 事実の行はノードで組むので、閉じたリザルトに残さない(ラウンド後にノード数が戻らなくなる)
+		_facts_key = ""
+		for c in result_facts.get_children():
+			result_facts.remove_child(c)
+			c.queue_free()
 	if new_state != GameManager.State.PLAYING:
 		_hide_spotted_banner()  # 見られたままラウンドが終わる（＝捕まる）ので必ず消す
 		_team_spotted = false
