@@ -6,7 +6,7 @@
 [ext_resource type="PackedScene" uid="uid://df58y6c3g012p" path="res://scenes/ranking_dialog.tscn" id="5_ranking"]
 [ext_resource type="Shader" path="res://ui/pop_background.gdshader" id="6_bg"]
 [ext_resource type="Script" path="res://ui/icon_button.gd" id="7_ibtn"]
-[ext_resource type="Texture2D" path="res://ui/logo/it_chase_logo.png" id="8_logo"]
+[ext_resource type="Texture2D" path="res://ui/logo/reverse_tag_logo.png" id="8_logo"]
 [ext_resource type="PackedScene" path="res://scenes/costume_preview.tscn" id="9_preview"]
 [ext_resource type="Texture2D" path="res://ui/icons/play.png" id="10_play"]
 [ext_resource type="Texture2D" path="res://ui/icons/solo.png" id="11_solo"]

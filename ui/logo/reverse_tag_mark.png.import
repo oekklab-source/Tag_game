@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ofmqdo6qamch"
-path="res://.godot/imported/it_chase_mark.png-b148d4dec466372605f9ceaa24b06f5e.ctex"
+uid="uid://dxiueprtyeyur"
+path="res://.godot/imported/reverse_tag_mark.png-61e420533355ba189936e6b5b2c5eeee.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://ui/logo/it_chase_mark.png"
-dest_files=["res://.godot/imported/it_chase_mark.png-b148d4dec466372605f9ceaa24b06f5e.ctex"]
+source_file="res://ui/logo/reverse_tag_mark.png"
+dest_files=["res://.godot/imported/reverse_tag_mark.png-61e420533355ba189936e6b5b2c5eeee.ctex"]
 
 [params]
 

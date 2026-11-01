@@ -630,7 +630,7 @@ UI が全部豆腐（□）になるので **`ui/fonts/` に丸ゴシックを�
 （M PLUS Rounded 1c、OFL。JIS 第一水準にサブセット済みで 1.6 MB）。
 テーマ `ui/pop_theme.tres` の `default_font` から全 Control に効く。
 
-### UI は絵で伝える（ロゴ「IT CHASE」とアイコン）
+### UI は絵で伝える（ロゴ「Reverse Tag!」とアイコン）
 
 メニュー・ロビー・HUD・リザルトは **「読まなくても絵で分かる」** ことを狙って、ボタンや見出しを
 絵に置き換えてある（2026-10-04）。文字で残しているのは次のものだけ。
@@ -647,7 +647,8 @@ UI が全部豆腐（□）になるので **`ui/fonts/` に丸ゴシックを�
 blender -b -P tools/blender/build_ui_art.py -- [--only 名前,名前] [--sheet <出力先>]
 ```
 
-- 出力は `ui/logo/it_chase_logo.png`（ロゴ）、`ui/logo/it_chase_mark.png`（キャラだけのシンボル）、
+- 出力は `ui/logo/reverse_tag_logo.png`（ロゴ。上段 REVERSE・下段 TAG!、左右に鬼と逃げる人、入れ替わりの矢印）、
+  `ui/logo/reverse_tag_mark.png`（キャラ＋入れ替わり矢印だけのシンボル）、
   `ui/icons/<名前>.png`（アイコン）。`--sheet` で全部を並べた一覧画像が出る
   （`tools/blender/references/ui_art/ui_art_sheet.png` に1枚置いてある）。
 - キャラの絵は `tools/blender/fallguy.blend` を読み込んで撮るので、ゲーム内と同じ形・同じポーズになる。
@@ -662,7 +663,7 @@ blender -b -P tools/blender/build_ui_art.py -- [--only 名前,名前] [--sheet <
 - 鬼の目撃情報は「目の絵＋ゾーンの色＋数字」で出し、**ゾーン名の文字は出さない**。
   場所はチップの色と、ミニマップの該当ゾーンの点灯（`minimap.gd`）で伝える。
 - **`project.godot` の `config/name`（"3D Chase Game"）は変えていない。** `user://` の場所が
-  この名前で決まるので、変えると既存のセーブが見えなくなる。「IT CHASE」はロゴだけに使っている。
+  この名前で決まるので、変えると既存のセーブが見えなくなる。正式タイトル「Reverse Tag! / 逆転鬼ごっこ」はロゴだけに使っている。
 
 ### 表示言語（日本語 / 英語）
 
@@ -1577,7 +1578,7 @@ ui/pop_background.gdshader    メニュー画面の背景（斜めの縞がゆ�
 ui/icon_button.gd             絵のボタン（Button に付ける。乗せると膨らみ押すと沈む。意味は tooltip_text。
                               text を入れると絵の下に短い名前を出す）
 ui/key_hint.gd                キー操作のヒントを「キーの絵＋動作の絵」で組み立てる部品
-ui/logo/, ui/icons/           ロゴ「IT CHASE」とアイコンの PNG（build_ui_art.py の出力）
+ui/logo/, ui/icons/           ロゴ「Reverse Tag!」とアイコンの PNG（build_ui_art.py の出力）
 tools/blender/build_ui_art.py ロゴとアイコンを Blender で描いて PNG に書き出す（blender -b -P で実行）
 locale/en.po                  英語の翻訳（msgid は日本語の原文。書き方は「表示言語」節）
 autoload/settings_manager.gd  マウス感度・音量・タッチ操作・表示言語・文字サイズの設定（user://settings.json）

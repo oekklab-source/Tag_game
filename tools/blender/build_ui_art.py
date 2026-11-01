@@ -3,8 +3,8 @@
     blender -b -P tools/blender/build_ui_art.py -- [--only 名前,名前] [--sheet <出力ディレクトリ>]
 
 出力:
-    ui/logo/it_chase_logo.png   タイトル画面のロゴ（文字「IT CHASE」＋追う鬼と逃げる人）
-    ui/logo/it_chase_mark.png   キャラだけのシンボル（アプリアイコン候補の元絵）
+    ui/logo/reverse_tag_logo.png   タイトル画面のロゴ（文字「REVERSE TAG!」＋入れ替わる鬼と逃げる人）
+    ui/logo/reverse_tag_mark.png   鬼と逃げる人が入れ替わる矢印だけのシンボル（アプリアイコン候補の元絵）
     ui/icons/<名前>.png         ボタンや HUD に載せる絵
 
 UI は「読まなくても絵で分かる」ことを狙っているので、どの絵も
@@ -519,23 +519,42 @@ def _word(text, size, face_hex, side_hex, z, tilt_seq, gap=0.06):
     return total
 
 
-def build_logo():
-    """上段は「鬼 → IT → 逃げる人」、下段に「CHASE」。
+def swap_arrows(cx, cz, r, rad=0.17, span=140, y=-0.1, arcs=((25, HUNTER), (205, RUNNER))):
+    """役割の入れ替わりを示す弧の矢印。赤は鬼、緑は逃げる人の色。arcs は (開始角, 色) の並びで、
+    span が負なら時計回り。太い管と大きめの矢じりにして、小さく縮めても矢印だと分かるようにする。"""
+    for a0, color in arcs:
+        a1 = a0 + span
+        tube(arc(cx, cz, r, a0, a1, n=28, y=y), rad, mat(color))
+        e = math.radians(a1)
+        # 矢じりは進行方向（反時計回りなら接線の向き、時計回りなら逆）へ向ける
+        turn = -a1 if span > 0 else 180.0 - a1
+        prism([(0.0, rad * 2.8), (-rad * 2.2, -rad * 1.1), (rad * 2.2, -rad * 1.1)], rad * 2.2,
+              mat(color), bevel=0.05,
+              loc=(cx + r * math.cos(e), y, cz + r * math.sin(e)), rot=(0, turn, 0))
 
-    IT は英語の鬼ごっこで鬼のこと。だから IT を鬼の赤で塗り、その左から鬼が飛びつき、
-    右へ逃げる人が走る。上段の文字が短いぶんの空きにキャラを入れて、全体を四角くまとめる。
+
+def build_logo():
+    """上段「REVERSE」、下段に大きく「TAG!」。鬼ごっこ（TAG）の役割が逆転する、という意味。
+
+    下段の文字の左に飛びつく鬼、右に逃げる人を置く。上段は下段より短く、左右の肩に空きが
+    できるので、そこへ入れ替わりの弧の矢印を置く（赤が鬼から、緑が逃げる人から、互いへ向かう）。
+    キャラは文字に被らないよう、下段の文字の外側に立たせる。
     """
-    top = _word("IT", 2.1, "#ff5a5a", "#b3202c", 1.6, (-7, 6))
-    bottom = _word("CHASE", 1.75, YELLOW, ORANGE, 0.0, (5, -4, 6, -5, 4))
-    side = top / 2.0 + (bottom - top) / 4.0
-    bean(HUNTER, "Dive", 22, loc=(-side - 0.95, 0.3, 1.1), yaw=52, tilt=(48, 0), scale=1.05)
-    bean(RUNNER, "Run", 6, loc=(side + 0.3, 0.3, 0.85), yaw=38, scale=1.05)
+    top = _word("REVERSE", 1.45, "#ff5a5a", "#b3202c", 2.4, (-6, 5, -4, 6, -5, 4, -6))
+    bottom = _word("TAG!", 2.7, YELLOW, ORANGE, 0.0, (-5, 6, -4, 5))
+    side = bottom / 2.0
+    bean(HUNTER, "Dive", 22, loc=(-side - 2.0, 0.3, -0.6), yaw=52, tilt=(48, 0), scale=1.5)
+    bean(RUNNER, "Run", 6, loc=(side + 1.2, 0.3, -0.75), yaw=38, scale=1.5)
+    wing = top / 2.0 + 0.7
+    swap_arrows(-wing - 0.95, 1.9, 0.85, rad=0.21, span=-130, arcs=((170, HUNTER),))
+    swap_arrows(wing + 0.95, 1.9, 0.85, rad=0.21, span=130, arcs=((10, RUNNER),))
 
 
 def build_mark():
-    """飛びつく鬼と逃げる人。文字が無くても何のゲームか伝わる最小の絵。"""
-    bean(HUNTER, "Dive", 22, loc=(-1.55, 0.6, 0.4), yaw=52, tilt=(48, 0))
-    bean(RUNNER, "Run", 6, loc=(0.75, -0.2, 0.0), yaw=38)
+    """入れ替わる鬼と逃げる人。文字が無くても何のゲームか伝わる最小の絵。"""
+    bean(HUNTER, "Dive", 22, loc=(-1.55, 0.6, -0.6), yaw=52, tilt=(48, 0))
+    bean(RUNNER, "Run", 6, loc=(1.35, -0.2, -0.8), yaw=38)
+    swap_arrows(0.0, 1.45, 1.0, arcs=((25, HUNTER), (205, RUNNER)))
 
 
 # =====================================================================
@@ -1082,8 +1101,8 @@ def build_taunt_3():
 
 # 名前 -> (組み立て関数, 出力先, 幅, 高さ, 余白を切り詰めるか)。出力先 None は ui/icons/<名前>.png
 ART = {
-    "logo": (build_logo, os.path.join(LOGO_DIR, "it_chase_logo.png"), 1024, 640, True),
-    "mark": (build_mark, os.path.join(LOGO_DIR, "it_chase_mark.png"), 512, 512, False),
+    "logo": (build_logo, os.path.join(LOGO_DIR, "reverse_tag_logo.png"), 1024, 640, True),
+    "mark": (build_mark, os.path.join(LOGO_DIR, "reverse_tag_mark.png"), 512, 512, False),
 }
 # 大きく見せる絵（メニューの主役・役割・結果）は 256、それ以外は 128。
 # 128 でも文字サイズ「特大」(1.3倍) の 64px 表示に対して十分な解像度がある
@@ -1180,7 +1199,8 @@ def make_app_icons():
         blocks = icon.reshape(px, k, px, k, 4)
         a = blocks[..., 3]
         c = (blocks[..., :3] * a[..., None]).sum(axis=(1, 3)) / np.maximum(a.sum(axis=(1, 3)), 1e-6)[..., None]
-        path = os.path.join(out_dir, "it_chase_icon_%d.png" % px)
+        # 正式なアイコン（オーナー提供の reverse_tag_icon_*.png）を上書きしないよう別名で出す
+        path = os.path.join(out_dir, "reverse_tag_mark_icon_%d.png" % px)
         _save_pixels(path, np.dstack([c, a.mean(axis=(1, 3))]))
         print("icon   :", path)
 
