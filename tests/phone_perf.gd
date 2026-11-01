@@ -117,34 +117,28 @@ func _check_phone_applied() -> void:
 
 ## --- 4. ダッシュパネルとロビーのプレビュー --------------------------------
 
-func _first_wave(panel: Node) -> BaseMaterial3D:
-	var wave := panel.get_node("Mesh/DashPadModel/DashPad/Wave0") as MeshInstance3D
-	return wave.get_surface_override_material(0) as BaseMaterial3D
-
-
 func _check_boost_panel() -> void:
-	# PC: 画面判定の部品は付かず、毎フレーム波を書き換える(今までどおり)
+	# PC: 画面判定の部品は付かず、毎フレーム板の流れを書き換える(今までどおり)
 	PhonePerf.force_for_test = false
 	var pc: Area3D = BOOST.instantiate()
 	add_child(pc)
 	_ok("PC: ダッシュパネルに画面判定は付かない", pc._on_screen == null)
-	var mat := _first_wave(pc)
-	mat.emission_energy_multiplier = -1.0
+	pc._plate.set_shader_parameter("scroll", -1.0)
 	pc._process(0.016)
-	_ok("PC: ダッシュパネルの波は毎フレーム動く", mat.emission_energy_multiplier >= 0.0,
-		"%.2f" % mat.emission_energy_multiplier)
+	var pc_scroll: float = pc._plate.get_shader_parameter("scroll")
+	_ok("PC: ダッシュパネルの板は毎フレーム流れる", pc_scroll >= 0.0, "%.2f" % pc_scroll)
 	pc.free()
 
-	# スマホ: headless ではカメラが無く常に画面外なので、波を止めているはず
+	# スマホ: headless ではカメラが無く常に画面外なので、板の流れを止めているはず
 	PhonePerf.force_for_test = true
 	var phone: Area3D = BOOST.instantiate()
 	add_child(phone)
 	_ok("スマホ: ダッシュパネルに画面判定が付く", phone._on_screen != null)
-	mat = _first_wave(phone)
-	mat.emission_energy_multiplier = -1.0
+	phone._plate.set_shader_parameter("scroll", -1.0)
 	phone._process(0.016)
-	_ok("スマホ: 画面外では波を書き換えない", is_equal_approx(mat.emission_energy_multiplier, -1.0),
-		"%.2f" % mat.emission_energy_multiplier)
+	var phone_scroll: float = phone._plate.get_shader_parameter("scroll")
+	_ok("スマホ: 画面外では板の流れを書き換えない", is_equal_approx(phone_scroll, -1.0),
+		"%.2f" % phone_scroll)
 	phone.free()
 	PhonePerf.force_for_test = false
 
