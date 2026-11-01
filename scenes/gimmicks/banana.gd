@@ -16,6 +16,9 @@ var _used := false
 var _landed := false
 var launch_velocity := Vector3.ZERO
 var thrower_peer_id := -1
+## 投げ手のノード名。サーバーだけが持つ（world.gd の spawn_dropped_item が入れる）。
+## CPU は peer_id を持たないので、Reverse Tag の幽霊 CPU の投げたバナナも見分けられるよう名前で持つ
+var thrower_name := ""
 var _velocity := Vector3.ZERO
 var _support: Node3D = null
 var _support_local_position := Vector3.ZERO
@@ -41,7 +44,7 @@ func _physics_process(delta: float) -> void:
 	if _landed:
 		_update_support_position()
 		return
-	var gravity := THROW_GRAVITY if thrower_peer_id >= 0 \
+	var gravity := THROW_GRAVITY if _thrown() \
 		else float(ProjectSettings.get_setting("physics/3d/default_gravity"))
 	_velocity.y -= gravity * delta
 	var next := global_position + _velocity * delta
@@ -95,10 +98,13 @@ func _on_body_entered(body: Node3D) -> void:
 		return
 	if not body.has_method("apply_stun"):
 		return
-	if not _landed and thrower_peer_id >= 0 \
-			and String(body.name).to_int() == thrower_peer_id:
+	# 幽霊はバナナを踏まない（すり抜ける存在なので、拾って消してしまうと邪魔になる）
+	if GameManager.is_ghost(body):
+		return
+	if not _landed and _thrown() and String(body.name) == thrower_name:
 		return
 	_used = true
+	GameManager.team.on_banana_hit(thrower_name, body)
 	_hit.rpc(body.get_path())
 
 
@@ -113,3 +119,7 @@ func _hit(victim: NodePath) -> void:
 	if multiplayer.is_server():
 		# サーバが消せば MultiplayerSpawner が全ピアの複製も消す
 		queue_free.call_deferred()
+
+
+func _thrown() -> bool:
+	return thrower_peer_id >= 0 or not thrower_name.is_empty()

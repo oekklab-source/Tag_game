@@ -82,12 +82,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("start_round") and multiplayer.is_server():
 		GameManager.request_start_round()
+	elif event.is_action_pressed("toggle_role") and GameManager.team.enabled:
+		# Reverse Tag では R は希望チームの切替（おまかせ -> A -> B）
+		GameManager.team.cycle_my_team()
 	elif event.is_action_pressed("toggle_role") and not NetworkManager.matched_via_eos_lobby:
 		# 役割の立候補は全ピアができる（逃走者の枠は1つなので奪い合いになる）。
 		# ②EOSロビー経由(レーティング戦)は鬼をランダム化するため立候補自体を無効にする
 		GameManager.toggle_my_role()
 	elif event.is_action_pressed("cycle_runner") and multiplayer.is_server() \
-			and not NetworkManager.matched_via_eos_lobby:
+			and not NetworkManager.matched_via_eos_lobby and not GameManager.team.enabled:
 		GameManager.cycle_wanted_runner()
 
 
@@ -109,6 +112,8 @@ func _on_peer_disconnected(id: int) -> void:
 	var last_pos: Vector3 = p.position if p else Vector3.ZERO
 	if p:
 		p.queue_free()
+	# Reverse Tag は同じチーム・同じ役の CPU で穴を埋める（レート対象外なので精算は無い）
+	GameManager.team.on_peer_left(id, last_pos)
 	if takeover:
 		spawn_cpu_runner(last_pos)
 	GameManager.on_player_left(id, takeover)
@@ -158,8 +163,10 @@ func _is_clear(p: Vector3) -> bool:
 
 
 ## プレイヤーの置きアイテム。GameManager.request_drop（ホスト）から呼ばれる
+## thrower_name はサーバー内だけで持つ投げ手のノード名（Reverse Tag の幽霊の復活判定用）。
+## RPC の request_drop は変えず、人間は送信元の peer_id から、CPU は自分の名前を渡す
 func spawn_dropped_item(kind: int, pos: Vector3, yaw: float,
-		launch_velocity := Vector3.ZERO, thrower_id := -1) -> void:
+		launch_velocity := Vector3.ZERO, thrower_id := -1, thrower_name := "") -> void:
 	_drop_counter += 1
 	var scene := BANANA_SCENE if kind == Player.Item.BANANA else BLOCK_SCENE
 	var n: Node3D = scene.instantiate()
@@ -168,7 +175,10 @@ func spawn_dropped_item(kind: int, pos: Vector3, yaw: float,
 	n.rotation.y = yaw
 	if kind == Player.Item.BANANA:
 		n.launch_velocity = launch_velocity
-		n.thrower_peer_id = thrower_id if launch_velocity.length_squared() > 0.01 else -1
+		var thrown := launch_velocity.length_squared() > 0.01
+		n.thrower_peer_id = thrower_id if thrown else -1
+		if thrown:
+			n.thrower_name = thrower_name if not thrower_name.is_empty() else str(thrower_id)
 	items.add_child(n)
 
 
@@ -189,3 +199,18 @@ func spawn_cpu_runner(pos: Vector3) -> void:
 	cpu.position = pos
 	cpu.sync_position = pos
 	players.add_child(cpu)
+
+
+## Reverse Tag 用。team_mode.gd（ホスト）から呼ばれ、チームの印を付けた CPU を出す。
+## 鬼と逃げは別のシーンなので、入れ替えのたびにここで反対の役に作り直される。
+## 名前に通し番号を付けるのは、消えた CPU と同じ名前で出すと MultiplayerSpawner が
+## 他ピアで消す前の古いノードと取り違えるため
+func spawn_team_cpu(as_hunter: bool, team: int, pos: Vector3) -> String:
+	_cpu_counter += 1
+	var cpu: CharacterBody3D = (CPU_SCENE if as_hunter else CPU_RUNNER_SCENE).instantiate()
+	cpu.name = "CPU%s%d" % ["AB"[team], _cpu_counter]
+	cpu.team = team
+	cpu.position = pos
+	cpu.sync_position = pos
+	players.add_child(cpu)
+	return String(cpu.name)

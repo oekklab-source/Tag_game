@@ -39,6 +39,9 @@ const ICON_DISTANCE := preload("res://ui/icons/distance.png")
 const ICON_WIN := preload("res://ui/icons/win.png")
 const ICON_LOSE := preload("res://ui/icons/lose.png")
 const ICON_STOP := preload("res://ui/icons/stop.png")
+const ICON_BANANA := preload("res://ui/icons/item_banana.png")
+## ゆうれい(Reverse Tag でつかまった逃げ役)のバッジの透明度。逃げ役の絵を薄くして使い回す
+const GHOST_ICON_ALPHA := 0.45
 ## 効果を受けた瞬間に出す絵（以前は「ブースト！」などの文字だった）
 const TOAST_ICON := {
 	Player.Effect.BOOST: preload("res://ui/icons/bolt.png"),
@@ -88,6 +91,9 @@ var _last_rating_base := 0
 var _last_rating_bonus := 0
 var _rating_applied := false
 var _rating_shown := false  # ①CPU戦や離脱中断ではレート行を表示しない
+## Reverse Tag: 「今 敵に見られている」の前回値(エッジで SPOTTED バナーを出し入れする)
+var _team_spotted := false
+var _swap_tween: Tween
 
 ## 待機中に一時的に開く着せ替え/ショップ/フレンド画面。world.tscnのシーンツリーは
 ## 離れず、hudの子としてオーバーレイ表示することで部屋(接続・スポーン状態)を保つ
@@ -126,6 +132,11 @@ var _map_redraw_wait := 0.0
 @onready var distance_chip: PanelContainer = $DistanceChip
 @onready var distance_label: Label = $DistanceChip/DistanceLabel
 @onready var spotted_banner: TextureRect = $SpottedBanner
+@onready var team_chip: PanelContainer = $TeamChip
+@onready var turn_label: Label = $TeamChip/Row/TurnLabel
+@onready var score_a_label: Label = $TeamChip/Row/ScoreA
+@onready var score_b_label: Label = $TeamChip/Row/ScoreB
+@onready var swap_banner: Label = $SwapBanner
 @onready var item_slot: PanelContainer = $ItemSlot
 @onready var item_icon: TextureRect = $ItemSlot/Row/ItemIcon
 @onready var buff_tray: HBoxContainer = $BuffTray
@@ -172,6 +183,8 @@ func _ready() -> void:
 	_sb_border.set_border_width_all(2)
 	_sb_border.border_color = Color(1, 1, 1, 0.6)
 	_sb_border.anti_aliasing = true
+	score_a_label.add_theme_color_override("font_color", GameManager.team.TEAM_COLORS[0])
+	score_b_label.add_theme_color_override("font_color", GameManager.team.TEAM_COLORS[1])
 	vignette.texture = _radial_texture()
 	vignette.modulate = Color(1.0, 0.12, 0.12, 0.0)
 	## C-07 T-6: キーボード操作ヒントはタッチ操作時には意味がなく、仮想スティック
@@ -286,7 +299,13 @@ func _process(delta: float) -> void:
 
 func _update_labels() -> void:
 	var my_id := multiplayer.get_unique_id()
-	var is_runner := my_id == GameManager.runner_id
+	var team_mode := GameManager.in_team_round()
+	var my_name := str(my_id)
+	var is_runner := GameManager.team.is_runner_name(my_name) if team_mode \
+		else my_id == GameManager.runner_id
+	# 旧モードは「逃げでなければ鬼」。Reverse Tag にはどちらでもない幽霊がいる
+	var is_hunter := GameManager.team.is_hunter_name(my_name) if team_mode else not is_runner
+	var is_ghost := team_mode and GameManager.team.is_ghost_name(my_name)
 	match GameManager.state:
 		GameManager.State.WAITING:
 			# 待機中の情報はロビーに集約する。ここにも出すと二重になって散らかる
@@ -299,7 +318,14 @@ func _update_labels() -> void:
 			# H-08: 色だけに頼らず、役割と目的を形の違う絵で示す(lobby_panel.gd の役割の絵と同じ)。
 			#   逃げる人: 逃げる人・時計     ＝ 時間まで逃げろ
 			#   鬼      : 鬼・手・逃げる人   ＝ つかまえろ
-			if is_runner:
+			# 幽霊: 薄い逃げ役の絵。目的は「バナナを鬼に当てて復活」なのでバナナ・鬼の絵を並べる
+			role_icon.modulate.a = GHOST_ICON_ALPHA if is_ghost else 1.0
+			if is_ghost:
+				role_icon.texture = ICON_RUNNER
+				goal_icon.texture = ICON_BANANA
+				target_icon.texture = ICON_HUNTER
+				target_icon.visible = true
+			elif is_runner:
 				role_icon.texture = ICON_RUNNER
 				goal_icon.texture = ICON_CLOCK
 				target_icon.visible = false
@@ -310,7 +336,7 @@ func _update_labels() -> void:
 				target_icon.visible = true
 			# ヘッドスタート中の鬼はまだ動けない
 			lock_icon.texture = ICON_LOCK
-			lock_icon.visible = not is_runner and GameManager.head_start_left > 0.0
+			lock_icon.visible = is_hunter and GameManager.head_start_left > 0.0
 			if GameManager.head_start_left > 0.0:
 				timer_label.text = "%d" % ceili(GameManager.head_start_left)
 			else:
@@ -318,9 +344,11 @@ func _update_labels() -> void:
 				timer_label.text = "%d:%02d" % [t / 60, t % 60]
 			_update_zone_chip(is_runner)
 			_update_result(is_runner)
+	_update_team_hud(team_mode, is_runner)
 	# バナーは逃走者専用。表示はシグナルのエッジで駆動しているので、
 	# 役割が変わる経路を取りこぼさないようここでも不変条件を担保する
-	if spotted_banner.visible and (not is_runner or not GameManager.spotted):
+	var spotted_now := _team_spotted if team_mode else GameManager.spotted
+	if spotted_banner.visible and (not is_runner or not spotted_now):
 		_hide_spotted_banner()
 
 	lobby.update_lobby(_overlay_instance != null)
@@ -332,6 +360,59 @@ func _update_labels() -> void:
 		and not SettingsManager.should_show_touch_controls()
 	info_label.text = tr("デバッグ: R バナナ / T ブロック / Y ロケット / E 使用 / Q メイン画面") \
 		if GameManager.debug_cpu_runner else ""
+
+
+## Reverse Tag の HUD。ターンと得点のチップ、入れかえ予告、SPOTTED の判定。
+## SPOTTED は旧モードの spotted_changed シグナルを使わず、ここで毎フレーム引く:
+## シグナルの発生源(sight_system.gd)は「逃げ1人」前提のままで、チーム戦の視界は
+## team.visible_to(チームごとの見えている敵)に入っているため
+func _update_team_hud(team_mode: bool, is_runner: bool) -> void:
+	var team := GameManager.team
+	var playing := GameManager.state == GameManager.State.PLAYING
+	team_chip.visible = team_mode
+	if not team_mode:
+		_team_spotted = false
+		_hide_swap_banner()
+		return
+	turn_label.text = "%d/%d" % [mini(team.turn + 1, team.TURNS), team.TURNS]
+	score_a_label.text = str(team.score[0])
+	score_b_label.text = str(team.score[1])
+	# 自分のチームの得点を一回り大きくして、どちらが自分たちかを色以外でも分かるようにする
+	var mine := team.my_team()
+	score_a_label.add_theme_font_size_override("font_size", 32 if mine == 0 else 22)
+	score_b_label.add_theme_font_size_override("font_size", 32 if mine == 1 else 22)
+
+	if playing and team.swap_warning():
+		swap_banner.text = "%s %d" % [tr("まもなく入れかえ！"), maxi(ceili(GameManager.time_left), 0)]
+		if not swap_banner.visible:
+			swap_banner.visible = true
+			if _swap_tween and _swap_tween.is_valid():
+				_swap_tween.kill()
+			_swap_tween = create_tween().set_loops()
+			# 下げすぎると明るい地面の上で読めなくなる（uishot で確認）
+			_swap_tween.tween_property(swap_banner, "modulate:a", 0.7, 0.35)
+			_swap_tween.tween_property(swap_banner, "modulate:a", 1.0, 0.35)
+	else:
+		_hide_swap_banner()
+
+	var seen := playing and is_runner and mine >= 0 \
+		and team.visible_to[1 - mine].has(str(multiplayer.get_unique_id()))
+	if seen != _team_spotted:
+		_team_spotted = seen
+		if seen:
+			_show_spotted_banner()
+		else:
+			_hide_spotted_banner()
+
+
+func _hide_swap_banner() -> void:
+	if not swap_banner.visible:
+		return
+	if _swap_tween and _swap_tween.is_valid():
+		_swap_tween.kill()
+	_swap_tween = null
+	swap_banner.visible = false
+	swap_banner.modulate.a = 1.0
 
 
 ## --- 待機中のロビー -----------------------------------------------------
@@ -393,7 +474,8 @@ func _show_room_full_popup() -> void:
 ##   手がかりなし = 斜線の目 / 距離 = 両矢印＋m / 発見 = 目＋色＋「!」 / さっき目撃 = 薄い目＋色＋残り秒
 ## ゾーン名は出さない。場所は色と、ミニマップの該当ゾーンの点灯(minimap.gd)で伝える
 func _update_zone_chip(is_runner: bool) -> void:
-	if is_runner or GameManager.state != GameManager.State.PLAYING:
+	# Reverse Tag には「共有された最後の目撃ゾーン」が無い(ミニマップで敵の点を直接見せる)
+	if is_runner or GameManager.in_team_round() or GameManager.state != GameManager.State.PLAYING:
 		zone_chip.visible = false
 		return
 	zone_chip.visible = true
@@ -428,6 +510,7 @@ func _update_hunter_distance_delay(delta: float, player: Player) -> void:
 		GameManager.state == GameManager.State.PLAYING
 		and player != null
 		and multiplayer.get_unique_id() != GameManager.runner_id
+		and not GameManager.in_team_round()
 	)
 	var has_zone_intel := GameManager.spotted or GameManager.spotted_zone >= 0
 	if not is_hunter or has_zone_intel:
@@ -446,6 +529,9 @@ func _runner_distance(player: Node3D) -> float:
 func _update_result(is_runner: bool) -> void:
 	result_panel.visible = GameManager.state == GameManager.State.RESULT
 	if not result_panel.visible:
+		return
+	if GameManager.in_team_round():
+		_update_team_result()
 		return
 	var won: bool = GameManager.result_runner_won
 	var copy := result_copy(is_runner, won, GameManager.result_reason)
@@ -487,6 +573,62 @@ static func result_copy(is_runner: bool, runner_won: bool, reason: int) -> Packe
 		pair = ["つかまえた！", "逃げる人をつかまえた"]
 	return PackedStringArray([
 		TranslationServer.translate(pair[0]), TranslationServer.translate(pair[1])])
+
+
+## Reverse Tag の結果。result_runner_won は「チームAの勝ち」の意味で入っている
+func _update_team_result() -> void:
+	var mine := GameManager.team.my_team()
+	var reason: int = GameManager.result_reason
+	var draw := reason == GameManager.EndReason.TEAM_DRAW
+	var won: bool = GameManager.result_runner_won == (mine <= 0)
+	var copy := team_result_copy(won, reason)
+	result_title.text = copy[0]
+	if draw:
+		result_title.modulate = COLOR_GOLD
+		result_icon.texture = ICON_STOP
+	else:
+		result_title.modulate = COLOR_RUNNER if won else COLOR_HUNTER
+		result_icon.texture = ICON_WIN if won else ICON_LOSE
+	result_sub.visible = false  # レート対象外
+	_update_team_result_facts()
+	result_detail.visible = false
+	result_skip_btn.text = "%d" % maxi(ceili(GameManager.result_left), 0)
+
+
+## Reverse Tag の勝敗文言。my_team_won は引き分けのとき無視される
+static func team_result_copy(my_team_won: bool, reason: int) -> PackedStringArray:
+	var pair: Array[String]
+	if reason == GameManager.EndReason.TEAM_DRAW:
+		pair = ["ひきわけ", "同点で引き分け"]
+	elif my_team_won:
+		pair = ["かった！", "全員つかまえた" if reason == GameManager.EndReason.TEAM_WIPE else "得点で勝ち"]
+	else:
+		pair = ["まけた…", "全員つかまってしまった" if reason == GameManager.EndReason.TEAM_WIPE else "得点で負け"]
+	return PackedStringArray([
+		TranslationServer.translate(pair[0]), TranslationServer.translate(pair[1])])
+
+
+## 事実の行は最終得点(チーム色の数字)だけ。_update_result_facts と同じく変化時だけ組み直す
+func _update_team_result_facts() -> void:
+	var sc := GameManager.team.score
+	var key := "team|%d|%d" % [sc[0], sc[1]]
+	if key == _facts_key:
+		return
+	_facts_key = key
+	for c in result_facts.get_children():
+		result_facts.remove_child(c)
+		c.queue_free()
+	for i in 2:
+		var label := Label.new()
+		label.text = "%s %d" % [tr(GameManager.team.TEAM_NAMES[i]), sc[i]]
+		label.add_theme_font_size_override("font_size", 28)
+		label.add_theme_color_override("font_color", GameManager.team.TEAM_COLORS[i])
+		result_facts.add_child(label)
+		if i == 0:
+			var sep := Label.new()
+			sep.text = ":"
+			sep.add_theme_font_size_override("font_size", 28)
+			result_facts.add_child(sep)
 
 
 ## H-03: 「何が起きたか」の事実行。時計＋時間、鬼の絵＋人数、手の絵＋つかまえた人。
@@ -570,11 +712,18 @@ func _on_timer_draw() -> void:
 	timer_ring.draw_arc(c, 54.0, 0.0, TAU, 64, Color(0, 0, 0, 0.45), 14.0, true)
 	var frac := 0.0
 	var col := COLOR_RUNNER
+	# Reverse Tag の時計は「今のターンの残り」。入れかえ直後の静止は短い(SWAP_FREEZE)ので、
+	# 一周の基準もそれに合わせる(HEAD_START のままだと入れかえのたびにリングが 3/8 から始まる)
+	var team_mode := GameManager.in_team_round()
 	if GameManager.head_start_left > 0.0:
-		frac = GameManager.head_start_left / GameManager.HEAD_START
+		var full: float = GameManager.HEAD_START
+		if team_mode and GameManager.team.turn > 0:
+			full = GameManager.team.SWAP_FREEZE
+		frac = clampf(GameManager.head_start_left / full, 0.0, 1.0)
 		col = COLOR_HEAD_START
 	else:
-		frac = clampf(GameManager.time_left / GameManager.ROUND_TIME, 0.0, 1.0)
+		var total: float = GameManager.team.TURN_TIME if team_mode else GameManager.ROUND_TIME
+		frac = clampf(GameManager.time_left / total, 0.0, 1.0)
 		if frac < 0.34:
 			col = Color(1.0, 0.72, 0.2)
 		if frac < 0.15:
@@ -735,7 +884,9 @@ func _make_buff_chip(key: StringName) -> Control:
 
 func _update_tracking(player: Player, delta: float) -> void:
 	var playing := GameManager.state == GameManager.State.PLAYING and player != null
-	var is_runner := playing and multiplayer.get_unique_id() == GameManager.runner_id
+	var is_runner := playing and (
+		GameManager.team.is_runner_name(str(multiplayer.get_unique_id())) if GameManager.in_team_round()
+		else multiplayer.get_unique_id() == GameManager.runner_id)
 	# マップは両陣営に出す。鬼の画面には味方の鬼と自分しか描かれないので
 	# （minimap.gd の _on_map_draw を参照）、逃走者の位置が漏れることはない
 	map_panel.visible = playing
@@ -758,7 +909,7 @@ func _update_tracking(player: Player, delta: float) -> void:
 	# 見られている間は距離に関わらず必ず出す。
 	# 「近いが見失われている」と「遠いが見られている」は別の危険なので、
 	# バナー（離散）とヴィネット（連続）で二重に伝える
-	if GameManager.spotted:
+	if _team_spotted if GameManager.in_team_round() else GameManager.spotted:
 		a = maxf(a, 0.45)
 	vignette.modulate.a = a * (0.85 + 0.15 * sin(Time.get_ticks_msec() * 0.012))
 
@@ -773,6 +924,8 @@ func _on_state_changed(new_state: int) -> void:
 		_rating_applied = false
 	if new_state != GameManager.State.PLAYING:
 		_hide_spotted_banner()  # 見られたままラウンドが終わる（＝捕まる）ので必ず消す
+		_team_spotted = false
+		_hide_swap_banner()
 	if new_state == GameManager.State.PLAYING:
 		_pop_in(role_badge)
 		_rating_applied = false
@@ -783,8 +936,10 @@ func _on_state_changed(new_state: int) -> void:
 			_last_rating_base = 0
 			_last_rating_bonus = 0
 			# ①VS CPU戦（round_is_ranked==false）と、逃走者離脱による中断はレート非適用
+			# Reverse Tag は逃げ1人を前提にしたレート式に当てはまらないのでレート対象外
 			_rating_shown = GameManager.round_is_ranked \
-				and GameManager.result_reason != GameManager.EndReason.RUNNER_LEFT
+				and GameManager.result_reason != GameManager.EndReason.RUNNER_LEFT \
+				and not GameManager.in_team_round()
 			if _rating_shown:
 				var my_id := multiplayer.get_unique_id()
 				var is_runner := my_id == GameManager.runner_id
@@ -807,9 +962,15 @@ func _on_state_changed(new_state: int) -> void:
 ## 点滅はポーリングではなくシグナルのエッジで駆動する（発生源で
 ## SPOTTED_HOLD のデバウンスが効いているので、ここでばたつくことはない）
 func _on_spotted_changed(is_spotted: bool) -> void:
+	if GameManager.in_team_round():
+		return  # Reverse Tag は _update_team_hud が team.visible_to から出し入れする
 	if not is_spotted or multiplayer.get_unique_id() != GameManager.runner_id:
 		_hide_spotted_banner()
 		return
+	_show_spotted_banner()
+
+
+func _show_spotted_banner() -> void:
 	_kill_spotted_tween()
 	_banner_hiding = false
 	spotted_banner.visible = true

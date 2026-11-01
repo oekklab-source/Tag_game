@@ -42,6 +42,27 @@ PC がホスト（WebSocket サーバ）、Web ブラウザがクライアント
   デバッグ中は `R` でバナナ、`T` でブロック、`Y` でロケットを即時取得し、`E` で使用する。
   `Q` で通信を終了してメイン画面へ戻る。通常モードのキー操作には影響しない。
 
+### Reverse Tag（4対4・攻守入れ替え）
+
+準備中にホストがロビーで切り替えるもう1つのモード。**レート対象外**で、EOS ロビー経由の
+レーティング戦では選べない（実装は [autoload/game/team_mode.gd](autoload/game/team_mode.gd)）。
+
+- **チームA と チームB の4対4**。人間が足りない分は**両チームとも CPU で埋める**（ソロでも遊べる）。
+  チームは準備中に `R` で希望（おまかせ → A → B）を出し、ホストは名簿の行で付け替えられる。
+  開始時に人数の偏りを均す
+- **60秒 × 4ターン**。ターンごとに鬼チームと逃げチームが入れ替わる（各チーム鬼2回、最初の鬼はランダム）。
+  入れ替えの **10秒前から予告**が出る。最初の鬼は 8 秒、入れ替え直後の新しい鬼は 3 秒だけ動けない
+- 鬼にタッチされた逃げ役は**幽霊**になり、鬼チームに **1点**。幽霊は半透明で誰ともぶつからず、
+  捕まらず、？ブロックも取らない。代わりに**バナナを持ち続け**（使うと 4 秒で補充）、前へ投げられる。
+  **敵の鬼に当てると復活**する（復活直後の 2 秒は捕まらない）
+- **入れ替えの瞬間に幽霊は全員復活**する
+- 勝敗: 逃げチームを**全員幽霊にした時点で鬼チームの勝ち**。4ターン終われば**捕まえた合計**が多い方の勝ち、同点は引き分け
+- 索敵: **味方は常にミニマップに出る。敵は味方の誰か（幽霊を含む）の視界に入っている間だけ**出る。
+  視界の判定は旧モードと同じ `can_see()`（人間 48m/100°、CPU 75m/180°）
+- CPU は鬼のとき「見えている最寄りの逃げ役」を追い、見失えば最後に見えたゾーン、それも古ければ巡回。
+  逃げのときは見えている敵の鬼から旧モードと同じ採点で逃げ、幽霊のときは見えている敵の鬼へ寄って
+  距離に合わせた山なりでバナナを投げる
+
 ## マップ
 
 160×160m（`x, z ∈ [-80, +80]`）を **3×3 の9ゾーン**に分割。
@@ -1426,6 +1447,7 @@ clone / pull しただけでは入らない。Client Secret を含むため git 
 | [scenes/cpu_hunter.gd](scenes/cpu_hunter.gd) | CPU の速度・巡回順路・捜索範囲・回り込み・ジャンプ頻度 |
 | [scenes/cpu_runner.gd](scenes/cpu_runner.gd) | CPU 逃走者の脅威判定・スタミナ配分・**逃走先の採点**（`CORNER_WEIGHT` / `CROSS_PENALTY` / `TRAVEL_WEIGHT`） |
 | [autoload/game_manager.gd](autoload/game_manager.gd) | 制限時間・ヘッドスタート・CPU数・スポーンゾーン・速度補正・**視界（距離/視野角/情報の寿命）** |
+| [autoload/game/team_mode.gd](autoload/game/team_mode.gd) | Reverse Tag の人数・ターンの長さと回数・予告の秒・入れ替え直後の静止・幽霊のバナナ補充・復活直後の無敵 |
 | [autoload/network_manager.gd](autoload/network_manager.gd) | ポート番号・アドレス解決の規則 |
 | `player.tscn` / `cpu_hunter.tscn` の `MultiplayerSynchronizer` | `replication_interval`（0.05 = 20Hz）。`NET_SMOOTH` と釣り合わせること |
 | [ui/pop_theme.tres](ui/pop_theme.tres) | UI の配色・角丸・文字の縁取り |
@@ -1522,6 +1544,8 @@ autoload/game/host_migration.gd  GameManagerの子ノード。切断時のCPU代
                               ホスト引き継ぎ後の進行中ラウンドの再開(スナップショット・再開RPC)
 autoload/game/rating_report.gd   GameManagerの子ノード。ホスト単独でrating-apiの/report-matchへ
                               試合結果を報告し、_apply_rating_correction RPCで確定値を全ピアへ配布
+autoload/game/team_mode.gd       GameManagerの子ノード（GameManager.team）。Reverse Tag のチーム・幽霊・得点・
+                              ターン進行・チームごとの視界・CPU の差し替え
 autoload/ranking_manager.gd   非対称 Elo レーティング計算・ランキング管理（サーバー確定前の楽観表示）
 autoload/rating_backend_client.gd rating-api（/report-match /report-disconnect-penalty
                               /claim-initial-rating /rating /leaderboard-top）のHTTPクライアント
@@ -1647,6 +1671,10 @@ tests/hat_placement.gd        ⑤帽子の装着位置（Chestボーン基準オ
 tests/hunter_squad.tscn       鬼3人の定員と連携（分担探索・挟み込み）の検証
 tests/cpu_strength.tscn       CPU 鬼の個体能力（首振り・ダッシュ・予測・アイテム）の検証
 tests/cpu_escape.tscn         CPU 逃走者の判断（温存・ダッシュ・挟み回避・角回避・アイテム・逃げ切り）の検証
+tests/reverse_tag.tscn        Reverse Tag の進行（4対4・幽霊化と得点・バナナで復活・入れ替え・全滅/得点/引き分け・
+                              離脱の穴埋め・旧モードへ戻せること）の検証
+tests/net_reverse_tag.tscn    2ピアで Reverse Tag（チーム希望・CPU の複製・幽霊とバナナ復活・入れ替え・全滅・
+                              抜けた人の穴埋め。引数 late で途中参加）を検証
 .github/workflows/            push で Web ビルド -> web-build ブランチへ force push
 export_presets.cfg            Web エクスポート設定（CI が使うのでコミットしてある）
 ```
@@ -1718,6 +1746,21 @@ export_presets.cfg            Web エクスポート設定（CI が使うので�
   位置の権威は各クライアントなので、自分の位置・向き・スタミナ・アイテムは各ピアが自分の
   スナップショットから `Player.restore_after_migration()` で戻す。
   **引き継がないもの**: 置かれたバナナ・ブロック、バフ、？ブロックの復活待ち、CPU の思考状態
+- **Reverse Tag**（`autoload/game/team_mode.gd`、子ノード `$TeamMode`。v13→v14 はこのノードと RPC の追加、
+  `EndReason` への `TEAM_*` の追加が理由）。
+  - 旧モードの `runner_id` / `get_runner()` / `hunters()` / `HunterSquad` / `SightSystem` には触れず、
+    このモードの間だけ `GameManager` が処理を `team` へ回す。どれも「逃げは1人」が前提で、混ぜると両方壊れる
+  - キャラは**ノード名**で引く（人間 = peer_id、CPU = `CPUA3` など）。役割はチームと `hunting_team` から決まるので、
+    入れ替えは `hunting_team` の反転だけで全員に効く。時計は `GameManager.time_left` / `head_start_left` を
+    1ターンぶんとして使い、`_sync_time` / `_sync_head` をそのまま使う
+  - 入替・幽霊化・視界はホストが決めて RPC で配る（タッチ判定がホストなのと同じ）。CPU は鬼と逃げで別シーンなので、
+    入れ替えのたびにホストが**同じ位置・同じチームで反対の役のシーンへ作り直す**（名前は通し番号で毎回変える）
+  - 幽霊のすり抜けは**衝突レイヤーではなく双方向の衝突例外**で作る。Character レイヤーから外すと、
+    ギミックの Area3D（mask = 2）が幽霊を検知しなくなり、ジャンプ台などが使えなくなるため。
+    例外は全ピアで `TeamMode._apply_ghost_collisions()` が張り、途中で湧いたキャラにも 0.5 秒ごとに張り直す
+  - バナナの投げ手は `banana.gd` の `thrower_name`（ノード名）で持つ。**サーバー内だけの値**で、
+    `request_drop` RPC のシグネチャは変えていない（人間は送信元の peer_id から、CPU は自分の名前を渡す）
+  - ホスト引き継ぎ後の再開には対応しない（スナップショットが逃げ1人の形なので、準備中から）
 - アプリ終了（終了メニュー・窓の×）は `NetworkManager.quit_app()` を通し、EOSロビーから抜けてから落ちる。
   抜けずに落ちると残った参加者は EOS の切断検知待ちになり、引き継ぎがタイムアウトする
 - **視界判定はホストが一元的に行う**。CPU 側で個別にレイを飛ばさない

@@ -23,7 +23,9 @@ enum State { WAITING, PLAYING, RESULT }
 ## 決着のしかた。HUD の文言はこの値から組み立てる。
 ## 結果を表示用の文字列で持って `begins_with("RUNNER")` のように判定すると、
 ## 文言を書き換えた瞬間に勝敗判定が黙って壊れるため、状態と表示を分ける
-enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
+## TEAM_* は Reverse Tag（autoload/game/team_mode.gd）の決着。末尾に足したので旧値は変わらない。
+## このモードでは _end_round の runner_won を「チームAの勝ち」として使う
+enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT, TEAM_WIPE, TEAM_SCORE, TEAM_DRAW }
 
 ## 通信の取り決めの版数。**RPC の引数を足す/減らす/並べ替えたら必ず上げる。**
 ##
@@ -58,11 +60,13 @@ enum EndReason { TIME_UP, TAGGED, RUNNER_LEFT }
 ## v12: 滑走接触した設置ブロックの5秒消滅RPCを追加した
 ## v13: ホスト引き継ぎ後に進行中のラウンドを再開する _resume_pending / _resume_round RPCを
 ## HostMigration に追加したため
+## v14: Reverse Tag（4対4の攻守入れ替え）のため子ノード TeamMode とその RPC を追加し、
+## EndReason に TEAM_* を足したため
 ##
 ## ストア向けの製品版数は project.godot の application/config/version(現在0.1.0)。
 ## これとは別物であり、連動させない(RPCを変えていないのにストア更新のたびに
 ## PROTOCOL_VERSIONを上げる、といった事故を防ぐため)。
-const PROTOCOL_VERSION := 13
+const PROTOCOL_VERSION := 14
 
 const ROUND_TIME := 180.0
 const RESULT_TIME := 5.0
@@ -100,6 +104,7 @@ const _SightSystemScript := preload("res://autoload/game/sight_system.gd")
 const _VersionGateScript := preload("res://autoload/game/version_gate.gd")
 const _HostMigrationScript := preload("res://autoload/game/host_migration.gd")
 const _RatingReportScript := preload("res://autoload/game/rating_report.gd")
+const _TeamModeScript := preload("res://autoload/game/team_mode.gd")
 
 const INTEL_TIME := _SightSystemScript.INTEL_TIME
 
@@ -172,6 +177,8 @@ var _sight := _SightSystemScript.new()
 var _version_gate := _VersionGateScript.new()
 var _host_migration := _HostMigrationScript.new()
 var _rating_report := _RatingReportScript.new()
+## Reverse Tag のチーム状態と進行。HUD・CPU・プレイヤーが直接読むので公開する
+var team := _TeamModeScript.new()
 
 ## 鬼の連携（分担探索・張り込み・挟み込み）の共有状態。ホスト専用。
 ## CPU 鬼はここへ「自分の担当」を問い合わせるだけで、互いを直接見に行かない
@@ -190,6 +197,8 @@ func _ready() -> void:
 	add_child(_host_migration)
 	_rating_report.name = "RatingReport"
 	add_child(_rating_report)
+	team.name = "TeamMode"
+	add_child(team)
 	# ロビー中にプロフィール設定（④コスチューム変更等）が変わったら、繋がっている
 	# 相手にも即座に反映する
 	ProfileManager.profile_updated.connect(_on_profile_updated)
@@ -223,6 +232,7 @@ func reset() -> void:
 	peer_profiles.clear()
 	tier_lock_enabled = false
 	_clear_intel()
+	team.reset()
 	_host_migration.cancel_resume()
 	if debug_was_enabled:
 		debug_mode_changed.emit(false)
@@ -258,16 +268,38 @@ func hunter_stamina_max_for(count: int) -> float:
 
 
 func stamina_max_for(peer_id: int) -> float:
-	if state != State.PLAYING or peer_id == runner_id:
+	# Reverse Tag は人数が同じチーム同士なので、旧モードの人数補正は掛けない
+	if state != State.PLAYING or peer_id == runner_id or team.enabled:
 		return HUNTER_STAMINA_DEFAULT
 	# hunter_count は CPU 鬼を含む実数で、ラウンド開始時に全ピアへ配ってある
 	return hunter_stamina_max_for(maxi(hunter_count, 1))
 
 
 func get_speed_mult(peer_id: int) -> float:
-	if state == State.PLAYING and peer_id != runner_id:
+	if state == State.PLAYING and peer_id != runner_id and not team.enabled:
 		return hunter_mult
 	return 1.0
+
+
+## ラウンド中の Reverse Tag か（準備中にモードを選んでいるだけの間は false）
+func in_team_round() -> bool:
+	return team.enabled and state != State.WAITING
+
+
+## このキャラが今「鬼」か。ヘッドスタート中の静止など、旧モードと Reverse Tag で
+## 同じ判断をする所から呼ぶ。旧モードでは従来どおり runner_id 以外が鬼
+func is_hunter_node(n: Node) -> bool:
+	if in_team_round():
+		return team.is_hunter_name(String(n.name))
+	if n.is_in_group("cpu_runners"):
+		return false
+	if n.is_in_group("cpu_hunters"):
+		return true
+	return String(n.name).to_int() != runner_id
+
+
+func is_ghost(n: Node) -> bool:
+	return in_team_round() and team.is_ghost_name(String(n.name))
 
 
 func get_runner() -> Node:
@@ -415,6 +447,9 @@ func request_start_round() -> void:
 	if ids.is_empty():
 		return
 	_clear_cpu_characters()
+	if team.enabled:
+		team.start_round(ids)
+		return
 	var solo := ids.size() == 1
 	var solo_debug_runner := solo and debug_cpu_runner
 	# 1人だけなら通常ソロ: 自分が Runner になり CPU 鬼が追う。
@@ -505,6 +540,9 @@ func _physics_process(delta: float) -> void:
 	world_time += delta  # ギミックの位相用。全ピアで進める
 	if not multiplayer.is_server() or state != State.PLAYING:
 		return
+	if team.enabled:
+		team.tick(delta)
+		return
 	# ヘッドスタート中も視認は成立させる（凍っていても目はある）。
 	# 検出が視界のみになった分の埋め合わせにもなる
 	_sight._update_sight(delta)
@@ -578,6 +616,9 @@ func request_drop(kind: int, pos: Vector3, yaw: float,
 ## サーバはレプリケートされた全ボディのコピーを持つため、ここで重なりを判定できる。
 func report_touch(a: Node3D, b: Node3D) -> void:
 	if not multiplayer.is_server() or state != State.PLAYING or head_start_left > 0.0:
+		return
+	if team.enabled:
+		team.on_touch(a, b)
 		return
 	var runner := get_runner()
 	if runner == null:
@@ -665,6 +706,8 @@ func sync_to_peer(peer_id: int) -> void:
 		_sync_state.rpc_id(peer_id, state, runner_id, wanted_runner, hunter_mult,
 			hunter_count, time_left, head_start_left, result_runner_won, result_reason,
 			spotted_zone, intel_left, spotted)
+		team.on_peer_joined(peer_id)
+		team.sync_to_peer(peer_id)
 
 
 ## ②④ 自分のレート/ティア/コスチュームを相手に知らせる。
@@ -758,7 +801,7 @@ func on_player_left(peer_id: int, cpu_took_over: bool = false) -> void:
 	# CPU代行等の救済措置は不要で、ペナルティ記録のみ行う)
 	if cpu_took_over:
 		_host_migration._report_participant_disconnect_penalty(peer_id, true)
-	elif round_is_ranked and state == State.PLAYING and peer_id != runner_id:
+	elif round_is_ranked and not team.enabled and state == State.PLAYING and peer_id != runner_id:
 		_host_migration._report_participant_disconnect_penalty(peer_id, false)
 	# H-02: CPU代行RPCも、_set_runner_cpu()内で切断者の表示名をpeer_profilesから引くため、
 	# 上と同じ理由(プロフィール消去より前)でここに置く
@@ -771,7 +814,7 @@ func on_player_left(peer_id: int, cpu_took_over: bool = false) -> void:
 	# 抜けた人が指名されたままだと、次のラウンドで誰も逃走者にならない
 	if wanted_runner == peer_id:
 		_set_wanted_runner.rpc(-1)
-	if not cpu_took_over and state == State.PLAYING and peer_id == runner_id:
+	if not cpu_took_over and state == State.PLAYING and peer_id == runner_id and not team.enabled:
 		_end_round.rpc(false, EndReason.RUNNER_LEFT)
 
 
@@ -816,7 +859,8 @@ func _start_round(new_runner: int, mult: float, hunters_n: int, spawns: Dictiona
 	hunter_mult = mult
 	hunter_count = hunters_n
 	squad.begin_round()  # 前ラウンドの担当を持ち越さない（ホスト以外では空回り）
-	time_left = ROUND_TIME
+	# Reverse Tag の時計は1ターンぶん（team_mode.gd の冒頭コメント）
+	time_left = team.TURN_TIME if team.enabled else ROUND_TIME
 	head_start_left = HEAD_START
 	tagger_peer_id = -1
 	state = State.PLAYING
@@ -825,7 +869,7 @@ func _start_round(new_runner: int, mult: float, hunters_n: int, spawns: Dictiona
 	# 配る(NetworkManager.matched_via_eos_lobbyは接続方法によりピアごとに違いうるため、
 	# 各ピアが別々にローカル判定すると不整合になりうる。詳細はPROTOCOL_VERSIONの説明参照)
 	var humans := player_ids().size()
-	round_is_ranked = humans >= 2 and is_eos_matched
+	round_is_ranked = humans >= 2 and is_eos_matched and not team.enabled
 	round_hunter_count = hunters_n
 	world_time = 0.0  # 全ピアのギミック位相をここで揃える
 	_clear_intel()    # 前ラウンドの目撃情報を持ち越さない
@@ -859,7 +903,8 @@ func _end_round(runner_won: bool, reason: int, tagger_id: int = -1) -> void:
 	_clear_intel()
 	state_changed.emit(state)
 	if multiplayer.is_server():
-		_rating_report.report_match_result(runner_won, reason, tagger_id)  # C-03 R-3: fire-and-forget、_schedule_next_round()をブロックしない
+		if not team.enabled:
+			_rating_report.report_match_result(runner_won, reason, tagger_id)  # C-03 R-3: fire-and-forget、_schedule_next_round()をブロックしない
 		_schedule_next_round()
 
 
@@ -889,6 +934,7 @@ func _back_to_waiting() -> void:
 	round_hunter_count = 0
 	_clear_intel()
 	squad.begin_round()
+	team._clear_round()
 	state_changed.emit(state)
 	if multiplayer.is_server():
 		_clear_cpu_characters()

@@ -72,7 +72,9 @@ func _clear_intel() -> void:
 func can_see(hunter: Node3D, target: Node3D) -> bool:
 	if hunter == null or target == null:
 		return false
-	var is_cpu := hunter.is_in_group("cpu_hunters")
+	# Reverse Tag では CPU の逃げ役・幽霊も見張りになる（旧モードの CPU 逃走者は
+	# 見る側に回らないので、ここに含めても旧モードの判定は変わらない）
+	var is_cpu := hunter.is_in_group("cpu_hunters") or hunter.is_in_group("cpu_runners")
 	var sight_range := CPU_SIGHT_RANGE if is_cpu else SIGHT_RANGE
 	var sight_fov_deg := CPU_SIGHT_FOV_DEG if is_cpu else SIGHT_FOV_DEG
 	var to_target := target.global_position - hunter.global_position

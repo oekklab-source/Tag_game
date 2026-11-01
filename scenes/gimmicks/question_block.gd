@@ -94,6 +94,9 @@ func _on_touch(body: Node3D) -> void:
 		return
 	if not body.has_method("give_item"):
 		return
+	# Reverse Tag の幽霊はバナナを自動で持つので、箱は生きている人に残す
+	if GameManager.is_ghost(body):
+		return
 	# Item.NONE(0) を除いた ROCKET / BANANA / BLOCK から抽選する
 	_pop.rpc(1 + randi() % 3, body.get_path())
 

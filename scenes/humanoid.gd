@@ -79,9 +79,13 @@ const MODEL_BASIS := Basis(Vector3(-1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, -1
 
 ## コスチュームの塗り分け対象パーツ（CostumeCatalog.PART_SURFACES と対応）
 const PARTS := ["Body", "Costume", "Face"]
+## 幽霊の色。アルファは遠くでも人影と分かる濃さに留める
+const GHOST_COLOR := Color(0.72, 0.86, 1.0, 0.45)
 
 var _diving := false
 var _stunned := false
+## Reverse Tag の幽霊。半透明にする（モデルや帽子を差し替えても掛け直す）
+var _ghost := false
 var _emote := 0
 var _state := ""
 var _speed := 0.0
@@ -165,6 +169,7 @@ func set_skin(id: int) -> void:
 
 	_state = ""
 	_play(was if not was.is_empty() else "Idle")
+	_apply_ghost()
 
 
 ## 星は頭に追従させるが、輪そのものは常に水平にまわす。
@@ -245,6 +250,7 @@ func apply_hat(id: StringName) -> void:
 	inst.rotation_degrees = def.get("rotation_degrees", Vector3.ZERO)
 	_hat_attachment.add_child(inst)
 	_hat_instance = inst
+	_apply_ghost()
 
 
 func _surface_color(surf: Dictionary) -> Color:
@@ -319,6 +325,39 @@ func set_diving(value: bool) -> void:
 ## 頭上の星もこのフラグで出す
 func set_stunned(value: bool) -> void:
 	_stunned = value
+
+
+## 幽霊の見た目。毎フレーム呼ばれるので、変わった時だけ掛け直す
+func set_ghost(value: bool) -> void:
+	if value == _ghost:
+		return
+	_ghost = value
+	_apply_ghost()
+
+
+## 全身を淡い水色の半透明1色で上書きする。GeometryInstance3D.transparency の方が
+## 元の配色を残せるが、このプロジェクトの描画方式（gl_compatibility。Web 版のため）では
+## 効かない。material_override は面ごとの上書き（apply_costume）より優先され、
+## null に戻せば面ごとの上書きがそのまま見えるので、コスチュームとは干渉しない
+func _apply_ghost() -> void:
+	if _model == null:
+		return
+	for n in _model.find_children("*", "GeometryInstance3D", true, false):
+		(n as GeometryInstance3D).material_override = _ghost_material() if _ghost else null
+
+
+static var _ghost_mat: StandardMaterial3D
+
+
+static func _ghost_material() -> StandardMaterial3D:
+	if _ghost_mat == null:
+		_ghost_mat = StandardMaterial3D.new()
+		_ghost_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_ghost_mat.albedo_color = GHOST_COLOR
+		# 影の中でも沈まないよう少し自分で光らせる
+		_ghost_mat.emission_enabled = true
+		_ghost_mat.emission = Color(GHOST_COLOR.r, GHOST_COLOR.g, GHOST_COLOR.b) * 0.35
+	return _ghost_mat
 
 
 ## Player.Emote の値。0 = 出していない。CPU は呼ばないので既定の 0 のまま

@@ -35,14 +35,19 @@ static func push(body: Node3D) -> Vector3:
 	var tree := body.get_tree()
 	if tree == null:
 		return Vector3.ZERO
+	# 幽霊（Reverse Tag）は誰ともぶつからないので、押しも押されもしない
+	if GameManager.is_ghost(body):
+		return Vector3.ZERO
 	var out := _push_from(body, tree.get_nodes_in_group("players"))
-	return out + _push_from(body, tree.get_nodes_in_group("cpu_hunters"))
+	out += _push_from(body, tree.get_nodes_in_group("cpu_hunters"))
+	# CPU の逃げ役は旧モードでは1体だけだったが、Reverse Tag では4体まで並ぶ
+	return out + _push_from(body, tree.get_nodes_in_group("cpu_runners"))
 
 
 static func _push_from(body: Node3D, others: Array) -> Vector3:
 	var out := Vector3.ZERO
 	for other in others:
-		if other == body or not is_instance_valid(other):
+		if other == body or not is_instance_valid(other) or GameManager.is_ghost(other):
 			continue
 		var d: Vector3 = body.global_position - (other as Node3D).global_position
 		if absf(d.y) > LEVEL:
@@ -73,6 +78,7 @@ static func on_character(body: CharacterBody3D) -> bool:
 		if c.get_normal().y <= FLOOR_NORMAL_Y:
 			continue
 		var n := c.get_collider()
-		if n is Node and (n.is_in_group("players") or n.is_in_group("cpu_hunters")):
+		if n is Node and (n.is_in_group("players") or n.is_in_group("cpu_hunters")
+				or n.is_in_group("cpu_runners")):
 			return true
 	return false

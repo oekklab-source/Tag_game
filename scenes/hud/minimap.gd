@@ -53,6 +53,14 @@ func update_compass(player: Player, is_runner: bool) -> Node3D:
 func _nearest_hunter(player: Node3D) -> Node3D:
 	var best: Node3D = null
 	var best_dist := INF
+	if GameManager.in_team_round():
+		# Reverse Tag: 自チームの誰かに見えている敵の鬼だけが対象(見えていない鬼の方向は教えない)
+		for n in GameManager.team.visible_hunters(player):
+			var d: float = n.global_position.distance_to(player.global_position)
+			if d < best_dist:
+				best_dist = d
+				best = n
+		return best
 	var runner_name := str(GameManager.runner_id)
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.name == runner_name:
@@ -90,8 +98,9 @@ func _on_map_draw() -> void:
 	# 文字を外したので、場所はチップの色とこの点灯で伝える。見えている間は脈打ち、
 	# 見失った後（最後の目撃）は淡く残す。鬼に共有されるのはもともとゾーンだけなので、
 	# 逃走者の位置がこれ以上細かく漏れることはない
+	var team_round := GameManager.in_team_round()
 	var zone: int = GameManager.spotted_zone
-	if zone >= 0 and multiplayer.get_unique_id() != GameManager.runner_id:
+	if zone >= 0 and not team_round and multiplayer.get_unique_id() != GameManager.runner_id:
 		var glow := 0.45
 		if GameManager.spotted:
 			glow = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.012)
@@ -104,6 +113,10 @@ func _on_map_draw() -> void:
 	# 逃走者が見るとこれは「鬼全員」、鬼が見ると「味方の鬼」になる。
 	# デバッグの CPU 逃走者は cpu_runners グループなのでどちらのループにも入らない
 	var runner_name := str(GameManager.runner_id)
+	if team_round:
+		_draw_team_markers()
+		_draw_self()
+		return
 	# ここに来るのは必ず鬼なので、エモートを見せてよいのは**鬼から見た時だけ**。
 	# 逃走者にも見せると、鬼の合図（＝これから挟みに来る）まで読めてしまう
 	var viewer_is_hunter := multiplayer.get_unique_id() != GameManager.runner_id
@@ -114,6 +127,40 @@ func _on_map_draw() -> void:
 	for cpu in get_tree().get_nodes_in_group("cpu_hunters"):
 		_draw_marker(_map_point(cpu.global_position), HUNTER_DOT, Player.Emote.NONE)
 
+	_draw_self()
+
+
+## Reverse Tag: 味方は全員(幽霊は薄く)、敵は自チームに見えている者だけ。
+## 旧モードのように「逃げは誰の画面にも描かない」にしないのは、チーム戦では
+## 見えている敵の位置を味方に知らせること自体が連携の中心だから(visible_to は視界の評価済み)
+func _draw_team_markers() -> void:
+	var team := GameManager.team
+	var mine := team.my_team()
+	var me_name := str(multiplayer.get_unique_id())
+	for t in 2:
+		for n in team.members(t):
+			var nn := String(n.name)
+			if nn == me_name:
+				continue
+			if t != mine and not team.visible_to[mine].has(nn):
+				continue
+			_draw_team_marker(_map_point(n.global_position), team.TEAM_COLORS[t],
+				team.is_hunter_name(nn), team.is_ghost_name(nn),
+				_emote_of(n) if t == mine else Player.Emote.NONE)
+
+
+## 鬼 = ひし形、逃げ = 丸、幽霊 = 薄い丸。色はチーム色(役割色は被るので使わない)
+func _draw_team_marker(p: Vector2, c: Color, hunter: bool, ghost: bool, emote: int) -> void:
+	if not hunter:
+		_draw_marker(p, Color(c, 0.4) if ghost else c, emote)
+		return
+	var pts := PackedVector2Array([
+		p + Vector2(0, -8), p + Vector2(8, 0), p + Vector2(0, 8), p + Vector2(-8, 0)])
+	draw_colored_polygon(pts, c)
+	draw_polyline(pts + PackedVector2Array([pts[0]]), INK, 2.0, true)
+
+
+func _draw_self() -> void:
 	var player := _get_local_player()
 	if player:
 		var center := _map_point(player.global_position)

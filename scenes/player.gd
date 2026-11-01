@@ -122,7 +122,9 @@ const TAUNT_NAME := {
 const COLOR_WAITING := Color(0.62, 0.66, 0.72)
 const COLOR_RUNNER := Color(0.2, 1.0, 0.45)
 const COLOR_HUNTER := Color(1.0, 0.18, 0.22)
-const ROLE_TEXT := {"runner": "にげ", "hunter": "おに"}
+const ROLE_TEXT := {"runner": "にげ", "hunter": "おに", "ghost": "ゆうれい"}
+## Reverse Tag の幽霊の文字色。役割色（緑・赤）と取り違えない白っぽい水色
+const COLOR_GHOST := Color(0.75, 0.88, 1.0)
 
 ## --- リモートピアの補間 -------------------------------------------------
 ## インターネット越しでは到着間隔がばらつくので、同期値を直接 position に入れると
@@ -152,6 +154,8 @@ var _dive_world_yaw := 0.0
 var warp_lock := 0.0                # マンホールの往復ワープ防止
 var warp_grace := 0.0               # ワープ直後、is_on_floor() の古い値を無視する猶予
 var item: int = Item.NONE
+## Reverse Tag の幽霊がバナナを再び持てるまでの秒
+var _ghost_reload := 0.0
 var item_lock := 0.0                # >0 の間はルーレット中で、まだ使えない
 var stun_left := 0.0                # バナナを踏んだ時の操作不能時間
 ## 転んでいる最中か。見た目の Slip モーションに使うのでレプリケートする
@@ -256,6 +260,7 @@ func _process(delta: float) -> void:
 	humanoid.set_stunned(stunned)
 	humanoid.set_respawn(sync_respawn_left)
 	humanoid.set_emote(sync_emote)
+	humanoid.set_ghost(GameManager.is_ghost(self))
 	# ダイブ中は開始時の見た目の向きを固定する。従来の 0.0 へ戻す処理では、
 	# 横や手前を向いていてもカメラ奥へ向き直って見えていた。
 	if diving and is_multiplayer_authority():
@@ -328,10 +333,12 @@ func _physics_process(delta: float) -> void:
 	# （カメラ操作は可能）。ダイブは踏み切った後に軌道を変えられない＝空振りしうる
 	var frozen := (GameManager.state == GameManager.State.RESULT
 		or stun_left > 0.0 or sync_respawn_left > 0.0 or diving)
+	# 静止するのは「今の鬼」。Reverse Tag では入れ替え直後の新しい鬼も同じ扱いになる
 	if (GameManager.state == GameManager.State.PLAYING
-			and my_id != GameManager.runner_id
+			and GameManager.is_hunter_node(self)
 			and GameManager.head_start_left > 0.0):
 		frozen = true
+	_tick_ghost_banana(delta)
 	if (not frozen or GameManager.debug_cpu_runner) \
 			and Input.is_action_just_pressed("use_item"):
 		_use_item()
@@ -521,7 +528,10 @@ func _update_emote_label() -> void:
 		emote_label.visible = false
 		return
 	var visible_to_me := true
-	if GameManager.state == GameManager.State.PLAYING:
+	if GameManager.state == GameManager.State.PLAYING and GameManager.team.enabled:
+		# Reverse Tag は「同じ側」= 同じチーム
+		visible_to_me = GameManager.team.team_of_name(String(name)) == GameManager.team.my_team()
+	elif GameManager.state == GameManager.State.PLAYING:
 		var my_id := String(name).to_int()
 		var local_id := multiplayer.get_unique_id()
 		visible_to_me = (my_id != GameManager.runner_id) == (local_id != GameManager.runner_id)
@@ -693,9 +703,24 @@ func give_item(id: int) -> void:
 	item_changed.emit(item)
 
 
+## 幽霊はバナナを持ち続ける（使ったら GHOST_BANANA_COOLDOWN 後にまた持つ）。
+## ？ブロックは幽霊を相手にしないので、これが幽霊の唯一の手段になる
+func _tick_ghost_banana(delta: float) -> void:
+	if not GameManager.is_ghost(self):
+		_ghost_reload = 0.0
+		return
+	_ghost_reload = maxf(_ghost_reload - delta, 0.0)
+	if _ghost_reload <= 0.0 and item != Item.BANANA:
+		item = Item.BANANA
+		item_lock = 0.0
+		item_changed.emit(item)
+
+
 func _use_item() -> void:
 	if item_lock > 0.0:
 		return  # ルーレットが回りきるまでは中身が確定していない
+	if item == Item.BANANA and GameManager.is_ghost(self):
+		_ghost_reload = GameManager.team.GHOST_BANANA_COOLDOWN
 	match item:
 		Item.ROCKET:
 			var fwd := -global_transform.basis.z
@@ -734,6 +759,9 @@ func _request_drop(kind: int, pos: Vector3, launch_velocity := Vector3.ZERO) -> 
 
 
 func _is_hunter_for_items() -> bool:
+	# 幽霊は前へ投げて鬼に当てるのが仕事。Reverse Tag の鬼・逃げは旧モードと同じ扱い
+	if GameManager.in_team_round():
+		return GameManager.is_ghost(self) or GameManager.is_hunter_node(self)
 	var my_id := String(name).to_int()
 	if GameManager.state == GameManager.State.WAITING:
 		return my_id != GameManager.wanted_runner
@@ -892,6 +920,9 @@ func apply_stun(seconds: float) -> void:
 ## しか描画されない以上、位置情報の非対称（README）は崩れない。
 ## 自分の頭上には出さない（自分の役割は HUD が出している）。
 func _update_role_visuals() -> void:
+	if GameManager.in_team_round():
+		_update_team_role_visuals()
+		return
 	var my_id := String(name).to_int()
 	var waiting := GameManager.state == GameManager.State.WAITING
 	var is_runner := my_id == (GameManager.wanted_runner if waiting else GameManager.runner_id)
@@ -906,6 +937,24 @@ func _update_role_visuals() -> void:
 		role_label.modulate = color
 		# 準備中の立候補者は「逃げる役に立候補している」ことだけ示す
 		role_label.text = tr(ROLE_TEXT["runner"] if is_runner else ROLE_TEXT["hunter"])
+
+
+## Reverse Tag の頭上ラベル。役割（おに / にげ / ゆうれい）を役割色で出すのは旧モードと同じ。
+## 自分の頭上には出さない（自分の役割は HUD が出している）
+func _update_team_role_visuals() -> void:
+	var key := "runner"
+	var color := COLOR_RUNNER
+	if GameManager.is_ghost(self):
+		key = "ghost"
+		color = COLOR_GHOST
+	elif GameManager.is_hunter_node(self):
+		key = "hunter"
+		color = COLOR_HUNTER
+	role_label.visible = String(name).to_int() != multiplayer.get_unique_id()
+	if color != _current_color:
+		_current_color = color
+		role_label.modulate = color
+		role_label.text = tr(ROLE_TEXT[key])
 
 
 ## ②④ 他ピア（自分以外）のキャラ・コスチュームを GameManager.peer_profiles から反映する
@@ -931,6 +980,16 @@ func _on_profile_updated_for_nickname() -> void:
 func _update_name_label() -> void:
 	var my_id := String(name).to_int()
 	var local_id := multiplayer.get_unique_id()
+	if GameManager.in_team_round():
+		# 名前は味方にだけ見せ、チームの色で塗る（誰が味方かを頭上で分かるようにする）
+		var t := GameManager.team.team_of_name(String(name))
+		name_label.visible = my_id != local_id and t >= 0 and t == GameManager.team.my_team()
+		if t >= 0:
+			name_label.modulate = GameManager.team.TEAM_COLORS[t]
+		if not sync_nickname.is_empty() and name_label.text != sync_nickname:
+			name_label.text = sync_nickname
+		return
+	name_label.modulate = Color.WHITE
 	var playing := GameManager.state == GameManager.State.PLAYING
 	var viewer_is_hunter := playing and local_id != GameManager.runner_id
 	var target_is_hunter := playing and my_id != GameManager.runner_id

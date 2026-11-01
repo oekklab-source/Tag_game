@@ -87,6 +87,33 @@ func _ready() -> void:
 		await get_tree().physics_frame
 	await _shot(out, "result")
 
+	# 4b) Reverse Tag。ロビーのモード切替・4+4 の席、対戦中のスコアと入れかえ予告、
+	# 自分が幽霊のときのバッジ、結果の得点を見る
+	GameManager._back_to_waiting()
+	GameManager.team.set_enabled(true)
+	GameManager.team.cycle_team_of(7)
+	for i in 5:
+		await get_tree().physics_frame
+	await _shot(out, "lobby_reverse_tag")
+	GameManager.request_start_round()
+	for i in 20:
+		await get_tree().physics_frame
+	# 幽霊になれるのは逃げチームだけなので、自分が鬼チームなら先に入れ替えておく
+	if GameManager.team.my_team() == GameManager.team.hunting_team:
+		GameManager.team._swap(0, 1 - GameManager.team.hunting_team)
+	GameManager.head_start_left = 0.0
+	GameManager.time_left = GameManager.team.SWAP_WARN - 1.0
+	GameManager.team._set_ghost("1", true, 2, 1)
+	for i in 20:
+		await get_tree().physics_frame
+	await _shot(out, "playing_reverse_tag")
+	GameManager._end_round(true, GameManager.EndReason.TEAM_SCORE)
+	for i in 5:
+		await get_tree().physics_frame
+	await _shot(out, "result_reverse_tag")
+	GameManager._back_to_waiting()
+	GameManager.team.set_enabled(false)
+
 	# M-15: world.tscn配下の単体画面(ranking_dialog/room_match_dialog/migration_overlay)は
 	# title.tscnの子として埋め込まれた状態でなくても単体instantiateで開けるため、
 	# world.tscnを片付けてから撮る(worldとダイアログを同時に映すと見た目の判断がしづらいため)

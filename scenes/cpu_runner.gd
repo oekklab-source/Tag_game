@@ -149,6 +149,24 @@ const WARP_GRACE := Player.WARP_GRACE
 const NET_SMOOTH := Player.NET_SMOOTH
 const NET_SNAP_DIST := Player.NET_SNAP_DIST
 
+## --- Reverse Tag の幽霊 -------------------------------------------------
+## 捕まった CPU は幽霊になり、見えている敵の鬼へ寄ってバナナを投げる（当てれば復活）。
+## 投げる距離の幅。近すぎると山なりの球が頭上を越え、遠すぎると届く前に相手が動く
+const GHOST_THROW_MIN := 5.0
+const GHOST_THROW_MAX := 15.0
+## 正面にこの角度内（約18°）で捉えた時だけ投げる。投げは体の正面へ飛ぶため
+const GHOST_AIM_DOT := 0.95
+## 山なりの滞空時間（banana.gd の THROW_GRAVITY と Player.BANANA_THROW_UP から）。
+## 水平速度を距離 / 滞空時間にすると、狙った距離に落ちる
+const GHOST_FLIGHT := 2.0 * Player.BANANA_THROW_UP / 14.65
+## 標的が遠い時だけ吐く。近くで吐くと投げる前に追い越してしまう
+const GHOST_DASH_DIST := 25.0
+
+## Reverse Tag のチーム（0/1）。-1 = 旧モード。ホストが add_child の前に入れる
+var team := -1
+var _ghost_reload := 0.0
+var _ghost_target: Node3D = null
+
 var buffs := BuffSet.new()
 var carry_velocity := Vector3.ZERO
 var bumper_bounce_velocity := Vector3.ZERO
@@ -229,6 +247,12 @@ func _on_tag_area_body_entered(body: Node3D) -> void:
 func _process(delta: float) -> void:
 	# 役割ラベルは鬼にも見せる。体色をやめたので、これが唯一の「逃走者だ」という手がかり
 	role_label.visible = GameManager.state == GameManager.State.PLAYING
+	var ghost := GameManager.is_ghost(self)
+	humanoid.set_ghost(ghost)
+	var role_text := tr(Player.ROLE_TEXT["ghost" if ghost else "runner"])
+	if role_label.text != role_text:
+		role_label.text = role_text
+		role_label.modulate = Player.COLOR_GHOST if ghost else RUNNER_COLOR
 	if delta <= 0.0:
 		return
 	if not multiplayer.is_server():
@@ -263,10 +287,14 @@ func _physics_process(delta: float) -> void:
 	var active := (GameManager.state == GameManager.State.PLAYING and stun_left <= 0.0 and sync_respawn_left <= 0.0)
 	var dir := Vector3.ZERO
 	var wants_dash := false
+	var ghost := GameManager.is_ghost(self)
 	if active:
-		_update_hunters(delta)
-		_update_mind()
-		_update_goal(delta)
+		if ghost:
+			_update_ghost(delta)
+		else:
+			_update_hunters(delta)
+			_update_mind()
+			_update_goal(delta)
 		var assist := CPU_NAV_ASSIST.slide_assist(global_position, _goal)
 		if assist["active"]:
 			_stuck_timer = 0.0
@@ -293,11 +321,15 @@ func _physics_process(delta: float) -> void:
 		dir = CPU_NAV_ASSIST.avoid_bumpers(global_position, dir, get_tree())
 		dir = CPU_NAV_ASSIST.boost_assist(global_position, dir, _goal)
 		dir = _slide_along_walls(dir)
-		# 安全なうちに手ぶらを解消しておく。追われ始めてからでは寄り道できない
-		if _mind == Mind.ROAM and item == Player.Item.NONE:
-			dir = CPU_NAV_ASSIST.item_assist(global_position, dir, _goal)
-		wants_dash = _wants_dash()
-		_try_use_item()
+		if ghost:
+			wants_dash = _ghost_target != null 				and _xz_dist(global_position, _ghost_target.global_position) > GHOST_DASH_DIST
+			_try_ghost_throw()
+		else:
+			# 安全なうちに手ぶらを解消しておく。追われ始めてからでは寄り道できない
+			if _mind == Mind.ROAM and item == Player.Item.NONE:
+				dir = CPU_NAV_ASSIST.item_assist(global_position, dir, _goal)
+			wants_dash = _wants_dash()
+			_try_use_item()
 
 	_update_stamina(delta, wants_dash)
 	var was_sliding := slide_ride.active()
@@ -385,7 +417,8 @@ func _update_hunters(delta: float) -> void:
 	_hunter_timer -= delta
 	if _hunter_timer <= 0.0:
 		_hunter_timer = HUNTER_CACHE
-		_hunters = GameManager.hunters()
+		# Reverse Tag では味方の誰かに見えている敵の鬼だけ（人間の逃げ役のミニマップと同じ）
+		_hunters = GameManager.team.visible_hunters(self) if team >= 0 else GameManager.hunters()
 	_threat_dist = INF
 	var nearest := 0
 	for h in _hunters:
@@ -412,7 +445,7 @@ func _update_mind() -> void:
 	var mind := Mind.ROAM
 	if _threat_dist <= PANIC_DIST:
 		mind = Mind.PANIC
-	elif _threat_dist <= THREAT_FAR or GameManager.spotted:
+	elif _threat_dist <= THREAT_FAR or _spotted():
 		mind = Mind.EVADE
 	if mind == _mind:
 		return
@@ -549,7 +582,7 @@ func _wants_dash() -> bool:
 			return true
 		Mind.EVADE:
 			var urgent := _threat_dist <= DASH_ENGAGE and _closing > 0.0
-			if GameManager.spotted and _threat_dist <= DASH_SPOTTED:
+			if _spotted() and _threat_dist <= DASH_SPOTTED:
 				urgent = true
 			if not urgent:
 				return false
@@ -570,6 +603,58 @@ func _update_stamina(delta: float, wants: bool) -> void:
 		stamina = minf(stamina + STAMINA_REGEN * delta, STAMINA_MAX)
 		if exhausted and stamina >= STAMINA_RECOVER:
 			exhausted = false
+
+
+## 見られているか。旧モードは全鬼で共有の GameManager.spotted、
+## Reverse Tag は自分が敵の誰かの視界に入っているか
+func _spotted() -> bool:
+	return GameManager.team.is_seen(self) if team >= 0 else GameManager.spotted
+
+
+## --- Reverse Tag の幽霊 -------------------------------------------------
+
+## 見えている敵の鬼のうち最も近い者へ向かう。誰も見えていなければマップを流して探す
+## （幽霊の目も味方の見張りになるので、歩き回ること自体に意味がある）
+func _update_ghost(delta: float) -> void:
+	_ghost_reload = maxf(_ghost_reload - delta, 0.0)
+	_ghost_target = null
+	var best := INF
+	for h in GameManager.team.visible_hunters(self):
+		var d := _xz_dist(global_position, h.global_position)
+		if d < best:
+			best = d
+			_ghost_target = h
+	_goal_timer -= delta
+	if _ghost_target:
+		_goal = _ghost_target.global_position
+		_goal_timer = 0.0
+	elif _goal_timer <= 0.0 or _xz_dist(global_position, _goal) < ARRIVE_DIST:
+		_goal = _snap_to_nav(WorldData.zone_center(_rng.randi_range(0, WorldData.ZONE_COUNT - 1)))
+		_goal_timer = GOAL_TIMEOUT
+
+
+## 正面に捉えた敵の鬼へ、距離に合わせた山なりでバナナを投げる。
+## 当たれば banana.gd -> TeamMode.on_banana_hit で復活する
+func _try_ghost_throw() -> void:
+	if _ghost_reload > 0.0 or _ghost_target == null or not is_instance_valid(_ghost_target):
+		return
+	var to := _ghost_target.global_position - global_position
+	var flat := Vector2(to.x, to.z)
+	var d := flat.length()
+	if d < GHOST_THROW_MIN or d > GHOST_THROW_MAX:
+		return
+	var fwd := -global_transform.basis.z
+	var f2 := Vector2(fwd.x, fwd.z)
+	if f2.length_squared() < 0.01 or f2.normalized().dot(flat / d) < GHOST_AIM_DOT:
+		return
+	var aim := Vector3(to.x, 0.0, to.z) / d
+	var world := get_tree().current_scene
+	if not world.has_method("spawn_dropped_item"):
+		return
+	world.spawn_dropped_item(Player.Item.BANANA,
+		global_position + aim * Player.BANANA_THROW_SPAWN + Vector3.UP, rotation.y,
+		aim * (d / GHOST_FLIGHT) + Vector3.UP * Player.BANANA_THROW_UP, -1, String(name))
+	_ghost_reload = GameManager.team.GHOST_BANANA_COOLDOWN
 
 
 ## --- アイテム（？ブロックから渡される） ---------------------------------

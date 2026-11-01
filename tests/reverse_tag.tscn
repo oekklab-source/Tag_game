@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/reverse_tag.gd" id="1_reverse_tag"]
+
+[node name="ReverseTagTest" type="Node"]
+script = ExtResource("1_reverse_tag")

@@ -101,7 +101,8 @@ var _resume_gen := 0
 ## server_disconnected検知直後(GameManager.reset()より前)に、各生存者が自分のローカルの
 ## レプリケート済み状態から取る。PLAYING以外は空 = 従来どおり準備中へ戻す
 func snapshot_for_resume() -> Dictionary:
-	if GameManager.state != GameManager.State.PLAYING:
+	# Reverse Tag は逃げが1人の前提のスナップショットに載らないので、引き継ぎ後は準備中から
+	if GameManager.state != GameManager.State.PLAYING or GameManager.team.enabled:
 		return {}
 	var runner_id := GameManager.runner_id
 	var runner_profile: Dictionary = GameManager.peer_profiles.get(runner_id, {})

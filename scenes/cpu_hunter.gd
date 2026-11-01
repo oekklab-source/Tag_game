@@ -102,6 +102,12 @@ const DIVE_PITCH := Player.DIVE_PITCH
 const NET_SMOOTH := Player.NET_SMOOTH
 const NET_SNAP_DIST := Player.NET_SNAP_DIST
 
+## Reverse Tag のチーム（0/1）。-1 = 旧モード。ホストが add_child の前に入れる
+## （他ピアでは使わない。表示は GameManager.team.team_of の名前引きで行う）
+var team := -1
+## Reverse Tag で情報が無い間に掃くゾーン。旧モードの HunterSquad は逃げ1人が前提なので使わない
+var _patrol_zone := -1
+
 var buffs := BuffSet.new()
 var carry_velocity := Vector3.ZERO
 var bumper_bounce_velocity := Vector3.ZERO
@@ -202,6 +208,14 @@ func _process(delta: float) -> void:
 ## 役割は逃走者にも見せる（体色をやめたので、これが唯一の「鬼だ」という手がかり）
 func _update_name_label() -> void:
 	var playing := GameManager.state == GameManager.State.PLAYING
+	if GameManager.in_team_round():
+		# Reverse Tag は味方にだけ名前を見せ、チームの色で塗る（player.gd と同じ）
+		var t := GameManager.team.team_of_name(String(name))
+		name_label.visible = playing and t >= 0 and t == GameManager.team.my_team()
+		if t >= 0:
+			name_label.modulate = GameManager.team.TEAM_COLORS[t]
+		role_label.visible = playing
+		return
 	name_label.visible = playing and multiplayer.get_unique_id() != GameManager.runner_id
 	role_label.visible = playing
 
@@ -234,11 +248,14 @@ func _physics_process(delta: float) -> void:
 	var wants_dash := false
 	item_lock = maxf(item_lock - delta, 0.0)
 	if chasing:
-		var runner: Node3D = GameManager.get_runner()
-		if runner:
+		var runner: Node3D = _pick_target()
+		# Reverse Tag では標的が見えていなくても巡回・捜索で動き続ける
+		if runner or team >= 0:
 			# 状態を先に決める。自分の視認 > 共有された通報 > 情報なし
 			var mind := Mind.PATROL
-			if GameManager.hunter_sees_runner(self):
+			if team >= 0:
+				mind = _team_mind(runner)
+			elif GameManager.hunter_sees_runner(self):
 				mind = Mind.CHASE
 			elif GameManager.spotted_zone >= 0:
 				mind = Mind.INVESTIGATE
@@ -269,11 +286,13 @@ func _physics_process(delta: float) -> void:
 			if not assist["direct"] and _xz_dist(global_position, next) < 0.2 \
 					and _xz_dist(global_position, nav_goal) > 1.0:
 				next = nav_goal
-			var to_runner := runner.global_position - global_position
-			var h_dist := Vector2(to_runner.x, to_runner.z).length()
+			# 標的が無い（Reverse Tag で誰も見えていない）間は行き先を仮の標的にする。
+			# 距離は INF にして、ダッシュ・アイテム・ダイブの判断が働かないようにする
+			var to_runner := (runner.global_position if runner else _goal) - global_position
+			var h_dist := Vector2(to_runner.x, to_runner.z).length() if runner else INF
 			# 見えている近距離で高低差が小さい、またはナビで到達不能なら直接追跡へ。
 			# 挟み役は触れる寸前まで持ち場を保つので、切り替える距離をずっと短くする
-			var direct_dist := (DIRECT_CHASE_DIST if GameManager.squad.is_prime(self)
+			var direct_dist := (DIRECT_CHASE_DIST if team >= 0 or GameManager.squad.is_prime(self)
 				else FLANK_DIRECT_DIST)
 			if (_mind == Mind.CHASE and h_dist < direct_dist
 					and (absf(to_runner.y) < 1.2 or not agent.is_target_reachable())):
@@ -391,6 +410,9 @@ func _follow_sync(delta: float) -> void:
 ## 目的地は「到着したか時間切れの時」だけ差し替え、毎フレーム動かさない
 ## （動かすと NavigationAgent3D の経路が落ち着かず、その場で震える）
 func _update_goal(runner: Node3D, _delta: float) -> void:
+	if team >= 0:
+		_update_team_goal(runner)
+		return
 	var squad: HunterSquad = GameManager.squad
 	match _mind:
 		Mind.CHASE:
@@ -404,6 +426,38 @@ func _update_goal(runner: Node3D, _delta: float) -> void:
 			# 掃き終えたら次の担当を貰う。他の鬼が持っているゾーンは来ない
 			if _sweep_zone(squad.search_zone(self)):
 				squad.next_search_zone(self)
+
+
+## Reverse Tag の標的。自チームの誰かに見えている敵の逃げ役のうち最も近い者。
+## 旧モードは従来どおり唯一の逃走者
+func _pick_target() -> Node3D:
+	if team >= 0:
+		return GameManager.team.nearest_visible_runner(self)
+	return GameManager.get_runner()
+
+
+## Reverse Tag の状態。自分の目で見ている > 味方が見ている（ミニマップに点が出ている）>
+## 最後に見えた場所がまだ新しい > 情報なし
+func _team_mind(runner: Node3D) -> int:
+	if runner and GameManager.team.sees(self, runner):
+		return Mind.CHASE
+	if runner or GameManager.team.last_seen_zone(team) >= 0:
+		return Mind.INVESTIGATE
+	return Mind.PATROL
+
+
+## Reverse Tag の行き先。味方の目に入っている相手は位置ごと分かる（ミニマップと同じ情報）ので、
+## 追跡も捜索も相手そのものへ向かう。見失ったら最後に見えたゾーン、それも古ければ巡回
+func _update_team_goal(runner: Node3D) -> void:
+	if runner:
+		_goal = runner.global_position
+		return
+	var zone := GameManager.team.last_seen_zone(team)
+	if zone >= 0:
+		_sweep_zone(zone)
+		return
+	if _patrol_zone < 0 or _sweep_zone(_patrol_zone):
+		_patrol_zone = _rng.randi_range(0, WorldData.ZONE_COUNT - 1)
 
 
 ## 担当ゾーンへ入り、中を掃くように歩き回る。掃き終わったら true。
@@ -440,6 +494,9 @@ func _wants_dash(h_dist: float) -> bool:
 			# 遠いうちに吐いても追いつく前に切れて、肝心の詰めで息が上がる
 			return h_dist < DASH_ENGAGE
 		Mind.INVESTIGATE:
+			# Reverse Tag で味方が見ている相手へ向かう間は、追跡と同じく届く距離でだけ吐く
+			if team >= 0:
+				return h_dist < DASH_ENGAGE
 			# 通報が入った直後だけ全力で急行する。古い情報に全力は出さない
 			return GameManager.intel_left > GameManager.INTEL_TIME - DASH_INTEL_BURST
 		_:
@@ -479,7 +536,10 @@ func give_item(id: int) -> void:
 ## 判断には仲間の誰かが見ている(GameManager.spotted)という共有情報を使う。
 ## 挟み込みが共有情報で動いているのと同じ筋で、先回り役にも目が回ってくる
 func _try_use_item(to_runner: Vector3, h_dist: float) -> void:
-	if item == Player.Item.NONE or item_lock > 0.0 or not GameManager.spotted:
+	if item == Player.Item.NONE or item_lock > 0.0:
+		return
+	# Reverse Tag では「味方の誰かが見ている」= 標的が居る（h_dist が有限）
+	if (team >= 0 and h_dist == INF) or (team < 0 and not GameManager.spotted):
 		return
 	var flat := Vector2(to_runner.x, to_runner.z)
 	if flat.length_squared() < 0.01:

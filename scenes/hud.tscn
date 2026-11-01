@@ -16,6 +16,8 @@
 [ext_resource type="Texture2D" path="res://ui/icons/refresh.png" id="14_refresh"]
 [ext_resource type="Texture2D" path="res://ui/icons/dice.png" id="15_dice"]
 [ext_resource type="Texture2D" path="res://ui/icons/hourglass.png" id="16_hourglass"]
+[ext_resource type="Texture2D" path="res://ui/icons/clock.png" id="17_clock"]
+[ext_resource type="Texture2D" path="res://ui/logo/reverse_tag_mark.png" id="18_mark"]
 
 [sub_resource type="StyleBoxFlat" id="result_panel"]
 content_margin_left = 56.0
@@ -186,6 +188,40 @@ size_flags_vertical = 4
 theme_override_font_sizes/font_size = 22
 text = ""
 
+; Reverse Tag 専用: ターン数(n/4)と両チームの得点。クラシックでは隠す。
+; ZoneChip(同じ y=224)はこのモードでは出ないので、同じ場所を譲り合う
+[node name="TeamChip" type="PanelContainer" parent="."]
+visible = false
+anchor_left = 0.5
+anchor_right = 0.5
+offset_top = 224.0
+grow_horizontal = 2
+theme_override_styles/panel = SubResource("chip")
+
+[node name="Row" type="HBoxContainer" parent="TeamChip"]
+theme_override_constants/separation = 10
+
+[node name="TurnIcon" type="TextureRect" parent="TeamChip/Row"]
+custom_minimum_size = Vector2(32, 32)
+size_flags_vertical = 4
+texture = ExtResource("17_clock")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="TurnLabel" type="Label" parent="TeamChip/Row"]
+theme_override_font_sizes/font_size = 22
+text = "1/4"
+
+[node name="ScoreA" type="Label" parent="TeamChip/Row"]
+theme_override_font_sizes/font_size = 26
+
+[node name="ScoreSep" type="Label" parent="TeamChip/Row"]
+theme_override_font_sizes/font_size = 22
+text = ":"
+
+[node name="ScoreB" type="Label" parent="TeamChip/Row"]
+theme_override_font_sizes/font_size = 26
+
 [node name="MapPanel" type="Control" parent="."]
 visible = false
 anchor_left = 1.0
@@ -240,6 +276,25 @@ grow_horizontal = 2
 texture = ExtResource("5_eye")
 expand_mode = 1
 stretch_mode = 5
+
+; 入れかえの予告。SpottedBanner(372〜500)の下、BuffTray(602)の上。
+; y=360 より下に置くことで、マウスキャプチャ位置を塞ぐ問題を再発させない。
+; 文字は白＋太い濃紺のふち。黄色だと黄色いゾーンの地面に埋もれて読めなかった(uishot で確認)
+[node name="SwapBanner" type="Label" parent="."]
+visible = false
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -260.0
+offset_top = 510.0
+offset_right = 260.0
+offset_bottom = 560.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.05, 0.04, 0.12, 1)
+theme_override_constants/outline_size = 14
+theme_override_font_sizes/font_size = 32
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="ItemSlot" type="PanelContainer" parent="."]
 anchor_left = 0.5
@@ -429,6 +484,24 @@ icon_margin = 6
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 text = "デバッグ: CPU逃走者 OFF"
+
+; ホストだけ。Reverse Tag(4対4・攻守入れかえ)に切り替える。ロゴのマークを添える
+[node name="ReverseTagRow" type="HBoxContainer" parent="Lobby/Box/Col"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ReverseTagMark" type="TextureRect" parent="Lobby/Box/Col/ReverseTagRow"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("18_mark")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ReverseTagButton" type="CheckButton" parent="Lobby/Box/Col/ReverseTagRow"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
 
 [node name="StartButton" type="Button" parent="Lobby/Box/Col"]
 custom_minimum_size = Vector2(0, 104)

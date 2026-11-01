@@ -34,6 +34,8 @@ const ICON_CANCEL := preload("res://ui/icons/cancel.png")
 const ICON_LINK := preload("res://ui/icons/link.png")
 const ICON_OK := preload("res://ui/icons/ok.png")
 const SEAT_PX := 56.0
+## Reverse Tag は席が8つ並ぶので、1席を小さくして横幅を収める
+const TEAM_SEAT_PX := 44.0
 ## L-10: _fit_to_screen() で画面の上下左右に残す余白
 const FIT_MARGIN := 16.0
 
@@ -46,6 +48,8 @@ const FIT_MARGIN := 16.0
 @onready var open_shop_button: Button = $Box/Col/OverlayButtonsRow/OpenShopButton
 @onready var open_friend_button: Button = $Box/Col/OverlayButtonsRow/OpenFriendButton
 @onready var debug_cpu_runner_button: CheckButton = $Box/Col/DebugCpuRunnerButton
+@onready var reverse_tag_row: HBoxContainer = $Box/Col/ReverseTagRow
+@onready var reverse_tag_button: CheckButton = $Box/Col/ReverseTagRow/ReverseTagButton
 @onready var start_button: Button = $Box/Col/StartButton
 @onready var max_members_row: HBoxContainer = $Box/Col/MaxMembersRow
 @onready var max_members_spin: SpinBox = $Box/Col/MaxMembersRow/MaxMembersSpin
@@ -73,16 +77,19 @@ var _tunnel_note := ""
 ## (friend_screen.gdの_remove_confirm_dialogと同じパターン)
 var _pending_kick_id := -1
 var _kick_confirm_dialog: ConfirmationDialog
+## 操作説明の Tab(逃げる役の指名)。Reverse Tag には指名が無いので隠す
+var _tab_hint: Control
 
 
 func _ready() -> void:
 	_sb_row = _row_style()
 	_sb_row_hover = _row_style_hover()
-	role_button.pressed.connect(GameManager.toggle_my_role)
+	role_button.pressed.connect(_on_role_pressed)
 	open_costume_button.pressed.connect(func(): open_overlay_requested.emit("costume"))
 	open_shop_button.pressed.connect(func(): open_overlay_requested.emit("shop"))
 	open_friend_button.pressed.connect(func(): open_overlay_requested.emit("friend"))
 	debug_cpu_runner_button.toggled.connect(GameManager.set_debug_cpu_runner)
+	reverse_tag_button.toggled.connect(GameManager.team.set_enabled)
 	# Enterキーはworld.gdの独自アクション"start_round"にも直接バインドされている。
 	# このボタンがキーボードフォーカスを持ったままだと、Enter一発で
 	# 標準ui_accept(ボタン発火)と独自アクション(_unhandled_input)の二重発火になり、
@@ -115,7 +122,10 @@ func _build_controls_help() -> void:
 			["WASD", "move"], ["Shift", "bolt"], ["Space", "dive"], ["E", "gift"],
 			["F", "emote"], ["R", "swap"], ["Tab", "role_runner"], ["Enter", "start"],
 			["Esc", "quit"]]:
-		controls_help.add_child(KeyHint.pair(entry[0], KeyHint.icon(entry[1]), 30.0))
+		var hint_pair := KeyHint.pair(entry[0], KeyHint.icon(entry[1]), 30.0)
+		controls_help.add_child(hint_pair)
+		if entry[0] == "Tab":
+			_tab_hint = hint_pair
 
 
 ## H-04: キック確認ダイアログ(OK/キャンセルを1つ使い回し、対象は_pending_kick_idに保持する)
@@ -140,6 +150,14 @@ func _on_kick_confirmed() -> void:
 		return
 	GameManager.kick_peer(_pending_kick_id)
 	_pending_kick_id = -1
+
+
+## 役割ボタン。Reverse Tag では逃げる役の立候補ではなく、希望チームの切り替えになる
+func _on_role_pressed() -> void:
+	if GameManager.team.enabled:
+		GameManager.team.cycle_my_team()
+	else:
+		GameManager.toggle_my_role()
 
 
 ## 招待リンクの画面内表示(C-04)。ホスト開始/トンネル確定/ホストマイグレーション後の
@@ -227,7 +245,11 @@ func update_lobby(overlay_open: bool) -> void:
 	var cpu_fill: int = maxi(GameManager.MAX_HUNTERS - humans_on_hunt, 0)
 	if GameManager.debug_cpu_runner:
 		cpu_fill = 0  # デバッグ（CPU逃走者）は1対1の検証用で CPU 鬼を足さない
-	_rebuild_seats(ids.size(), cpu_fill)
+	var team_mode := GameManager.team.enabled
+	if team_mode:
+		_rebuild_team_seats(ids)
+	else:
+		_rebuild_seats(ids.size(), cpu_fill)
 	# 部屋作成ダイアログの注記はホスト開始ですぐ隠れるので、待機中ずっと見えるここにも出す
 	# (EOS未接続のcreate_lobby()は仮の部屋を作るだけで、他のPCの検索には出ない)
 	status_sub.visible = is_host and is_eos_matched and not EosManager.is_eos_available
@@ -239,15 +261,29 @@ func update_lobby(overlay_open: bool) -> void:
 	var debug_available := OS.is_debug_build() and is_host and ids.size() == 1
 	if is_host and GameManager.debug_cpu_runner and not debug_available:
 		GameManager.set_debug_cpu_runner(false)
-	debug_cpu_runner_button.visible = debug_available
+	debug_cpu_runner_button.visible = debug_available and not team_mode
+	# モード切替はホストだけ。EOSロビー経由(レーティング戦)は旧モード固定なので出さない
+	reverse_tag_row.visible = is_host and not is_eos_matched
+	reverse_tag_button.set_pressed_no_signal(team_mode)
+	reverse_tag_button.text = tr("Reverse Tag（4対4で攻守入れかえ）")
+	reverse_tag_button.tooltip_text = tr("4対4で、鬼チームと逃げるチームが%d秒ごとに入れかわります") 		% int(GameManager.team.TURN_TIME)
+	if _tab_hint:
+		_tab_hint.visible = not team_mode
 	debug_cpu_runner_button.set_pressed_no_signal(GameManager.debug_cpu_runner)
 	debug_cpu_runner_button.text = tr("デバッグ: CPU逃走者 ON") if GameManager.debug_cpu_runner else tr("デバッグ: CPU逃走者 OFF")
 	var i_am_runner := GameManager.wanted_runner == me
 	# ボタンには「押すとなる役」の絵を出し、文言はツールチップへ回す
 	role_button.icon = ICON_HUNTER if (i_am_runner or GameManager.debug_cpu_runner) else ICON_RUNNER
 	role_button.tooltip_text = tr("デバッグ中: あなたは鬼") if GameManager.debug_cpu_runner else (tr("おにに戻る") if i_am_runner else tr("逃げる役になる"))
-	role_button.disabled = GameManager.debug_cpu_runner
+	role_button.disabled = GameManager.debug_cpu_runner and not team_mode
 	role_button.visible = not is_eos_matched
+	role_button.self_modulate = Color.WHITE
+	if team_mode:
+		# 希望チーム(おまかせ=さいころ)。板をチーム色にして、今どちらを希望しているかを色で見せる
+		var want := int(GameManager.team.wanted_team.get(me, -1))
+		role_button.icon = ICON_DICE if want < 0 else ICON_CHARACTER
+		role_button.self_modulate = GameManager.team.TEAM_COLORS[want] if want >= 0 else Color.WHITE
+		role_button.tooltip_text = tr("チーム切替")
 	start_button.visible = is_host
 	start_button.disabled = ids.is_empty()
 	# 文字で出すのは、ビルドの食い違いなど放っておくと原因の分からない不具合になるものだけ。
@@ -327,6 +363,39 @@ func _rebuild_seats(humans: int, cpu_fill: int) -> void:
 		seats_row.add_child(seat)
 
 
+## Reverse Tag の席。チームごとに4席ずつ(人間が4人を超えたらその分だけ増える)を
+## チーム色で並べ、チームの間に隙間を空ける。人間の振り分けは start_round() と同じ規則
+## (希望を先に入れ、おまかせは少ない方へ)で数える
+func _rebuild_team_seats(ids: Array[int]) -> void:
+	var counts := [0, 0]
+	var free := 0
+	for id in ids:
+		var w := int(GameManager.team.wanted_team.get(id, -1))
+		if w < 0:
+			free += 1
+		else:
+			counts[w] += 1
+	for _i in free:
+		counts[0 if counts[0] <= counts[1] else 1] += 1
+	var key := "team|%d|%d" % [counts[0], counts[1]]
+	if key == _seats_key:
+		return
+	_seats_key = key
+	for c in seats_row.get_children():
+		seats_row.remove_child(c)
+		c.queue_free()
+	for t in 2:
+		if t == 1:
+			var gap := Control.new()
+			gap.custom_minimum_size = Vector2(16, 0)
+			seats_row.add_child(gap)
+		var seat_count := maxi(GameManager.team.TEAM_SIZE, counts[t])
+		for i in seat_count:
+			var seat := KeyHint.image(ICON_CHARACTER if i < counts[t] else ICON_CPU, TEAM_SEAT_PX)
+			seat.modulate = GameManager.team.TEAM_COLORS[t]
+			seats_row.add_child(seat)
+
+
 ## 一覧は毎フレーム作り直さず、中身が変わったときだけ組み直す。
 ## ②⑥GameManager.peer_profiles(レート/コスチューム/帽子)はプロフィール到着とids/名前の
 ## 変化が同フレームとは限らないため、キーにも含めて到着後の再構築を保証する
@@ -335,8 +404,8 @@ func _rebuild_seats(humans: int, cpu_fill: int) -> void:
 func _rebuild_roster(ids: Array[int], me: int, is_host: bool, is_eos_matched: bool) -> void:
 	var names := ids.map(func(id): return _display_name(id, me))
 	var profile_stamp := ids.map(func(id): return GameManager.peer_profiles.get(id, {}))
-	var key := "%s|%s|%d|%d|%d|%s" % [ids, names, GameManager.wanted_runner, int(is_host),
-		int(is_eos_matched), profile_stamp]
+	var key := "%s|%s|%d|%d|%d|%s|%d|%s" % [ids, names, GameManager.wanted_runner, int(is_host),
+		int(is_eos_matched), profile_stamp, int(GameManager.team.enabled), GameManager.team.wanted_team]
 	if key == _roster_key:
 		return
 	_roster_key = key
@@ -375,7 +444,8 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	# (逃げる人＝走る緑、鬼＝角のある赤)。逃げる役がまだ決まっていない、または
 	# EOSロビー経由で開始時にランダムで決まるときは、全員さいころにする
 	var undecided := is_eos_matched or GameManager.wanted_runner < 0
-	var badge := KeyHint.image(
+	var team_mode := GameManager.team.enabled
+	var badge: Control = _team_badge(id) if team_mode else KeyHint.image(
 		ICON_DICE if undecided else (ICON_RUNNER if is_runner else ICON_HUNTER), 54.0)
 	h.add_child(name_label)
 	if id == 1:
@@ -395,12 +465,16 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	row.add_child(h)
 	if not is_host or is_eos_matched:
 		return row
-	# ホストだけ、行を押して逃げる役を付け替えられる
+	# ホストだけ、行を押して逃げる役(Reverse Tag ではチーム)を付け替えられる
 	var btn := Button.new()
 	btn.flat = true
 	btn.focus_mode = Control.FOCUS_NONE
-	btn.tooltip_text = tr("この人を逃げる役にする")
-	btn.pressed.connect(func() -> void: GameManager.set_wanted_runner_to(id))
+	if team_mode:
+		btn.tooltip_text = tr("この人のチームを切り替える")
+		btn.pressed.connect(func() -> void: GameManager.team.cycle_team_of(id))
+	else:
+		btn.tooltip_text = tr("この人を逃げる役にする")
+		btn.pressed.connect(func() -> void: GameManager.set_wanted_runner_to(id))
 	btn.mouse_entered.connect(func(): row.add_theme_stylebox_override("panel", _sb_row_hover))
 	btn.mouse_exited.connect(func(): row.add_theme_stylebox_override("panel", _sb_row))
 	btn.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -409,6 +483,24 @@ func _roster_row(id: int, me: int, is_host: bool, is_eos_matched: bool) -> Contr
 	if id != me:
 		row.add_child(_kick_slot(id))
 	return row
+
+
+## Reverse Tag の希望チーム。A / B をチーム色の文字で、おまかせは「?」。
+## 役割の絵(逃げ・鬼・さいころ)はチームが決まるまで意味を持たないので使わない
+func _team_badge(id: int) -> Control:
+	var want := int(GameManager.team.wanted_team.get(id, -1))
+	var label := Label.new()
+	label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	label.text = "?" if want < 0 else ("A" if want == 0 else "B")
+	label.custom_minimum_size = Vector2(54, 54)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 40)
+	label.add_theme_color_override("font_color",
+		GameManager.team.TEAM_COLORS[want] if want >= 0 else Color(1, 1, 1, 0.7))
+	label.add_theme_color_override("font_outline_color", Color(0.05, 0.04, 0.12))
+	label.add_theme_constant_override("outline_size", 8)
+	return label
 
 
 ## H-04: rowの右端に小さく重なる「キック」当たり判定。

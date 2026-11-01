@@ -1121,3 +1121,52 @@ msgstr "Select a paid item to send as a gift"
 
 msgid "プレゼント、きっと喜ばれますよ♪"
 msgstr "I'm sure they'll love your gift♪"
+
+# --- Reverse Tag (4対4・攻守入れかえ) ---
+msgid "ゆうれい"
+msgstr "Ghost"
+
+msgid "チームA"
+msgstr "Team A"
+
+msgid "チームB"
+msgstr "Team B"
+
+msgid "まもなく入れかえ！"
+msgstr "Swap soon!"
+
+msgid "チーム切替"
+msgstr "Switch Team"
+
+msgid "この人のチームを切り替える"
+msgstr "Change this player's team"
+
+msgid "Reverse Tag（4対4で攻守入れかえ）"
+msgstr "Reverse Tag (4v4 role swap)"
+
+msgid "4対4で、鬼チームと逃げるチームが%d秒ごとに入れかわります"
+msgstr "4v4. The Chaser team and the Runner team swap every %d seconds"
+
+msgid "かった！"
+msgstr "You win!"
+
+msgid "まけた…"
+msgstr "You lose..."
+
+msgid "ひきわけ"
+msgstr "Draw"
+
+msgid "全員つかまえた"
+msgstr "Caught everyone"
+
+msgid "全員つかまってしまった"
+msgstr "Everyone got caught"
+
+msgid "得点で勝ち"
+msgstr "Won on points"
+
+msgid "得点で負け"
+msgstr "Lost on points"
+
+msgid "同点で引き分け"
+msgstr "Tied on points"
