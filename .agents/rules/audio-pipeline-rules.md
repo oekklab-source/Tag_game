@@ -4,7 +4,7 @@ trigger: always_on
 
 # Tag_Game 音楽・SE 制作ルール
 
-Tag_Game（`3D Chase Game`、マリオ風カラフルな160×160mマップのオンライン鬼ごっこ）の
+Tag_Game（`Reverse Tag!`／逆転鬼ごっこ、マリオ風カラフルな160×160mマップのオンライン鬼ごっこ）の
 BGM・SEを生成・変更するときの規約です。**Claude Code / Antigravity 共通**で適用します。
 
 ## 1. 現状（2026-09-14時点）

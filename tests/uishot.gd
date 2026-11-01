@@ -9,7 +9,8 @@ extends Node
 ## --text-size を付けるとその文字サイズ(UI全体の拡大率)で撮る(L-10、はみ出し確認用)。
 ## どちらも設定は保存しない。
 ## --only-touch を付けるとタッチ操作UIの3枚だけ撮る(スマホ向け配置の確認用。全画面を撮ると数分かかる)
-## --only-title を付けるとタイトル画面の1枚だけ撮る(world.tscn を開かないので数秒で済む)
+## --only-title を付けるとタイトル画面とクレジット画面(先頭・スクロール後)の3枚だけ撮る
+## (KAN-51/32/45。タイトル・版数・ライセンス文の見た目の確認用)
 
 func _ready() -> void:
 	var out := "."
@@ -33,15 +34,16 @@ func _ready() -> void:
 		await _shot_all_touch_controls(out)
 		get_tree().quit()
 		return
+	if only_title:
+		await _shot_title_and_credits(out)
+		get_tree().quit()
+		return
 
 	# 1) タイトル画面
 	var title: Node = load("res://scenes/title.tscn").instantiate()
 	get_tree().root.add_child(title)
 	get_tree().current_scene = title
 	await _shot(out, "title")
-	if only_title:
-		get_tree().quit()
-		return
 	title.queue_free()
 	await get_tree().process_frame
 
@@ -148,7 +150,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 
 	# 7b) L-09: タイトルから開く専用シーン。英語で撮ったときの文言のはみ出しを見るため
-	for scene_name in ["settings_screen", "shop_screen", "costume_screen", "friend_screen"]:
+	for scene_name in ["settings_screen", "shop_screen", "costume_screen", "friend_screen", "credits_screen"]:
 		var screen: Node = load("res://scenes/%s.tscn" % scene_name).instantiate()
 		get_tree().root.add_child(screen)
 		for i in 10:
@@ -214,6 +216,26 @@ func _shot_touch_controls(out: String, name: String, size: Vector2i, active := f
 	SettingsManager.touch_controls_mode = prev_mode
 	GameManager.state = prev_state
 	DisplayServer.window_set_size(prev_size)
+	await get_tree().process_frame
+
+
+## --only-title 用。クレジット画面は長文なので、スクロールした途中(著作権者名に ó・ø 等が
+## 混ざる Godot の一覧)も撮り、豆腐(□)になっていないかとスクロールできるかを見る
+func _shot_title_and_credits(out: String) -> void:
+	var title: Node = load("res://scenes/title.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await _shot(out, "title")
+	title.queue_free()
+	await get_tree().process_frame
+	var credits: Node = load("res://scenes/credits_screen.tscn").instantiate()
+	get_tree().root.add_child(credits)
+	for i in 10:
+		await get_tree().process_frame
+	await _shot(out, "credits_screen")
+	var body: RichTextLabel = credits.get_node("ContentMargin/Body")
+	body.scroll_to_line(body.get_line_count() / 3)
+	await _shot(out, "credits_screen_scrolled")
+	credits.queue_free()
 	await get_tree().process_frame
 
 

@@ -24,6 +24,7 @@ func _ready() -> void:
 	await _test_runner_disconnect_during_round()
 	await _test_version_mismatch()
 	await _test_tunnel_launch_failed()
+	_test_tunnel_failure_notes()
 
 	print("==================================================")
 	print("Phase 6 結果: PASS=%d, FAIL=%d" % [passed_count, failed_count])
@@ -119,6 +120,38 @@ func _test_tunnel_launch_failed() -> void:
 	NetworkManager._tunnel_pid = saved_pid
 	NetworkManager._tunnel_poll_elapsed = 0.0
 	NetworkManager.tunnel_failed.disconnect(on_failed)
+
+
+## 5. トンネルを張れなかったときのロビーの注記が、理由ごとに「次に何をするか」を言うこと（KAN-40）。
+## 配布版は cloudflared.exe を同梱しているので、not_found の案内はエディタ実行と分ける
+func _test_tunnel_failure_notes() -> void:
+	print("\n--- [5] トンネル失敗時の案内文 ---")
+	var LobbyPanel: GDScript = load("res://scenes/hud/lobby_panel.gd")
+	var notes := {}
+	for r in ["not_found", "launch_failed", "exited", "timeout", "unknown_reason"]:
+		notes[r] = LobbyPanel.tunnel_failure_note(r, true)
+	var editor_not_found: String = LobbyPanel.tunnel_failure_note("not_found", false)
+
+	var distinct := {}
+	for r in notes:
+		distinct[notes[r]] = true
+	distinct[editor_not_found] = true
+	_assert(distinct.size() == 6, "理由ごと・配布版/エディタで別の案内になる (%d 種類)" % distinct.size())
+	_assert(notes["not_found"].contains("cloudflared.exe") and notes["not_found"].contains("フォルダ"),
+		"配布版の not_found はフォルダの cloudflared.exe を案内する")
+	_assert(editor_not_found.contains("winget"), "エディタ実行の not_found は winget での入れ方を案内する")
+	for r in notes:
+		_assert(notes[r].contains("同じLAN内の相手は参加できます"), "%s の案内に LAN 内なら参加できることが入っている" % r)
+	for r in ["exited", "timeout", "unknown_reason"]:
+		_assert(notes[r].contains("部屋を作り直して"), "%s の案内に「部屋を作り直す」が入っている" % r)
+
+	# 英語でも訳が当たること（en.po の msgid と一字一句合っていないと原文のまま出る）
+	var saved_locale := TranslationServer.get_locale()
+	TranslationServer.set_locale("en")
+	for r in notes:
+		var en: String = LobbyPanel.tunnel_failure_note(r, true)
+		_assert(en.begins_with("* "), "%s の英訳が当たる (実際: %s)" % [r, en.left(40)])
+	TranslationServer.set_locale(saved_locale)
 
 # --- 実セーブ(user://profile.json / settings.json)とクラウドセーブの保護 ---
 # ラウンドを回さないテストでも、EOS にログインできる環境では起動時のクラウドセーブ同期が

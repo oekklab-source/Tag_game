@@ -83,7 +83,8 @@ Steam で出すつもりがあるなら、itch.io の作業と並行して早め
 
 ### A-3. 正式タイトル・アイコン・カバー画像（KAN-50 / KAN-52 / KAN-54 / KAN-59）
 
-- **なぜ**: `project.godot` の名前は暫定の `3D Chase Game`。法務3文書・ストアページ・exe のプロパティに同じ名前が入る。
+- **なぜ**: 法務3文書・ストアページ・exe のプロパティに同じ名前が入る。正式タイトルは KAN-50 で
+  「Reverse Tag!」／「逆転鬼ごっこ」に決まり、KAN-51 で一斉に差し替えた（exe は `ReverseTag.exe`）。
 - **やること**:
   1. 正式タイトルを決める。決まったら Claude に伝えれば、`project.godot`・文書・ストア文面・
      ホーム画面追加用の名前とアイコン（`web/`、今は仮のもの）を一斉に差し替える。
@@ -102,7 +103,7 @@ Steam で出すつもりがあるなら、itch.io の作業と並行して早め
 - **前提**: A-5（Draft のページに CI のビルドが上がっている）。
 - **手順**:
   1. Godot も `cloudflared` も入れていない Windows PC で、itch.io の Draft ページからダウンロードして
-     `TagGame.exe` を起動する（手元のビルドで試すなら `pwsh tools/export_windows.ps1` の出力
+     `ReverseTag.exe` を起動する（手元のビルドで試すなら `pwsh tools/export_windows.ps1` の出力
      `export/windows/` を**フォルダごと**コピーする。exe だけでは動かない。配布物の一覧は
      [README.md](../README.md) の「Windows 版のビルドと itch.io への配布」節）。
   2. 確認:

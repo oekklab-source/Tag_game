@@ -10,6 +10,7 @@
 | アプリアイコン | 画像生成ツールへ委譲 | `app_icon/` |
 | 公開用スクリーンショット | Claude Codeが既存`tests/uishot.tscn`で自給 | `screenshots/` |
 | ストアページ掲載文(日本語) | Claude Codeが執筆 | `itchio_page_ja.md` |
+| ストアページ掲載文(英語) | Claude Codeが執筆(KAN-56。日本語版と1対1の構成、用語は`locale/en.po`に揃える) | `itchio_page_en.md` |
 
 ## 守ること
 
