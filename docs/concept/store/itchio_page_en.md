@@ -101,6 +101,19 @@ For details, see (currently in Japanese):
   friends and other online features. Epic Games, Inc. expressly disclaims all representations, warranties,
   conditions and liabilities, express or implied, in connection with Epic Online Services.
 
+## 10. Contact & Bug Reports
+
+> 日本語版と同じ窓口・同じ手順(KAN-71)。
+
+For bug reports and questions, please email yuya.hamaguchi@solpinto.jp.
+It helps us find the cause if you include:
+
+- **The game version**: shown like "Ver 1.0.0 (Protocol v14)" at the bottom right of the title screen
+  and in the "Contact & Bug Reports" section of the Settings screen
+- **The log file**: `godot.log` in the folder that "Open Log Folder" on the Settings screen opens
+  (on Windows: `%APPDATA%\TagGame\logs\godot.log`)
+- What you were doing when it happened (hosting or joining, etc.)
+
 ---
 
 ## 掲載時の注意(プレースホルダ)

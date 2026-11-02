@@ -1617,7 +1617,7 @@ ui/logo/, ui/icons/           ロゴ「Reverse Tag!」とアイコンの PNG（b
 tools/blender/build_ui_art.py ロゴとアイコンを Blender で描いて PNG に書き出す（blender -b -P で実行）
 locale/en.po                  英語の翻訳（msgid は日本語の原文。書き方は「表示言語」節）
 autoload/settings_manager.gd  マウス感度・音量・タッチ操作・表示言語・文字サイズの設定（user://settings.json）
-scenes/settings_screen.tscn(.gd) 設定画面
+scenes/settings_screen.tscn(.gd) 設定画面（一番下に問い合わせ先・版数・ログの場所。KAN-71）
 scenes/credits_screen.tscn(.gd) クレジット・ライセンス画面（タイトル画面の左下から開く）
 tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
 tools/blender/character_common.py 着せ替えで共通の骨格・リグ・アニメ・書き出し。
