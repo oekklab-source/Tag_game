@@ -71,7 +71,7 @@
 
 ## アニメ資産と検証
 
-- assets/character/fallguy.glb と tools/blender/fallguy.blend に5クリップを追加。
+- assets/character/dino.glb と tools/blender/fallguy.blend に5クリップを追加。
   SlideEnter / SlideSit / SlideReverseFall / SlideProne / SlideRecover。
 - tools/blender/prototype_slide.py が承認済みポーズと接地補正を保持する。
   `--integrate` は既存資産の7クリップを残して滑走クリップを更新する。

@@ -1,7 +1,7 @@
 # Reverse Tag! ／ 逆転鬼ごっこ（Godot 4 / WebSocket オンライン鬼ごっこ）
 
 PC がホスト（WebSocket サーバ）、Web ブラウザがクライアントとして参加する
-3D 三人称視点のオンライン・チェイスゲーム。マリオ風のカラフルでポップな
+3D 三人称視点のオンライン・チェイスゲーム。カラフルでポップな
 160×160m のマップに、6種類のギミックを配置している。
 
 ## ルール
@@ -318,7 +318,7 @@ Blender の +Y が glTF 変換で Godot の -Z に来るので、ヒンジは `z
 片方向の矢印だと逆から乗った人が「矢印と逆へ加速する」ことになり、
 見た目が仕様に嘘をつくためで、README も「片方向の矢印にはできない」と書いていた。
 
-これをユーザー判断（本家マリオカート ワールドの見た目を優先する）で**意図的に外した**。
+これをユーザー判断（レースゲームでおなじみのダッシュ板の見た目を優先する）で**意図的に外した**。
 **挙動は変えていない。** 蹴り出す向きは今も踏んだ人の進行方向（`_travel_dir()`）で、
 山型は向きの指示ではなく「加速する板」の記号として扱う。
 逆から乗っても加速はするが、山型が指す向きへ蹴られるわけではない。
@@ -1586,8 +1586,8 @@ scenes/cpu_hunter.tscn(.gd)   CPU 鬼（巡回 / 捜索 / 追跡の3状態 + 回
 scenes/cpu_runner.tscn(.gd)   CPU 逃走者（放浪 / 回避 / 危機の3状態 + 逃走先の採点 + アイテム）
 scenes/buff_set.gd            時限バフ（プレイヤーと CPU で共用）
 scenes/humanoid.tscn(.gd)     豆型キャラの着せ替え（SKINS・コスチューム・帽子）とアニメ切り替え（Idle/Run/Jump/Dive/Slip）
-assets/character/fallguy.glb  Blender 製の恐竜きぐるみ（16ボーン・9アニメ）
-assets/character/ninja.glb    Blender 製の忍び装束。ボーンとアニメは fallguy と完全に同一で、
+assets/character/dino.glb     Blender 製の恐竜きぐるみ（16ボーン・9アニメ）
+assets/character/ninja.glb    Blender 製の忍び装束。ボーンとアニメは dino と完全に同一で、
                               Model を差し替えるだけで着せ替わる
 assets/props/manhole.glb      Blender 製のワープ地点の光の柱（Beacon/Shards）
 assets/props/item_box.glb     Blender 製のプレゼント箱（Base/Lid/Burst/Confetti の4パーツ。

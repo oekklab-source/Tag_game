@@ -270,7 +270,7 @@ ARM_BONES = {"Shoulder.L", "UpperArm.L", "Hand.L", "Shoulder.R", "UpperArm.R", "
 
 
 def build_armature():
-    rig = bpy.data.objects.new("Armature", bpy.data.armatures.new("FallGuyRig"))
+    rig = bpy.data.objects.new("Armature", bpy.data.armatures.new("CharacterRig"))
     bpy.context.collection.objects.link(rig)
     bpy.context.view_layer.objects.active = rig
     bpy.ops.object.mode_set(mode='EDIT')

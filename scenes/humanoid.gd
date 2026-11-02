@@ -1,7 +1,7 @@
 class_name Humanoid
 extends Node3D
 
-## Blender 製の Fall Guys 風ちびキャラ。プレイヤーと CPU で共用し、
+## Blender 製の豆型のちびキャラ。プレイヤーと CPU で共用し、
 ## 移動速度・接地・ダイブ状態からアニメを切り替える。
 ##
 ## 見た目は3つを独立に組み合わせる:
@@ -67,7 +67,7 @@ const HEAD_FROM_CHEST := 0.56
 ## 並び順がそのまま保存値なので、**既存の項目の順番は変えないこと**
 ## （入れ替えると保存済みの設定が別のキャラになる）。
 const SKINS := [
-	{"name": "きょうりゅう", "path": "res://assets/character/fallguy.glb"},
+	{"name": "きょうりゅう", "path": "res://assets/character/dino.glb"},
 	{"name": "しのび", "path": "res://assets/character/ninja.glb"},
 	{"name": "バスケ08", "path": "res://assets/character/outfits/basketball_prototype.glb"},
 	{"name": "オーバーオール", "path": "res://assets/character/outfits/overalls.glb"},
