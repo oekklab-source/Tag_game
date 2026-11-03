@@ -62,7 +62,7 @@ func add_cap(center: Vector3, direction: Vector3, length: float, material: Mater
 	rests.append(cap.transform)
 
 static func add_giant(root: Node3D) -> void:
-	var giant: Node3D = preload("res://assets/character/fallguy.glb").instantiate()
+	var giant: Node3D = preload("res://assets/character/dino.glb").instantiate()
 	giant.name = "UnpaintedGiant"
 	giant.position = Vector3(-580, -420, 580)
 	# 黄色いバネの谷（南西角）から約707m先。顔を角へ向ける。

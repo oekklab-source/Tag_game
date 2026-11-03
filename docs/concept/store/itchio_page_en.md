@@ -6,8 +6,8 @@
 > にげる人 = Runner、おに = Chaser、カモン = Taunt(掛け声は "Come on!")、きせかえ = Wardrobe、
 > ジェム = Gems、ソロ練習 = Solo Practice、手がかりなし = No clues、ダイブ = Dive。
 > ギミック名はゲーム内に英語表記が無いので、ここで付けた(Manhole Warp ほか)。
-> 日本語版との違い: 日本語版の「マリオ風」(KAN-48 / 5.5 で判断待ち)は、英語版では最初から
-> 他社 IP に触れない表現にした。日本語版の `NO INTEL` は、ゲーム内の今の表記
+> 日本語版との違い: 他社タイトル名は KAN-48 / 5.5 の判断で日本語版からも外した(KAN-49)。
+> 英語版は最初から他社 IP に触れない表現にしてある。日本語版の `NO INTEL` は、ゲーム内の今の表記
 > (「手がかりなし」/ "No clues")に合わせた。
 
 ---
@@ -100,6 +100,19 @@ For details, see (currently in Japanese):
 - This game uses Epic Online Services (EOS) provided by Epic Games, Inc. for matchmaking, rankings,
   friends and other online features. Epic Games, Inc. expressly disclaims all representations, warranties,
   conditions and liabilities, express or implied, in connection with Epic Online Services.
+
+## 10. Contact & Bug Reports
+
+> 日本語版と同じ窓口・同じ手順(KAN-71)。
+
+For bug reports and questions, please email yuya.hamaguchi@solpinto.jp.
+It helps us find the cause if you include:
+
+- **The game version**: shown like "Ver 1.0.0 (Protocol v14)" at the bottom right of the title screen
+  and in the "Contact & Bug Reports" section of the Settings screen
+- **The log file**: `godot.log` in the folder that "Open Log Folder" on the Settings screen opens
+  (on Windows: `%APPDATA%\TagGame\logs\godot.log`)
+- What you were doing when it happened (hosting or joining, etc.)
 
 ---
 
