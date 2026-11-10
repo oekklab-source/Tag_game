@@ -56,3 +56,14 @@ No text, no letters, no numbers, no logo, no weapons, no violence, no vehicles, 
 | 作ったファイル | `cover_v2a_close_call.png`・`cover_v2b_reverse.png`・`cover_v2c_playground.png`・`cover_v2d_team_up.png`（どれもタイトル入り）、比較用の `cover_v2_sheet.png` |
 | 文字入れ | 4案ともあり。ロゴの画像を重ねたのではなく、ロゴと同じ作り方（`build_ui_art.py` の立体文字とふち取り）で案ごとに描いた |
 | 生成した人 | Claude Code（mpahap76 の依頼） |
+
+## 2026-11-10 追記: 作風を変えた5案（KAN-89）
+
+| 項目 | 値 |
+| --- | --- |
+| 生成日 | 2026-11-10 |
+| ツール名・モデル | Claude Code（Claude Opus 5.5）。画像生成ツールは使っていない。`tools/blender/build_cover_concepts.py`（案 e〜i）でシーンを組み、Blender 5.2 の EEVEE で書き出した |
+| 使ったプロンプト | なし。構図は itch.io の作品のカバーから読み取った原則（[CONCEPTS.md](CONCEPTS.md) の「2026-11-10 追記」）で決めた |
+| 作ったファイル | `cover_v2e_pixel.png`・`cover_v2f_arcade.png`・`cover_v2g_minimal.png`・`cover_v2h_poster.png`・`cover_v2i_speed.png`、比較用の `cover_v2_sheet_2.png` |
+| 文字入れ | 5案ともあり。作風に合わせた OFL フォント（`tools/blender/fonts/`）で描いた |
+| 生成した人 | Claude Code（mpahap76 の依頼） |

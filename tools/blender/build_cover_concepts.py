@@ -10,6 +10,14 @@
     c  遊び場ジオラマ  空に浮かぶ島のマップを見下ろし、滑り台の緑と探し回る赤
     d  4対4パーティー  Reverse Tag モードの青と橙の2チームが、帽子をかぶって並ぶ集合写真
 
+作風を変えた追加の案（KAN-89）。文字は作風に合わせて tools/blender/fonts/ の OFL フォントで描く:
+
+    e  ドット絵          横から見たチェイスを 126x100 で描いて減色し、ドットのまま拡大
+    f  80年代アーケード  夕焼けの横縞の太陽とネオンの格子の床、クロームとネオンの文字
+    g  今風ミニマル      広い余白に走る緑1人と長い影、画面の右端から鬼の手と角だけ
+    h  近代の広告ポスター  扇形の後光と額縁、少ない色のベタ塗り、金のアール・デコ文字
+    i  疾走感            傾けた広角、放射状にぼかした背景と速度線、残像の付いた斜体の文字
+
 描き方は3層の重ね合わせ:
     背景（numpy で描く 2D のグラデーション・放射線・雲） → 3D の絵（透明背景で描く） → タイトル
 3D の絵とタイトルには、ゲームのロゴ・アイコン（build_ui_art.py）と同じ「濃い紫のふち＋白いふち」を
@@ -160,7 +168,7 @@ def over(base_rgb, layer, x0=0, y0=0):
     return base_rgb
 
 
-def outline(px, thickness, rim=None, drop=None, ink_hex=ui.PURPLE):
+def outline(px, thickness, rim=None, drop=None, ink_hex=ui.PURPLE, rim_hex=WHITE):
     """透明背景の絵に、ロゴと同じ「濃い紫のふち＋下へずらした厚み＋白いふち」を付ける。
     thickness は画素数。rim と drop を省くとロゴと同じ比率にする。"""
     rim = thickness * ui.RIM / ui.OUTLINE if rim is None else rim
@@ -173,7 +181,7 @@ def outline(px, thickness, rim=None, drop=None, ink_hex=ui.PURPLE):
         lowered[:-d, :] = ink[d:, :]
         ink = np.maximum(ink, lowered)
     ring = ui._dilate(ink, rim) if rim > 0 else ink
-    out_rgb = np.broadcast_to(rgb(WHITE), color.shape).copy()
+    out_rgb = np.broadcast_to(rgb(rim_hex), color.shape).copy()
     out_rgb, out_a = ui._over(out_rgb, ring, np.broadcast_to(rgb(ink_hex), color.shape), ink)
     out_rgb, out_a = ui._over(out_rgb, out_a, color, alpha)
     return np.dstack([out_rgb, out_a])
@@ -326,8 +334,9 @@ def prop(blend, names, loc=(0, 0, 0), yaw=0.0, scale=1.0):
     return root
 
 
-def render_rgba(keep=None):
-    """今のカメラで透明背景のまま描いて、RGBA の配列で返す。keep を渡すとそれ以外を隠す。"""
+def render_rgba(keep=None, size=None):
+    """今のカメラで透明背景のまま描いて、RGBA の配列で返す。keep を渡すとそれ以外を隠す。
+    size を渡すとその画素数で描く（既定はキャンバスの大きさ）。"""
     scene = bpy.context.scene
     hidden = []
     if keep is not None:
@@ -336,7 +345,7 @@ def render_rgba(keep=None):
             if obj.type in {"MESH", "CURVE", "FONT"} and obj not in keep and not obj.hide_render:
                 obj.hide_render = True
                 hidden.append(obj)
-    w, h = canvas_size()
+    w, h = size or canvas_size()
     scene.render.resolution_x = w
     scene.render.resolution_y = h
     scene.render.resolution_percentage = 100
@@ -648,33 +657,660 @@ def concept_d(path):
     finish(base, path)
 
 
+# =====================================================================
+# 作風を変えた案（E〜I、KAN-89）の共通部品
+# 文字は作風に合わせて、tools/blender/fonts/ の OFL フォントで描く（README 参照。製品には入らない）
+# =====================================================================
+
+FONT_DIR = os.path.join(HERE, "fonts")
+FONT_PIXEL = os.path.join(FONT_DIR, "PressStart2P-Regular.ttf")
+FONT_LIGHT = os.path.join(FONT_DIR, "Poppins-Light.ttf")
+FONT_BOLD_ITALIC = os.path.join(FONT_DIR, "Poppins-ExtraBoldItalic.ttf")
+FONT_BLACK_ITALIC = os.path.join(FONT_DIR, "Poppins-BlackItalic.ttf")
+FONT_DECO = os.path.join(FONT_DIR, "Limelight-Regular.ttf")
+
+
+def blend_over(dst, src):
+    """RGBA の src を RGBA の dst の上へ（同じ大きさ）。"""
+    c, a = ui._over(dst[..., :3], dst[..., 3], src[..., :3], src[..., 3])
+    return np.dstack([c, a])
+
+
+def solid(mask, hex_color, alpha=1.0):
+    return np.dstack([np.broadcast_to(rgb(hex_color), mask.shape + (3,)), mask * alpha])
+
+
+def stops_color(t, stops):
+    """t（0〜1 の配列）を、[(位置, 色), ...] のグラデーションの色へ。"""
+    pos = np.array([p for p, _ in stops], dtype=np.float32)
+    cols = np.array([rgb(c) for _, c in stops], dtype=np.float32)
+    out = np.empty(t.shape + (3,), dtype=np.float32)
+    for ch in range(3):
+        out[..., ch] = np.interp(t, pos, cols[:, ch])
+    return out
+
+
+def vstops(stops):
+    """キャンバス全体の縦のグラデーション。stops の位置は y（下が 0、上が 1）。"""
+    _, y = grid()
+    return stops_color(y, stops)
+
+
+def gradient_fill(mask, stops):
+    """文字の形の中を、文字の上端（0）から下端（1）への縦のグラデーションで塗る。"""
+    rows = np.nonzero(mask.max(axis=1) > 0.5)[0]
+    top, bottom = rows.max(), rows.min()  # 配列は下の行から並ぶので、上端の方が添字が大きい
+    idx = np.arange(mask.shape[0], dtype=np.float32)
+    t = np.clip((top - idx) / max(top - bottom, 1), 0.0, 1.0)
+    color = stops_color(np.broadcast_to(t[:, None], mask.shape), stops)
+    return np.dstack([color, mask])
+
+
+def blur(a, r):
+    """箱型のぼかしを3回（ほぼガウス）。r は画素数。"""
+    r = max(int(r), 1)
+    out = a.astype(np.float32)
+    for _ in range(3):
+        for axis in (0, 1):
+            pad = [(0, 0)] * out.ndim
+            pad[axis] = (r + 1, r)
+            c = np.cumsum(np.pad(out, pad, mode="edge"), axis=axis, dtype=np.float64)
+            hi = np.take(c, np.arange(2 * r + 1, c.shape[axis]), axis=axis)
+            lo = np.take(c, np.arange(0, c.shape[axis] - 2 * r - 1), axis=axis)
+            out = ((hi - lo) / (2 * r + 1)).astype(np.float32)
+    return out
+
+
+def glow(mask, radius, hex_color, strength=1.0):
+    """形の周りへにじむ光（ネオン）。"""
+    a = np.clip(blur(ui._dilate(mask, radius * 0.3), radius) * strength, 0.0, 1.0)
+    return solid(a, hex_color)
+
+
+def shift(layer, dx, dy):
+    """RGBA を画素単位でずらす（はみ出た分は捨てる）。dy は上が正。"""
+    out = np.zeros_like(layer)
+    h, w = layer.shape[:2]
+    xs, xd = (slice(0, w - dx), slice(dx, w)) if dx >= 0 else (slice(-dx, w), slice(0, w + dx))
+    ys, yd = (slice(0, h - dy), slice(dy, h)) if dy >= 0 else (slice(-dy, h), slice(0, h + dy))
+    out[yd, xd] = layer[ys, xs]
+    return out
+
+
+def smear(layer, dx, dy, n, colors):
+    """layer の後ろへ、(dx, dy) 方向へ伸びる残像を n 枚敷く。colors は手前から奥への色。"""
+    out = np.zeros_like(layer)
+    for i in range(n, 0, -1):
+        t = i / n
+        ghost = shift(layer, int(round(dx * t)), int(round(dy * t)))
+        c = stops_color(np.full(ghost.shape[:2], t, dtype=np.float32),
+                        [(k / (len(colors) - 1), col) for k, col in enumerate(colors)])
+        out = blend_over(out, np.dstack([c, ghost[..., 3] * (1.0 - t) * 0.85]))
+    return blend_over(out, layer)
+
+
+def quantize(color, palette):
+    """各画素を、palette の中で最も近い色に置き換える（ドット絵・ポスターの限られた色）。"""
+    pal = np.array([rgb(c) for c in palette], dtype=np.float32)
+    flat = color.reshape(-1, 3)
+    best = np.empty(flat.shape[0], dtype=np.int64)
+    step = 200000
+    for i in range(0, flat.shape[0], step):
+        d = ((flat[i:i + step, None, :] - pal[None]) ** 2).sum(-1)
+        best[i:i + step] = d.argmin(-1)
+    return pal[best].reshape(color.shape)
+
+
+def radial_blur(px, cx, cy, amount, steps=14):
+    """(cx, cy)（0〜1、y は上が 1）へ向かう放射状のぼかし。px は RGBA（乗算済みにして平均する）。"""
+    h, w = px.shape[:2]
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    ox, oy = cx * (w - 1), cy * (h - 1)
+    pre = np.dstack([px[..., :3] * px[..., 3:4], px[..., 3:4]])
+    acc = np.zeros_like(pre)
+    for i in range(steps):
+        k = 1.0 - amount * i / (steps - 1)
+        sx = np.clip(np.round(ox + (xs - ox) * k), 0, w - 1).astype(np.int64)
+        sy = np.clip(np.round(oy + (ys - oy) * k), 0, h - 1).astype(np.int64)
+        acc += pre[sy, sx]
+    acc /= steps
+    a = acc[..., 3:4]
+    return np.dstack([acc[..., :3] / np.maximum(a, 1e-6), a])
+
+
+def text_obj(text, font_path, size):
+    """平らな1行の文字。正面（-Y）を向けて立て、白く光らせる（形だけを取り出すため）。"""
+    curve = bpy.data.curves.new("Txt", "FONT")
+    curve.body = text
+    curve.font = bpy.data.fonts.load(font_path, check_existing=True)
+    curve.size = size
+    curve.align_x = "LEFT"
+    curve.align_y = "BOTTOM_BASELINE"
+    obj = bpy.data.objects.new("Txt_" + text, curve)
+    bpy.context.scene.collection.objects.link(obj)
+    obj.rotation_euler = Euler((math.radians(90), 0, 0), "XYZ")
+    m = bpy.data.materials.new("TxtMask")
+    m.use_nodes = True
+    nodes = m.node_tree.nodes
+    nodes.clear()
+    em = nodes.new("ShaderNodeEmission")
+    em.inputs["Color"].default_value = (1, 1, 1, 1)
+    out = nodes.new("ShaderNodeOutputMaterial")
+    m.node_tree.links.new(em.outputs[0], out.inputs[0])
+    curve.materials.append(m)
+    return obj
+
+
+def text_masks(rows, width, height, rot=0.0, align="CENTER", row_gap=0.18):
+    """文字の形（アルファ）を、width x height 画素の箱に収めて描く。
+
+    rows は行の並び（上から）で、各行は [(文字, フォント, 大きさ), ...]。同じ行の語は
+    空白を空けて横に並べる。返り値は語ごとのアルファ（同じ箱・同じカメラ）で、語ごとに
+    別の色で塗れる。rot は箱の中での傾き（度、正で反時計回り）。"""
+    reset_scene(ortho=True)
+    scene = bpy.context.scene
+    pivot = bpy.data.objects.new("TxtPivot", None)
+    scene.collection.objects.link(pivot)
+    words, z = [], 0.0
+    for row in rows:
+        objs = [text_obj(t, f, s) for t, f, s in row]
+        bpy.context.view_layer.update()
+        height_row = max(s for _, _, s in row)
+        space = 0.28 * height_row
+        widths = [o.dimensions.x for o in objs]
+        total = sum(widths) + space * (len(objs) - 1)
+        x = -total / 2.0 if align == "CENTER" else 0.0
+        z -= height_row * 0.75
+        for o, wdt in zip(objs, widths):
+            o.location = (x, 0.0, z)
+            o.parent = pivot
+            x += wdt + space
+        z -= height_row * row_gap
+        words.extend(objs)
+    pivot.rotation_euler = Euler((0.0, math.radians(-rot), 0.0), "XYZ")
+    bpy.context.view_layer.update()
+    ui._fit_camera(width, height, 0.0, 0.0)
+    ss = ui.SUPERSAMPLE
+    scene.render.resolution_x = width * ss
+    scene.render.resolution_y = height * ss
+    scene.render.resolution_percentage = 100
+    tmp = os.path.join(tempfile.gettempdir(), "cover_concept_text.png")
+    scene.render.filepath = tmp
+    masks = []
+    for target in words:
+        for o in words:
+            o.hide_render = o is not target
+        bpy.ops.render.render(write_still=True)
+        a = ui._load_pixels(tmp)[..., 3]
+        masks.append(a.reshape(height, ss, width, ss).mean(axis=(1, 3)))
+    return masks
+
+
+def pixel_text(text):
+    """Press Start 2P の文字を、フォントの1ドット＝1画素のビットマップ（0/1）で返す。
+    8 倍で描いてから 8x8 ごとにまとめるので、ドットの格子がずれない。"""
+    reset_scene(ortho=True)
+    scene = bpy.context.scene
+    obj = text_obj(text, FONT_PIXEL, 8.0)  # このフォントは em が 8 ドットなので、1ドット＝1.0
+    bpy.context.view_layer.update()
+    corners = [obj.matrix_world @ Vector(c) for c in obj.bound_box]
+    x0, x1 = min(c.x for c in corners), max(c.x for c in corners)
+    z0, z1 = min(c.z for c in corners), max(c.z for c in corners)
+    wu, hu = (x1 - x0) + 4.0, (z1 - z0) + 4.0
+    cam = scene.camera
+    cam.data.ortho_scale = max(wu, hu)
+    cam.location = ((x0 + x1) / 2.0, -20.0, (z0 + z1) / 2.0)
+    cam.rotation_euler = Euler((math.radians(90), 0, 0), "XYZ")
+    cam.data.clip_start, cam.data.clip_end = 0.1, 100.0
+    k = 8
+    scene.render.resolution_x = int(round(wu * k))
+    scene.render.resolution_y = int(round(hu * k))
+    scene.render.resolution_percentage = 100
+    tmp = os.path.join(tempfile.gettempdir(), "cover_concept_pixel_text.png")
+    scene.render.filepath = tmp
+    bpy.ops.render.render(write_still=True)
+    a = ui._load_pixels(tmp)[..., 3]
+    ys, xs = np.nonzero(a > 0.5)
+    a = a[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    h, w = (a.shape[0] + k // 2) // k, (a.shape[1] + k // 2) // k
+    a = np.pad(a, ((0, h * k - a.shape[0] if h * k > a.shape[0] else 0),
+                   (0, w * k - a.shape[1] if w * k > a.shape[1] else 0)))[:h * k, :w * k]
+    return (a.reshape(h, k, w, k).mean(axis=(1, 3)) > 0.5).astype(np.float32)
+
+
+def screen_xy(point):
+    """3D の点が、今のカメラの画面のどこに映るか（0〜1、y は上が 1）。"""
+    from bpy_extras.object_utils import world_to_camera_view
+    scene = bpy.context.scene
+    # カメラを置いた直後は matrix_world がまだ古いので、先に更新する（しないと位置が大きくずれる）
+    # 投影は解像度の縦横比で変わるので、描くときと同じ大きさにしておく
+    w, h = canvas_size()
+    scene.render.resolution_x, scene.render.resolution_y = w, h
+    scene.render.resolution_percentage = 100
+    bpy.context.view_layer.update()
+    co = world_to_camera_view(scene, scene.camera, Vector(point))
+    return co.x, co.y
+
+
+def lowest_point(rig):
+    """キャラの一番低い点（ワールド座標）。走りのポーズは体が浮くので、足元の影の位置に使う。"""
+    dg = bpy.context.evaluated_depsgraph_get()
+    best = None
+    for obj in rig.children_recursive:
+        if obj.type != "MESH":
+            continue
+        ev = obj.evaluated_get(dg)
+        mesh = ev.to_mesh()
+        for v in mesh.vertices:
+            w = ev.matrix_world @ v.co
+            if best is None or w.z < best.z:
+                best = w.copy()
+        ev.to_mesh_clear()
+    return best
+
+
+def add_sun(name, energy, rot, color_hex=WHITE, shadow=False, angle=6.0):
+    light = bpy.data.lights.new(name, "SUN")
+    light.energy = energy
+    light.color = v1.srgb(color_hex)
+    light.use_shadow = shadow
+    light.angle = math.radians(angle)
+    obj = bpy.data.objects.new(name, light)
+    obj.rotation_euler = Euler([math.radians(a) for a in rot], "XYZ")
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
+def place_layer(base, layer, cx, cy):
+    """RGBA の layer の中心を、仕上がり座標 (cx, cy)（左上原点）へ置く（place の別名。読みやすさのため）。"""
+    return place(base, layer, cx, cy)
+
+
+def finish_exact(rgb_full, path):
+    """すでに 630x500 の絵をそのまま保存する（ドット絵用。縮めると点がぼやけるため）。"""
+    ui._save_pixels(path, np.dstack([rgb_full, np.ones(rgb_full.shape[:2], dtype=np.float32)]))
+    print("render :", path, rgb_full.shape[1], "x", rgb_full.shape[0])
+
+
+# =====================================================================
+# 案 E: ドット絵（Pixel）
+# =====================================================================
+
+PIX = 5                          # 1ドットを何画素にするか
+LW, LH = W // PIX, H // PIX      # ドットの画面は 126x100
+PIXEL_PALETTE = [
+    "#1e1b4b", "#ffffff", "#e2e8f0", "#94a3b8",
+    "#bfdbfe", "#93c5fd", "#60a5fa",
+    "#86efac", "#22c55e", "#15803d",
+    "#fca5a5", "#ef4444", "#991b1b",
+    "#fde68a", "#facc15", "#ca8a04", "#fb923c",
+    "#a3e635", "#4d7c0f", "#b45309", "#78350f",
+    "#a78bfa", "#6d28d9", "#f472b6",
+]
+
+
+def concept_e(path):
+    # ---- 3D（横スクロールの横からの眺め）を 4 倍で描き、ドットの大きさへまとめる ----
+    reset_scene()
+    v1.box((40, 2.4, 0.3), v1.mat(LIME, 0.6), loc=(0, 0, -0.15), bevel=0.0)
+    v1.box((40, 2.4, 2.5), v1.mat("#b45309", 0.8), loc=(0, 0, -1.55), bevel=0.0)
+    # 奥の段丘と塔は小さく、タイトルにかからない左右の端へ
+    v1.box((2.2, 2.0, 0.7), v1.mat(SKY_BLUE, 0.6), loc=(-2.9, 5.0, 0.35), bevel=0.05)
+    v1.box((2.2, 2.0, 1.0), v1.mat(PURPLE, 0.6), loc=(2.9, 6.0, 0.5), bevel=0.05)
+    tower_at(-3.2, 5.0, 0.7, 0.28, 0.5, RUNNER)
+    tower_at(3.1, 6.0, 1.0, 0.26, 0.45, HOT_PINK)
+    v1.present(2.75, -0.6, 0.42)
+    v1.present(-3.0, -0.4, 0.36)
+    # 真横だと顔が見えないので、少しこちらへ向ける
+    runner = char(RUNNER, "Run", 0, loc=(1.05, 0.0, 0.0), yaw=62, scale=1.0)
+    hunter = char(HUNTER, "Dive", 22, loc=(-1.15, 0.0, 0.42), yaw=66, tilt=(38, 0), scale=1.0)
+    v1.horns(hunter)
+    ortho_camera((0.0, -1.0, 0.16), (0.0, 0.0, 1.62), 6.8)
+    big = render_rgba(size=(LW * 4, LH * 4))
+    blocks = big.reshape(LH, 4, LW, 4, 4)
+    a = blocks[..., 3].mean(axis=(1, 3))
+    c = (blocks[..., :3] * blocks[..., 3:4]).sum(axis=(1, 3)) / np.maximum(blocks[..., 3].sum(axis=(1, 3)), 1e-6)[..., None]
+    sprite_a = (a > 0.5).astype(np.float32)
+    sprite = quantize(c, PIXEL_PALETTE)
+
+    # キャラだけの形（1ドットの濃いふちを付けるため）
+    chars_big = render_rgba(keep=objects_of(runner) + objects_of(hunter), size=(LW * 4, LH * 4))
+    chars_a = (chars_big[..., 3].reshape(LH, 4, LW, 4).mean(axis=(1, 3)) > 0.5).astype(np.float32)
+
+    # ---- 2D（ドットの空と雲） ----
+    ys, xs = np.mgrid[0:LH, 0:LW]
+    sky = np.empty((LH, LW, 3), dtype=np.float32)
+    checker = (xs + ys) % 2 == 0
+    bands = [(78, "#60a5fa", None), (70, "#60a5fa", "#93c5fd"), (56, "#93c5fd", None),
+             (48, "#93c5fd", "#bfdbfe"), (0, "#bfdbfe", None)]
+    for low, col, dither in reversed(bands):
+        sel = ys >= low
+        sky[sel] = rgb(col)
+        if dither:
+            sky[sel & checker] = rgb(dither)
+    for cx, cy, r in ((14, 68, 6), (21, 70, 8), (28, 67, 5), (98, 74, 6), (106, 76, 8), (113, 73, 5)):
+        d = ((xs - cx) / r) ** 2 + ((ys - cy) / (r * 0.6)) ** 2
+        sky[d <= 1.0] = rgb(WHITE)
+        sky[(d <= 1.0) & (ys < cy - r * 0.25)] = rgb("#e2e8f0")
+    img = np.where(sprite_a[..., None] > 0, sprite, sky)
+    # 土の面にレンガ風の点々（ドット絵の地面らしく）
+    dirt = np.all(np.abs(img - rgb("#b45309")) < 1e-3, axis=-1)
+    brick = ((ys % 4 == 0) | (((xs + (ys // 4) * 3) % 8) == 0))
+    img[dirt & brick] = rgb("#78350f")
+
+    # キャラに1ドットの濃いふち（上下左右）
+    ring = np.zeros_like(chars_a)
+    ring[1:, :] = np.maximum(ring[1:, :], chars_a[:-1, :])
+    ring[:-1, :] = np.maximum(ring[:-1, :], chars_a[1:, :])
+    ring[:, 1:] = np.maximum(ring[:, 1:], chars_a[:, :-1])
+    ring[:, :-1] = np.maximum(ring[:, :-1], chars_a[:, 1:])
+    ring = ring * (1.0 - chars_a)
+    img[ring > 0] = rgb("#1e1b4b")
+
+    # ---- タイトル（Press Start 2P、ドットのまま） ----
+    def stamp(bitmap, scale, top, face, shade, shade_rows, ring=True):
+        """ドット文字を、上から top ドットの位置へ中央ぞろえで押す。1ドットの濃いふちと、
+        右下へ1ドットずらした影を付け、文字の下の数行を濃い色にして厚みを出す。"""
+        bm = np.kron(bitmap, np.ones((scale, scale), dtype=np.float32))
+        h, w = bm.shape
+        x0 = (LW - w) // 2
+        y0 = LH - top - h  # 配列は下の行から並ぶので、下端の行の添字
+        m = np.zeros((LH, LW), dtype=np.float32)
+        m[y0:y0 + h, x0:x0 + w] = bm
+        edge = m.copy()
+        # 小さい文字は、ふちを回すと字のすき間（E の腕の間など）が埋まって読めなくなるので影だけにする
+        for dy, dx in (((-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)) if ring else ()):
+            edge = np.maximum(edge, np.roll(np.roll(m, dy, 0), dx, 1))
+        shadow = np.roll(np.roll(edge, -1, 0), 1, 1)  # 右下へ1ドット（下は添字が小さい方）
+        img[np.maximum(edge, shadow) > 0] = rgb("#1e1b4b")
+        face_rgb = np.broadcast_to(rgb(face), (LH, LW, 3)).copy()
+        face_rgb[y0:y0 + shade_rows] = rgb(shade)
+        img[m > 0] = face_rgb[m > 0]
+
+    stamp(pixel_text("REVERSE"), 2, 6, "#ef4444", "#991b1b", 2, ring=False)
+    stamp(pixel_text("TAG!"), 3, 26, "#facc15", "#fb923c", 6)
+
+    full = np.repeat(np.repeat(img, PIX, axis=0), PIX, axis=1)
+    finish_exact(full, path)
+
+
+# =====================================================================
+# 案 F: 80年代アーケード（Arcade Sunset）
+# =====================================================================
+
+def chrome_title(width, height, rot=-6.0):
+    """「REVERSE」をクロームの金属、「TAG!」をピンクのネオンで。"""
+    rev, tag = text_masks([[("REVERSE", FONT_BOLD_ITALIC, 1.0)], [("TAG!", FONT_BLACK_ITALIC, 1.35)]],
+                          width, height, rot=rot, row_gap=0.05)
+    s = STATE["scale"]
+    layer = np.zeros(rev.shape + (4,), dtype=np.float32)
+    layer = blend_over(layer, glow(np.maximum(rev, tag), 10 * s, "#ec4899", 0.9))
+    ink = ui._dilate(rev, 3.0 * s)
+    layer = blend_over(layer, solid(ui._dilate(ink, 1.5 * s), "#fdf2f8"))
+    layer = blend_over(layer, solid(ink, "#1e1b4b"))
+    layer = blend_over(layer, gradient_fill(rev, [(0.0, "#e0f2fe"), (0.44, "#38bdf8"), (0.5, "#ffffff"),
+                                                  (0.53, "#7c2d12"), (0.78, "#f59e0b"), (1.0, "#fef3c7")]))
+    tag_ink = ui._dilate(tag, 3.0 * s)
+    layer = blend_over(layer, solid(tag_ink, "#4a044e"))
+    layer = blend_over(layer, gradient_fill(tag, [(0.0, "#ffe4f6"), (0.3, "#ff4fd8"), (1.0, "#c026d3")]))
+    return layer
+
+
+def concept_f(path):
+    s = STATE["scale"]
+    # 先に 3D を組み、カメラの地平線の高さを測ってから背景を描く（2D の床と 3D のキャラの足元を揃えるため）
+    reset_scene()
+    add_sun("RimPink", 5.0, (-60, 0, -150), "#f472b6")
+    add_sun("RimCyan", 5.0, (-60, 0, 150), "#22d3ee")
+    runner = char(RUNNER, "Run", 0, loc=(0.8, -0.4, 0.0), yaw=-20, scale=1.0)
+    hunter = char(HUNTER, "Dive", 22, loc=(-0.9, 1.3, 0.55), yaw=-8, tilt=(34, 0), scale=1.0)
+    v1.horns(hunter)
+    perspective_camera((0.0, -6.4, 0.9), (0.0, 1.0, 1.55), 32)
+    _, hz = screen_xy((0.0, 2000.0, 0.9))  # カメラと同じ高さの遠い点＝地平線
+    foot = lowest_point(runner)
+    shadows = [screen_xy((0.8, -0.4, foot.z)), screen_xy((-0.9, 1.3, 0.0))]
+    chars = render_rgba()
+    del runner
+
+    x, y = grid()
+    aspect = W / H
+    base = vstops([(0.0, "#3b0764"), (hz, "#fb923c"), (hz + 0.2, "#f472b6"), (hz + 0.42, "#a21caf"), (1.0, "#4c1d95")])
+    # 横縞の太陽（夕方。夜景にはしない）
+    sun_r = 0.2
+    d = np.sqrt(((x - 0.5) * aspect) ** 2 + (y - (hz + 0.02)) ** 2) / (sun_r * aspect)
+    sun = (1.0 - smooth(0.99, 1.01, d)) * (y > hz)
+    gap = (y - hz) / (sun_r * aspect)
+    stripes = (np.sin(gap * 46.0) > (0.3 - gap * 1.6)) | (gap > 0.55)
+    sun_col = stops_color(np.clip(gap, 0, 1), [(0.0, "#f472b6"), (0.5, "#fb923c"), (1.0, "#fde047")])
+    m = (sun * stripes)[..., None]
+    base = base * (1 - m) + sun_col * m
+    # 地平線の山並み（遠景の紫。太陽の前は低くする）
+    ridge = hz + 0.035 + 0.03 * np.abs(np.sin(x * 9.0)) + 0.02 * np.abs(np.sin(x * 23.0 + 1.0))
+    ridge = np.where(np.abs(x - 0.5) < 0.22, hz + 0.006, ridge)
+    base = paint(base, "#581c87", ((y >= hz) & (y < ridge)).astype(np.float32))
+    # 地平線へ伸びる格子の床（奥行き 1/v の等間隔の横線と、消失点へ集まる縦線）
+    floor = (y < hz).astype(np.float32)
+    v = np.maximum(hz - y, 1e-3)
+    depth = 1.0 / v
+    lx = (x - 0.5) * aspect / v
+
+    def lines(coord, period, width_px):
+        g = np.abs(np.gradient(coord, axis=1)) + np.abs(np.gradient(coord, axis=0)) + 1e-6
+        dist = np.abs(((coord / period + 0.5) % 1.0) - 0.5) * period / g
+        return 1.0 - smooth(width_px * 0.5, width_px, dist)
+
+    grid_m = np.maximum(lines(depth, 1.2, 1.8 * s), lines(lx, 0.45, 1.8 * s)) * floor
+    grid_m *= smooth(0.0, 0.035, hz - y)  # 地平線の際は線が詰まりすぎるので消す
+    base = paint(base, "#2e1065", floor * 0.9)
+    base = over(base, glow(grid_m, 5 * s, "#e879f9", 0.7))
+    base = paint(base, "#f5d0fe", grid_m)
+    # 地平線の光る線
+    base = paint(base, "#fdf4ff", 1.0 - smooth(0.0015, 0.004, np.abs(y - hz)))
+
+    for fx, fy in shadows:
+        base = paint(base, "#1e1b4b", blob(fx, fy, 0.06, 0.022) * 0.6)
+    base = over(base, outline(chars, 3.0 * s, rim=2.0 * s, drop=0.0, ink_hex="#1e1b4b", rim_hex="#f9a8d4"))
+
+    title = chrome_title(int(580 * s), int(200 * s))
+    base = place(base, title, 315, 100)
+    finish(base, path)
+
+
+# =====================================================================
+# 案 G: 今風ミニマル（Minimal）
+# =====================================================================
+
+def concept_g(path):
+    s = STATE["scale"]
+    reset_scene()
+    scene = bpy.context.scene
+    # 光は低い太陽1つ。長くやわらかい影で「走っている」を見せる
+    for obj in list(scene.objects):
+        if obj.type == "LIGHT":
+            bpy.data.objects.remove(obj)
+    add_sun("Low", 3.4, (72, 0, -62), shadow=True, angle=4.0)
+    add_sun("Soft", 0.5, (40, 0, 60))
+    v1.box((90, 90, 0.2), v1.mat("#ece6da", 0.95), loc=(0, 10, -0.1), bevel=0.0)
+    runner = char(RUNNER, "Run", 6, loc=(-0.55, 0.6, 0.0), yaw=48, scale=1.0)
+    # 右の画面の外から、鬼の手と角だけがのぞく
+    hunter = char(HUNTER, "Dive", 22, loc=(3.4, 0.2, 0.55), yaw=-72, tilt=(30, 0), scale=1.0)
+    v1.horns(hunter)
+    perspective_camera((0.4, -7.6, 4.4), (0.4, 0.5, 0.5), 50)
+    del runner, hunter
+    base = render_rgba()[..., :3]
+
+    rev, tag = text_masks([[("REVERSE", FONT_LIGHT, 1.0), ("TAG!", FONT_LIGHT, 1.0)]], int(380 * s), int(52 * s))
+    layer = np.zeros(rev.shape + (4,), dtype=np.float32)
+    layer = blend_over(layer, solid(rev, "#1f2937"))
+    layer = blend_over(layer, solid(tag, "#dc2626"))
+    # 左上にそろえて置く（雑誌の見出しのような余白の取り方）
+    lh, lw = layer.shape[:2]
+    x0, y0 = px(36, 36)
+    base = over(base, layer, x0 - int(0.05 * lw), y0 - lh + int(0.12 * lh))
+    # 見出しの下の細い線
+    xa, ya = px(46, 92)
+    base[ya - s:ya + s, xa:xa + int(64 * s)] = rgb("#dc2626")
+    finish(base, path)
+
+
+# =====================================================================
+# 案 H: 近代の広告ポスター（Art Deco Poster）
+# =====================================================================
+
+POSTER_PALETTE = ["#1c1917", "#efe3c8", "#fffaf0", "#dc2626", "#7f1d1d", "#16a34a", "#14532d",
+                  "#d4a537", "#8a6d1c", "#0f766e"]
+
+
+def concept_h(path):
+    s = STATE["scale"]
+    x, y = grid()
+    aspect = W / H
+    base = np.broadcast_to(rgb("#efe3c8"), x.shape + (3,)).copy()
+    # 扇形の後光（アール・デコ）。下の中央から、青緑と生成りを交互に
+    cx, cy = 0.5, 0.2
+    r = np.sqrt(((x - cx) * aspect) ** 2 + (y - cy) ** 2)
+    fan = (r < 0.72) & (y > cy)
+    base = paint(base, "#0f766e", (rays(cx, cy, 18) * fan).astype(np.float32))
+    base = paint(base, "#d4a537", ((np.abs(r - 0.74) < 0.012) & (y > cy)).astype(np.float32))
+    base = paint(base, "#1c1917", ((np.abs(r - 0.765) < 0.005) & (y > cy)).astype(np.float32))
+    # 地面の帯（深紅）と金の線
+    base = paint(base, "#7f1d1d", (y < cy).astype(np.float32))
+    base = paint(base, "#d4a537", (np.abs(y - cy) < 0.006).astype(np.float32))
+
+    # キャラ: 後ろに大きく身を乗り出す鬼、手前を走る緑。少ない色に減らしてベタ塗りに
+    reset_scene()
+    hunter = char(HUNTER, "Dive", 22, loc=(0.35, 2.2, 1.05), yaw=-14, tilt=(26, 0), scale=1.85)
+    v1.horns(hunter)
+    runner = char(RUNNER, "Run", 0, loc=(-0.55, -0.4, 0.0), yaw=-38, scale=1.0)
+    perspective_camera((0.0, -6.8, 0.55), (0.0, 1.0, 2.15), 30)
+    chars = render_rgba()
+    flat = quantize(chars[..., :3], POSTER_PALETTE)
+    chars = np.dstack([flat, (chars[..., 3] > 0.5).astype(np.float32)])
+    base = over(base, outline(chars, 2.5 * s, rim=0.0, drop=0.0, ink_hex="#1c1917"))
+    del runner
+
+    # 額縁（黒の太線と金の細線、四隅に段の飾り）
+    w2, h2 = canvas_size()
+    def rect_line(inset, thick, col):
+        i, t = int(inset * s), int(thick * s)
+        base[i:i + t, i:w2 - i] = rgb(col)
+        base[h2 - i - t:h2 - i, i:w2 - i] = rgb(col)
+        base[i:h2 - i, i:i + t] = rgb(col)
+        base[i:h2 - i, w2 - i - t:w2 - i] = rgb(col)
+    rect_line(0, 12, "#1c1917")
+    rect_line(18, 3, "#d4a537")
+    for cxp, cyp in ((0, 0), (1, 0), (0, 1), (1, 1)):
+        for k, size in enumerate((34, 24, 14)):
+            col = ("#1c1917", "#d4a537", "#1c1917")[k]
+            sz = int(size * s)
+            xa = int(12 * s) if cxp == 0 else w2 - int(12 * s) - sz
+            ya = int(12 * s) if cyp == 0 else h2 - int(12 * s) - sz
+            base[ya:ya + sz, xa:xa + sz] = rgb(col)
+
+    # タイトル（Limelight を金に、黒のふちと深紅の影）
+    # 昔の広告ポスターのように、題は下の帯に1行で
+    rev, tag = text_masks([[("REVERSE", FONT_DECO, 1.0), ("TAG!", FONT_DECO, 1.0)]],
+                          int(520 * s), int(92 * s))
+    letters = np.maximum(rev, tag)
+    layer = np.zeros(letters.shape + (4,), dtype=np.float32)
+    layer = blend_over(layer, shift(solid(ui._dilate(letters, 2.0 * s), "#7f1d1d"), int(5 * s), int(-5 * s)))
+    layer = blend_over(layer, solid(ui._dilate(letters, 2.0 * s), "#1c1917"))
+    layer = blend_over(layer, gradient_fill(letters, [(0.0, "#f3d27a"), (0.55, "#d4a537"), (1.0, "#8a6d1c")]))
+    base = place(base, layer, 315, 444)
+
+    # 紙のざらつき
+    rng = np.random.default_rng(11)
+    base = np.clip(base + rng.normal(0.0, 0.022, base.shape[:2])[..., None], 0.0, 1.0)
+    finish(base, path)
+
+
+# =====================================================================
+# 案 I: 疾走感（Full Speed）
+# =====================================================================
+
+def roll_camera(cam, degrees):
+    """カメラを視線の軸まわりに傾ける（ダッチアングル）。"""
+    from mathutils import Quaternion
+    q = cam.rotation_euler.to_quaternion() @ Quaternion((0.0, 0.0, 1.0), math.radians(degrees))
+    cam.rotation_euler = q.to_euler()
+
+
+def concept_i(path):
+    s = STATE["scale"]
+    base = vstops([(0.0, "#bae6fd"), (0.6, "#38bdf8"), (1.0, "#0ea5e9")])
+
+    reset_scene()
+    v1.box((140, 90, 1), v1.mat(LIME, 0.6), loc=(0, 30, -0.5), bevel=0.0)
+    backdrop_map(y0=16.0)
+    v1.present(-3.5, 6.0)
+    v1.present(4.2, 9.0)
+    pad = prop("boost_panel.blend", {"DashPad", "Plate", "Frame", "Spark0", "Spark1", "Spark2"},
+               loc=(0.35, 0.9, 0.0), yaw=-25, scale=0.34)
+    runner = char(RUNNER, "Run", 0, loc=(0.35, 0.7, 0.0), yaw=-22, tilt=(14, 0), scale=1.0)
+    hunter = char(HUNTER, "Dive", 22, loc=(1.55, 2.3, 0.6), yaw=-25, tilt=(34, 0), scale=1.0)
+    v1.horns(hunter)
+    hunter2 = char(HUNTER, "Run", 6, loc=(-1.25, 3.0, 0.0), yaw=-5, tilt=(10, 0), scale=1.0)
+    v1.horns(hunter2)
+    cam = perspective_camera((-0.2, -2.7, 0.4), (0.4, 1.5, 1.2), 20)
+    roll_camera(cam, -16.0)
+    near = objects_of(runner) + objects_of(hunter) + objects_of(hunter2) + [pad] + list(pad.children_recursive)
+    vx, vy = screen_xy((1.2, 40.0, 1.0))  # 奥へ向かう消失点
+
+    far = render_rgba(keep=[o for o in bpy.context.scene.objects if o not in set(near)])
+    base = paint(base, WHITE, streaks(vx, vy, 60, 0.0, seed=5) * 0.5)
+    base = over(base, radial_blur(far, vx, vy, 0.16))
+    sharp = render_rgba(keep=near)
+    chars = render_rgba(keep=objects_of(runner) + objects_of(hunter) + objects_of(hunter2))
+    base = over(base, sharp)
+    base = over(base, outline(chars, 4.0 * s, rim=2.0 * s, drop=1.5 * s))
+    base = paint(base, WHITE, streaks(vx, vy, 150, 0.5, seed=9) * 0.85)
+    base = paint(base, YELLOW, streaks(vx, vy, 30, 0.55, seed=21) * 0.8)
+
+    rev, tag = text_masks([[("REVERSE", FONT_BLACK_ITALIC, 1.0)], [("TAG!", FONT_BLACK_ITALIC, 1.45)]],
+                          int(360 * s), int(170 * s), rot=12.0, row_gap=0.0)
+    letters = np.maximum(rev, tag)
+    face = np.zeros(letters.shape + (4,), dtype=np.float32)
+    face = blend_over(face, solid(rev, "#ef4444"))
+    face = blend_over(face, solid(tag, YELLOW))
+    stick = outline(np.dstack([face[..., :3], letters]), 5.0 * s, rim=2.5 * s, drop=3.0 * s)
+    title = smear(stick, int(-70 * s), int(-14 * s), 7, ["#fb923c", "#f472b6", "#a78bfa"])
+    base = place(base, title, 205, 92)
+    finish(base, path)
+
+
 CONCEPTS = {
     "a": ("cover_v2a_close_call.png", concept_a),
     "b": ("cover_v2b_reverse.png", concept_b),
     "c": ("cover_v2c_playground.png", concept_c),
     "d": ("cover_v2d_team_up.png", concept_d),
+    "e": ("cover_v2e_pixel.png", concept_e),
+    "f": ("cover_v2f_arcade.png", concept_f),
+    "g": ("cover_v2g_minimal.png", concept_g),
+    "h": ("cover_v2h_poster.png", concept_h),
+    "i": ("cover_v2i_speed.png", concept_i),
 }
 
 
-def make_sheet(out_dir, names):
-    """比較用の一覧。上に原寸（630x500）を2x2、下に itch.io の最小（315x250）を4つ並べる。
+def make_sheet(out_dir, names, filename="cover_v2_sheet.png", cols=2):
+    """比較用の一覧。上に原寸（630x500）を cols 列で、下に itch.io の最小（315x250）を1列に並べる。
     小さく縮めてもタイトルとキャラが分かるかを見るため（ui_art_sheet.png と同じ考え方）。"""
     gap = 12
     imgs = [ui._load_pixels(os.path.join(out_dir, CONCEPTS[n][0]))[..., :3] for n in names]
     smalls = [im.reshape(H // 2, 2, W // 2, 2, 3).mean(axis=(1, 3)) for im in imgs]
-    sw = 2 * W + 3 * gap
-    sh = 2 * H + H // 2 + 4 * gap
+    rows = (len(imgs) + cols - 1) // cols
+    sw = max(cols * W + (cols + 1) * gap, len(imgs) * (W // 2) + 2 * gap)
+    sh = rows * H + H // 2 + (rows + 2) * gap
     sheet = np.broadcast_to(rgb("#f1f5f9"), (sh, sw, 3)).copy()
     # 配列は下の行から上へ並ぶので、上段の行ほど y が大きい
     for i, im in enumerate(imgs):
-        col, row = i % 2, i // 2
+        col, row = i % cols, i // cols
         x = gap + col * (W + gap)
         y = sh - gap - (row + 1) * H - row * gap
         sheet[y:y + H, x:x + W] = im
     for i, im in enumerate(smalls):
         x = gap + i * (W // 2)
         sheet[gap:gap + H // 2, x:x + W // 2] = im
-    path = os.path.join(out_dir, "cover_v2_sheet.png")
+    path = os.path.join(out_dir, filename)
     ui._save_pixels(path, np.dstack([sheet, np.ones(sheet.shape[:2], dtype=np.float32)]))
     print("sheet  :", path, sw, "x", sh)
 
@@ -697,7 +1333,8 @@ def main():
             filename, fn = CONCEPTS[name]
             fn(os.path.join(out_dir, filename))
     if "--sheet" in args or "--sheet-only" in args:
-        make_sheet(out_dir, list(CONCEPTS))
+        make_sheet(out_dir, ["a", "b", "c", "d"])
+        make_sheet(out_dir, ["e", "f", "g", "h", "i"], "cover_v2_sheet_2.png", cols=3)
 
 
 if __name__ == "__main__":
