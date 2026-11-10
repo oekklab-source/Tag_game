@@ -67,3 +67,10 @@ No text, no letters, no numbers, no logo, no weapons, no violence, no vehicles, 
 | 作ったファイル | `cover_v2e_pixel.png`・`cover_v2f_arcade.png`・`cover_v2g_minimal.png`・`cover_v2h_poster.png`・`cover_v2i_speed.png`、比較用の `cover_v2_sheet_2.png` |
 | 文字入れ | 5案ともあり。作風に合わせた OFL フォント（`tools/blender/fonts/`）で描いた |
 | 生成した人 | Claude Code（mpahap76 の依頼） |
+
+## 2026-11-10 追記: 採用（KAN-88）
+
+| 項目 | 値 |
+| --- | --- |
+| 採用したファイル | `cover_v2a_close_call.png`（案 A。タイトル入り）。v1 は不採用に変わった |
+| 決めた人 | mpahap76 |

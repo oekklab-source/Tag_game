@@ -39,3 +39,9 @@ itch.ioのストアページ・一覧・SNS共有カードに使われるカバ�
 ## 出力先とレビューゲート
 生成物は`docs/concept/store/cover_image/`配下に置く。`REVIEW.md`でPASSと判定されるまで、
 Claude Codeはこの画像をitch.ioへのアップロード手順に載せない。
+
+## 2026-11-10 追記: 採用したカバー（KAN-88）
+
+itch.io に上げるカバーは **`cover_v2a_close_call.png`（案 A「つかまる寸前」）** に決まった（mpahap76）。
+作り方は `tools/blender/build_cover_concepts.py`（`--only a`）、コンセプトは [CONCEPTS.md](CONCEPTS.md) の「案 A」。
+`cover_v1.png`・`cover_v1_title.png` と、ほかの別案（B〜I）は記録として残すが、ストアには使わない。
