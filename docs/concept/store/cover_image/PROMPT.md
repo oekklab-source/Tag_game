@@ -45,3 +45,14 @@ No text, no letters, no numbers, no logo, no weapons, no violence, no vehicles, 
 | 採用したファイル | `cover_v1.png`(文字なし)、`cover_v1_title.png`(タイトル入り) |
 | 文字入れ | `cover_v1_title.png` のみあり。ゲームのロゴ `ui/logo/reverse_tag_logo.png` を Python(Pillow)で重ねた |
 | 生成した人 | Claude Code(ハマちゃんの依頼) |
+
+## 2026-11-10 追記: 別案4つ（KAN-87）
+
+| 項目 | 値 |
+| --- | --- |
+| 生成日 | 2026-11-10 |
+| ツール名・モデル | Claude Code（Claude Opus 5.5）。画像生成ツールは使っていない。Blender のスクリプト `tools/blender/build_cover_concepts.py` でシーンを組み、Blender 5.2 の EEVEE で書き出した。キャラ・帽子・小物はゲームの `.blend` |
+| 使ったプロンプト | なし（上のプロンプトは使っていない）。構図は itch.io の人気作のカバーから読み取った原則（[CONCEPTS.md](CONCEPTS.md)）と SPEC の配色で決めた |
+| 作ったファイル | `cover_v2a_close_call.png`・`cover_v2b_reverse.png`・`cover_v2c_playground.png`・`cover_v2d_team_up.png`（どれもタイトル入り）、比較用の `cover_v2_sheet.png` |
+| 文字入れ | 4案ともあり。ロゴの画像を重ねたのではなく、ロゴと同じ作り方（`build_ui_art.py` の立体文字とふち取り）で案ごとに描いた |
+| 生成した人 | Claude Code（mpahap76 の依頼） |
