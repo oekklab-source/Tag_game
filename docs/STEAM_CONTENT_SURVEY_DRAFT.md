@@ -46,8 +46,12 @@
   (`tools/blender/references/*_turnaround_v1.png`、プロンプトは同名の`.prompt.txt`)を見て
   Blender で3D化した。設定画そのものはビルドに入らない。主人公の元絵(`tools/blender/reference.png`)と
   バスケ衣装の設定画(`basketball_turnaround.png`)も生成AIで作ったもの(2026-10-19 オーナー申告。ツール名の記録なし)。
-- **画像(コード)**: 仮アイコン `icon.svg`(と Web 版のホーム画面アイコン)は Claude Code が SVG をコードとして書いた。
-- **画像(予定)**: ショップの店員さん・壁の絵、カバー画像・アプリアイコンは生成AIで作る予定。
+- **画像**: アプリアイコン(`icon.png`・`icon.ico` の 64px 以上と Web 版のホーム画面アイコン)は、
+  ChatGPT の画像生成で作った元絵 `docs/concept/store/app_icon/reverse_tag_icon_1024.png` を縮めたもの
+  (2026-11-13 オーナー申告。プロンプトの記録なし)。ビルドに入る。`icon.ico` の 16/32/48px だけは
+  Blender スクリプトで描いたシンボル。
+- **画像(コード)**: 以前の仮アイコン `icon.svg` は Claude Code が SVG をコードとして書いた。
+- **画像(予定)**: ショップの店員さん・壁の絵、カバー画像は生成AIで作る予定。
   製品に入った時点で、ここと AI_GENERATED_ASSETS.md に追記する。
 - **コード・テキスト**: ゲームのコード、3D モデルを組み立てる Blender スクリプト、UI 文言と英訳、
   ストア文面・文書の大半は Claude Code(生成AI)が書いた。
