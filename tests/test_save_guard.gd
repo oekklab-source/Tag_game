@@ -23,6 +23,10 @@ func _ready() -> void:
 	_test_double_restore()
 	_test_missing_file()
 	_test_single_holder()
+	# _enter_tree() の backup() が立てている。テストが本番の rating-api へ書き込まないこと（KAN-41）
+	_assert(preload("res://autoload/rating_backend_client.gd").blocked_for_tests,
+		"テスト中は rating-api への書き込みを止めている")
+	_assert(EosManager.cloud_sync_blocked_for_tests, "テスト中はクラウドセーブ同期を止めている")
 	_cleanup()
 	print("test_save_guard 結果: PASS=%d, FAIL=%d" % [_pass, _fail])
 	if _fail == 0:

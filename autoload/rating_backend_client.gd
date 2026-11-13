@@ -6,6 +6,11 @@ class_name RatingBackendClient
 
 const RATING_API_BASE_URL := BackendConfig.RATING_API_BASE_URL
 
+## テスト中は本番の rating-api へ書き込まない（tests/save_guard.gd の backup() が立てる）。
+## USE_LIVE_RATING_BACKEND=true のままテストがランク戦を作ると、架空の PUID の試合結果や
+## 切断ペナルティを本番へ送り、公開ランキングを汚すため（KAN-41）
+static var blocked_for_tests := false
+
 
 static func _auth_headers() -> PackedStringArray:
 	return PackedStringArray(["Authorization: Bearer " + EosManager.get_id_token()])
@@ -22,7 +27,7 @@ static func _auth_headers() -> PackedStringArray:
 static func report_match(host: Node, match_id: String, runner_puid: String,
 		hunter_puids: Array, runner_escaped: bool, toucher_puid,
 		survival_time: float, cpu_hunter_count: int) -> Dictionary:
-	return await HttpJsonClient.post_json(host, RATING_API_BASE_URL + "report-match", {
+	return await _post(host, RATING_API_BASE_URL + "report-match", {
 		"match_id": match_id,
 		"runner_puid": runner_puid,
 		"hunter_puids": hunter_puids,
@@ -37,7 +42,7 @@ static func report_match(host: Node, match_id: String, runner_puid: String,
 ## (呼び出し側=ranking_manager.gdはProfileManager.initial_rating_claimedで再送を防ぐのが主ガード、
 ## これはあくまで安全網)
 static func claim_initial_rating(host: Node, rating: int) -> Dictionary:
-	return await HttpJsonClient.post_json(host, RATING_API_BASE_URL + "claim-initial-rating", {
+	return await _post(host, RATING_API_BASE_URL + "claim-initial-rating", {
 		"rating": rating,
 	}, _auth_headers())
 
@@ -45,7 +50,7 @@ static func claim_initial_rating(host: Node, rating: int) -> Dictionary:
 ## KAN-81: 公開ランキングに出す表示名を本人の行へ登録する。サーバーは名前を持たない行
 ## (claim前)には何もせず not_claimed を返す。他プレイヤーの名前は送れない(トークンの本人分のみ)
 static func set_display_name(host: Node, display_name: String) -> Dictionary:
-	return await HttpJsonClient.post_json(host, RATING_API_BASE_URL + "set-display-name", {
+	return await _post(host, RATING_API_BASE_URL + "set-display-name", {
 		"display_name": display_name,
 	}, _auth_headers())
 
@@ -53,7 +58,7 @@ static func set_display_name(host: Node, display_name: String) -> Dictionary:
 ## C-03 R-4: 起動時、サーバー権威のレートを取得する(ボディ無し)。行が無ければ
 ## claimed=falseで返る(エラーではない、呼び出し側の判定条件)
 static func get_rating(host: Node) -> Dictionary:
-	return await HttpJsonClient.post_json(host, RATING_API_BASE_URL + "rating", {}, _auth_headers())
+	return await _post(host, RATING_API_BASE_URL + "rating", {}, _auth_headers())
 
 
 ## C-03 R-5: 対戦中の切断(鬼/逃走者/ホスト自身)1件につき、対象1名の敗北分をサーバーへ
@@ -76,7 +81,7 @@ static func report_disconnect_penalty(host: Node, target_puid: String, was_runne
 		body["survival_time"] = survival_time
 	if opponent_avg_rating >= 0:
 		body["opponent_avg_rating"] = opponent_avg_rating
-	return await HttpJsonClient.post_json(
+	return await _post(
 		host, RATING_API_BASE_URL + "report-disconnect-penalty", body, _auth_headers())
 
 
@@ -84,3 +89,10 @@ static func report_disconnect_penalty(host: Node, target_puid: String, was_runne
 ## 公開エンドポイントのため、他メソッドと違い認証ヘッダを付けない
 static func get_leaderboard_top(host: Node, limit: int = 20) -> Dictionary:
 	return await HttpJsonClient.get_json(host, RATING_API_BASE_URL + ("leaderboard-top?limit=%d" % limit))
+
+
+## 書き込み系の呼び出しはここを通す（テスト中は送らずに失敗として返す）
+static func _post(host: Node, url: String, body: Dictionary, headers: PackedStringArray) -> Dictionary:
+	if blocked_for_tests:
+		return {"api_ok": false, "ok": false, "reason": "blocked_for_tests"}
+	return await HttpJsonClient.post_json(host, url, body, headers)
