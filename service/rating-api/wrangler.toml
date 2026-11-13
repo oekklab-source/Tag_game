@@ -12,11 +12,11 @@ account_id = "501e1a174c1d6546240ea6d65adfdfc7"
 # schema.sql参照。KVではなくD1にした理由: /leaderboard-top (ORDER BY rating DESC LIMIT ?)
 # のようなソート済みレンジクエリが必要なため(KVは完全一致lookupのみ)。
 # `npx wrangler d1 create tag-game-rating-db` で作成し、出力された database_id を
-# ここに設定する(R-2で実施予定、今はプレースホルダ)。
+# ここに設定する(2026-11-13 KAN-90 で oekklab に作成済み)。
 [[d1_databases]]
 binding = "DB"
 database_name = "tag-game-rating-db"
-database_id = "PLACEHOLDER_SET_AFTER_WRANGLER_D1_CREATE"
+database_id = "2282d383-e03a-4cf1-8a9e-aac5fd02be39"
 
 # EOS_CLIENT_IDはfriend-api/wrangler.tomlと同じ非秘匿値(エクスポート済みexeの
 # eos_credentials.cfgに平文同梱される値と同じ)。src/index.tsのverifyIdToken()が
