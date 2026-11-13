@@ -278,8 +278,16 @@ npx wrangler d1 execute tag-game-rating-db --remote --file=schema.sql
 npx wrangler deploy
 ```
 
-デプロイ後、実機の EOS Connect ID Token で5エンドポイント（`/report-match`
-`/report-disconnect-penalty` `/claim-initial-rating` `/rating` `/leaderboard-top`）を
+**既に本番DBがある場合(KAN-81 の表示名対応)**: `schema.sql` は新規構築用で、既存テーブルには効かない
+(`CREATE TABLE` が既存で失敗する)。`ratings.display_name` 列を足す次のコマンドを、**新しい Worker を
+デプロイする前に**1回だけ流すこと(列が無いまま新 Worker が動くと `/leaderboard-top` が失敗する)。
+
+```sh
+npx wrangler d1 execute tag-game-rating-db --remote --file=migrations/0001_add_display_name.sql
+```
+
+デプロイ後、実機の EOS Connect ID Token で6エンドポイント（`/report-match`
+`/report-disconnect-penalty` `/claim-initial-rating` `/rating` `/set-display-name` `/leaderboard-top`）を
 手動で叩き、401/200 双方の応答を確認する。`wrangler.toml` の `[vars]` に
 `ALLOW_DEBUG_AUTH` を**絶対に書かないこと**（`.dev.vars` 限定）。
 

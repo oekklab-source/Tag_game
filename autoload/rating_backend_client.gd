@@ -1,6 +1,6 @@
 class_name RatingBackendClient
 
-## service/rating-api/ の /report-match /claim-initial-rating /rating を呼ぶ薄いラッパー
+## service/rating-api/ の /report-match /claim-initial-rating /set-display-name /rating を呼ぶ薄いラッパー
 ## (C-03 R-3/R-4)。autoload/friend_backend_client.gd と同じ型
 ## (static func + HttpJsonClient.post_json())。
 
@@ -39,6 +39,14 @@ static func report_match(host: Node, match_id: String, runner_puid: String,
 static func claim_initial_rating(host: Node, rating: int) -> Dictionary:
 	return await HttpJsonClient.post_json(host, RATING_API_BASE_URL + "claim-initial-rating", {
 		"rating": rating,
+	}, _auth_headers())
+
+
+## KAN-81: 公開ランキングに出す表示名を本人の行へ登録する。サーバーは名前を持たない行
+## (claim前)には何もせず not_claimed を返す。他プレイヤーの名前は送れない(トークンの本人分のみ)
+static func set_display_name(host: Node, display_name: String) -> Dictionary:
+	return await HttpJsonClient.post_json(host, RATING_API_BASE_URL + "set-display-name", {
+		"display_name": display_name,
 	}, _auth_headers())
 
 

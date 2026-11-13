@@ -13,6 +13,10 @@ CREATE TABLE ratings (
   -- この経路は自己申告値をそのまま受け入れる唯一の窓口(移行時の一度きりの例外)なので、
   -- 後から実データを目視チェックできるよう区別しておく。
   seeded_from_client INTEGER NOT NULL DEFAULT 0,
+  -- 公開ランキング(/leaderboard-top)に出す表示名。PUIDは公開しない(KAN-81、プライバシーポリシー付録B-4)。
+  -- 本人が /set-display-name で自分の行にだけ書く。未登録は空文字。
+  -- 既存の本番DBには migrations/0001_add_display_name.sql で足す
+  display_name TEXT NOT NULL DEFAULT '',
   updated_at INTEGER NOT NULL
 );
 
