@@ -287,7 +287,7 @@ npx wrangler d1 execute tag-game-rating-db --remote --file=migrations/0001_add_d
 ```
 
 デプロイ後、実機の EOS Connect ID Token で6エンドポイント（`/report-match`
-`/report-disconnect-penalty` `/claim-initial-rating` `/rating` `/leaderboard-top`）を
+`/report-disconnect-penalty` `/claim-initial-rating` `/rating` `/set-display-name` `/leaderboard-top`）を
 手動で叩き、401/200 双方の応答を確認する。`wrangler.toml` の `[vars]` に
 `ALLOW_DEBUG_AUTH` を**絶対に書かないこと**（`.dev.vars` 限定）。
 
