@@ -81,8 +81,11 @@ func _test_hunter_disconnect_does_not_end_round() -> void:
 ## 検証しているのに対し、こちらは「puidがあってもフラグで止まる」経路を検証する)
 func _test_disconnect_penalty_gated_by_live_backend_flag() -> void:
 	print("\n--- [2.5] 切断ペナルティ報告はUSE_LIVE_RATING_BACKENDがfalseの間は実通信に到達しない ---")
-	_assert(not BackendConfig.USE_LIVE_RATING_BACKEND,
-		"前提: このテストはUSE_LIVE_RATING_BACKEND=falseを前提にしている")
+	# KAN-41 でフラグを true にした後は、ゲートで止まる経路そのものが無くなるので対象外
+	# (true の間にここを流すと、本番の rating-api へ実際に切断ペナルティを報告してしまう)
+	if BackendConfig.USE_LIVE_RATING_BACKEND:
+		print("  (USE_LIVE_RATING_BACKEND=true のため対象外)")
+		return
 
 	var spawns: Dictionary = {99: Vector3.ZERO}
 	GameManager._start_round(99, 1.0, 1, spawns, true)
