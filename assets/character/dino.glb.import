@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://q77dv5grpir8"
-path="res://.godot/imported/fallguy.glb-5aeaa52d43cf2b91c76d31a2197eb6f8.scn"
+path="res://.godot/imported/dino.glb-1e4ad26454076f8c992d8fcc915b0418.scn"
 
 [deps]
 
-source_file="res://assets/character/fallguy.glb"
-dest_files=["res://.godot/imported/fallguy.glb-5aeaa52d43cf2b91c76d31a2197eb6f8.scn"]
+source_file="res://assets/character/dino.glb"
+dest_files=["res://.godot/imported/dino.glb-1e4ad26454076f8c992d8fcc915b0418.scn"]
 
 [params]
 

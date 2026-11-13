@@ -2,6 +2,11 @@ name = "tag-game-friend-api"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
+# デプロイ先を oekklab の Cloudflare アカウントに固定する(KAN-91)。wrangler のログインから
+# 個人アカウントも見えるため、これが無いと本番と別の場所に Worker・KV・D1・Secret が
+# できる事故が起きうる。account_id は秘密情報ではない(API トークンや Secret はここに書かない)。
+account_id = "501e1a174c1d6546240ea6d65adfdfc7"
+
 # KVスキーマ:
 #   puid:<puid>          -> {display_name, code}                         (/sync)
 #   code:<code>          -> <puid>                                       (/sync, フレンドコードからの逆引き専用)
