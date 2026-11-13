@@ -30,8 +30,9 @@
  *                                       対象1名の敗北分をD1へ直接反映する(C-03 R-5、旧
  *                                       service/friend-api の /report-penalty・/consume-penalty の後継)
  *   POST /claim-initial-rating      -> 初回のみ、クライアント自己申告レートをD1の初期値として登録
- *   POST /rating                    -> 自分の現在のサーバー権威レートを取得
- *   GET  /leaderboard-top           -> 認証不要、レート上位N件を取得
+ *   POST /rating                    -> 自分の現在のサーバー権威レートと(公開ランキング上の)順位を取得
+ *   POST /set-display-name          -> 自分の表示名を公開ランキング用に登録(既存の自分の行のみ更新)
+ *   GET  /leaderboard-top           -> 認証不要、レート上位N件を取得(PUIDは返さず表示名を返す、KAN-81)
  */
 
 import { buildHunterRatings, calculateAllRatingChanges, roundHalfAwayFromZero, tierId, tierName } from "./rating_model.js";
@@ -85,6 +86,9 @@ const SEEDED_MIN_MATCHES_FOR_LEADERBOARD = 5;
 const MATCH_REPORT_LIMIT_PER_DAY = 150;
 const CLAIM_LIMIT_PER_DAY = 10;
 const RATING_QUERY_LIMIT_PER_DAY = 1000;
+const SET_DISPLAY_NAME_LIMIT_PER_DAY = 50;
+/** autoload/profile_manager.gd の MAX_NAME_LENGTH と一致させる(表示名の長さ上限) */
+const DISPLAY_NAME_MAX_LEN = 16;
 const LEADERBOARD_LIMIT_PER_DAY = 200; // IP単位
 
 // service/friend-api/src/index.ts の PENALTY_MIN_DELTA/PENALTY_MAX_DELTA/
@@ -129,6 +133,8 @@ export default {
 				return handleClaimInitialRating(request, env, puid);
 			case "/rating":
 				return handleRating(env, puid);
+			case "/set-display-name":
+				return handleSetDisplayName(request, env, puid);
 			default:
 				return json({ error: "not_found" }, 404);
 		}
@@ -217,6 +223,20 @@ export function normalizeClaimRating(raw: unknown): { ok: true; rating: number }
 	return { ok: true, rating };
 }
 
+/**
+ * 公開ランキングに載せる表示名の正規化(KAN-81)。制御文字を除いて前後の空白を落とし、
+ * クライアントの ProfileManager.MAX_NAME_LENGTH と同じ長さで切る。名前は本人の申告だが、
+ * 公開データなのでサーバー側でも必ず整形する(クライアントの整形は信用しない)。
+ * 空になる入力は null(=受け付けない)
+ */
+export function sanitizeDisplayName(raw: unknown): string | null {
+	if (typeof raw !== "string") return null;
+	// 切り詰めはコードポイント単位(サロゲートペアを割らない)。GDScriptのlength()も文字単位
+	const cleaned = raw.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, "").trim();
+	const name = Array.from(cleaned).slice(0, DISPLAY_NAME_MAX_LEN).join("").trim();
+	return name.length > 0 ? name : null;
+}
+
 function dayKey(): string {
 	return new Date().toISOString().slice(0, 10);
 }
@@ -235,6 +255,9 @@ export function claimRateLimitKey(puid: string, day: string = dayKey()): string 
 }
 export function ratingQueryRateLimitKey(puid: string, day: string = dayKey()): string {
 	return `rating_query:${puid}:${day}`;
+}
+export function setDisplayNameRateLimitKey(puid: string, day: string = dayKey()): string {
+	return `set_display_name:${puid}:${day}`;
 }
 export function leaderboardRateLimitKey(ip: string, day: string = dayKey()): string {
 	return `leaderboard:${ip}:${day}`;
@@ -631,7 +654,7 @@ async function handleClaimInitialRating(request: Request, env: Env, puid: string
 // /rating
 // ---------------------------------------------------------------------------
 
-async function handleRating(env: Env, puid: string): Promise<Response> {
+export async function handleRating(env: Env, puid: string): Promise<Response> {
 	if (!(await checkAndBumpRateLimit(env, ratingQueryRateLimitKey(puid), RATING_QUERY_LIMIT_PER_DAY))) {
 		return json({ ok: false, reason: "rate_limited" });
 	}
@@ -657,9 +680,27 @@ async function handleRating(env: Env, puid: string): Promise<Response> {
 		});
 	}
 
+	// 公開ランキング上の順位(/leaderboard-top と同じ行集合で数える)。自分の行が
+	// seeded 除外などで載らない間は null。ranking_dialog.gd が自分の行の強調に使う(KAN-81)
+	const visible = await env.DB.prepare(
+		`SELECT (seeded_from_client = 0 OR matches_played >= ?) AS visible FROM ratings WHERE puid = ?`,
+	)
+		.bind(SEEDED_MIN_MATCHES_FOR_LEADERBOARD, puid)
+		.first<{ visible: number }>();
+	let rank: number | null = null;
+	if (visible?.visible) {
+		const higher = await env.DB.prepare(
+			`SELECT COUNT(*) AS c FROM ratings WHERE ${LEADERBOARD_VISIBLE_SQL} AND rating > ?`,
+		)
+			.bind(SEEDED_MIN_MATCHES_FOR_LEADERBOARD, row.rating)
+			.first<{ c: number }>();
+		rank = 1 + (higher?.c ?? 0);
+	}
+
 	return json({
 		ok: true,
 		claimed: true,
+		rank,
 		rating: row.rating,
 		tier_id: tierId(row.rating),
 		tier_name: tierName(row.rating),
@@ -671,16 +712,50 @@ async function handleRating(env: Env, puid: string): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// /set-display-name
+// ---------------------------------------------------------------------------
+
+/**
+ * 公開ランキングに出す表示名を本人が登録する(KAN-81)。名前を設定できるのはトークンで
+ * 身元が保証された本人だけで、ホストが報告した他プレイヤーの名前は一切受け付けない。
+ * 既存の自分の行を更新するだけで、行は作らない(行は /claim-initial-rating の専権。
+ * ここで作れてしまうとclaimの「自己申告は下げる方向のみ」の制限を迂回できる)
+ */
+export async function handleSetDisplayName(request: Request, env: Env, puid: string): Promise<Response> {
+	const body = await safeJson(request);
+	const name = sanitizeDisplayName(body?.display_name);
+	if (name === null) {
+		return json({ ok: false, reason: "invalid_display_name" });
+	}
+	if (!(await checkAndBumpRateLimit(env, setDisplayNameRateLimitKey(puid), SET_DISPLAY_NAME_LIMIT_PER_DAY))) {
+		return json({ ok: false, reason: "rate_limited" });
+	}
+	const res = await env.DB.prepare("UPDATE ratings SET display_name = ? WHERE puid = ?")
+		.bind(name, puid)
+		.run();
+	if ((res.meta?.changes ?? 0) === 0) {
+		return json({ ok: false, reason: "not_claimed" });
+	}
+	return json({ ok: true, display_name: name });
+}
+
+// ---------------------------------------------------------------------------
 // /leaderboard-top (認証不要・GET)
 // ---------------------------------------------------------------------------
 
 interface LeaderboardRow {
-	puid: string;
+	display_name: string;
 	rating: number;
 	matches_played: number;
 }
 
-async function handleLeaderboardTop(request: Request, env: Env): Promise<Response> {
+// C-03 R-10(RV-03): クライアント自己申告で作られた行(seeded_from_client=1)は、
+// 実際に試合をこなすまで公開ランキングに載せない(claim上限1500と二重の対策。
+// seeded_from_client列はR-2で監査用に用意したまま誰も読んでいなかったが、ここで実用途がついた)。
+// /leaderboard-top と /rating の rank が同じ行集合を数えるよう、条件を1か所にまとめる
+const LEADERBOARD_VISIBLE_SQL = "(seeded_from_client = 0 OR matches_played >= ?)";
+
+export async function handleLeaderboardTop(request: Request, env: Env): Promise<Response> {
 	const url = new URL(request.url);
 	const limit = clampLeaderboardLimit(url.searchParams.get("limit"));
 
@@ -691,19 +766,18 @@ async function handleLeaderboardTop(request: Request, env: Env): Promise<Respons
 		return json({ ok: false, reason: "rate_limited" }, 429);
 	}
 
-	// C-03 R-10(RV-03): クライアント自己申告で作られた行(seeded_from_client=1)は、
-	// 実際に試合をこなすまで公開ランキングに載せない(claim上限1500と二重の対策。
-	// seeded_from_client列はR-2で監査用に用意したまま誰も読んでいなかったが、ここで実用途がついた)
+	// 公開ランキングはPUIDを返さず、本人が /set-display-name で登録した表示名を返す(KAN-81)。
+	// 未登録(旧クライアント・名前未送信)の行は空文字で返り、クライアントが汎用名で表示する
 	const { results } = await env.DB.prepare(
-		"SELECT puid, rating, matches_played FROM ratings " +
-			"WHERE seeded_from_client = 0 OR matches_played >= ? ORDER BY rating DESC LIMIT ?",
+		"SELECT display_name, rating, matches_played FROM ratings " +
+			`WHERE ${LEADERBOARD_VISIBLE_SQL} ORDER BY rating DESC LIMIT ?`,
 	)
 		.bind(SEEDED_MIN_MATCHES_FOR_LEADERBOARD, limit)
 		.all<LeaderboardRow>();
 
 	const entries = results.map((r, i) => ({
 		rank: i + 1,
-		puid: r.puid,
+		display_name: r.display_name,
 		rating: r.rating,
 		tier_id: tierId(r.rating),
 		tier_name: tierName(r.rating),
