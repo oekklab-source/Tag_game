@@ -1561,6 +1561,8 @@ autoload/rating_backend_client.gd rating-api（/report-match /report-disconnect-
                               /claim-initial-rating /rating /leaderboard-top）のHTTPクライアント
 autoload/profile_manager.gd   プレイヤー名・カスタムカラー・戦績・レートのローカル/EOS管理
 autoload/backend_config.gd    friend-api/commerce-api/rating-api の URL と USE_LIVE_* フラグを一元管理
+autoload/legal_docs.gd        法務3文書（利用規約・プライバシーポリシー・特商法の表記）の公開URLと同意画面の版。
+                              URL が空の間は同意画面・リンクを出さない（公開したらここを埋めるだけ）
 autoload/eos_credentials_check.gd eos_credentials.cfg の検証（実行時の起動可否と出荷可否）。
                               EosManager と書き出しガードで共有
 addons/tag_game_export_guard/ Windows 書き出し時に eos_credentials.cfg の不備を知らせる
@@ -1619,6 +1621,7 @@ locale/en.po                  英語の翻訳（msgid は日本語の原文。�
 autoload/settings_manager.gd  マウス感度・音量・タッチ操作・表示言語・文字サイズの設定（user://settings.json）
 scenes/settings_screen.tscn(.gd) 設定画面
 scenes/credits_screen.tscn(.gd) クレジット・ライセンス画面（タイトル画面の左下から開く）
+scenes/legal_consent.gd       初回起動（と LegalDocs.VERSION を上げたとき）にタイトルへ重ねる法務文書の同意画面
 tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
 tools/blender/character_common.py 着せ替えで共通の骨格・リグ・アニメ・書き出し。
                               服が増えてもここは触らない

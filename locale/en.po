@@ -610,6 +610,25 @@ msgstr "Not enough Gems"
 msgid "『%s』を%sで購入します。よろしいですか？"
 msgstr "Buy \"%s\" for %s?"
 
+# KAN-19/20/21: 法務3文書(LegalDocs)と初回起動の同意画面(scenes/legal_consent.gd)
+msgid "利用規約"
+msgstr "Terms of Service"
+
+msgid "プライバシーポリシー"
+msgstr "Privacy Policy"
+
+msgid "特定商取引法に基づく表記"
+msgstr "Legal Notice (Specified Commercial Transactions Act)"
+
+msgid "はじめに"
+msgstr "Before You Play"
+
+msgid "遊ぶ前に、次の文書を読んで同意してください。同意できない場合は、このままゲームを閉じてください。"
+msgstr "Before playing, please read and agree to the following documents. If you don't agree, please close the game."
+
+msgid "同意して始める"
+msgstr "Agree and Start"
+
 msgid "処理中...(キャンセル)"
 msgstr "Processing... (Cancel)"
 

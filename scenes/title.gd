@@ -58,6 +58,7 @@ const SETTINGS_SCENE := "res://scenes/settings_screen.tscn"
 ## タイトルのキャラはカメラを寄せて大きく見せる(costume_preview.gd の set_zoom。小さいほど寄る)
 const HERO_ZOOM := 0.8
 const CREDITS_SCENE := "res://scenes/credits_screen.tscn"
+const LEGAL_CONSENT_SCRIPT := preload("res://scenes/legal_consent.gd")
 
 ## C-05: ?s= 経由の自動参加直前に挟む名前確認ダイアログの、参加先アドレスの一時退避
 var _pending_join_server := ""
@@ -141,7 +142,14 @@ func _ready() -> void:
 	# Web版: 参加リンク（.../?s=xxxx.trycloudflare.com）から開かれた場合はそのまま参加する。
 	# 以前は旧ロビー画面(main.gd、削除済み)だけが対応しており、エントリーシーンの変更で
 	# リンク共有機能（tools/serve.ps1 が組み立てる参加リンク）が機能しなくなっていた
-	_try_auto_join_from_query()
+	# KAN-21: 法務文書の同意がまだなら同意画面を先に出し、参加リンクの自動参加は同意の後にする
+	if LegalDocs.needs_consent():
+		var consent := Control.new()
+		consent.set_script(LEGAL_CONSENT_SCRIPT)
+		consent.agreed.connect(_try_auto_join_from_query)
+		add_child(consent)
+	else:
+		_try_auto_join_from_query()
 
 
 ## Web でのみ有効。URL の ?s=<host> をゲームサーバのアドレスとして読む。
