@@ -34,6 +34,9 @@ Godot 本体の同梱物（§2）は手で書かず、`Engine.get_copyright_info
 - `service/*`（Cloudflare Workers）・`server/`（Stripe バックエンドの試作）の npm 依存は、こちらのサーバーで動くだけで
   利用者には配らないので、表示義務の対象外。KAN-30 で、配布物（pck）に入らないことも確かめた
 - `tools/`・`tests/` の開発用スクリプト（同上）
+- `tools/blender/fonts/` のフォント（Press Start 2P・Poppins・Limelight。どれも OFL 1.1）。ストアのカバー画像の文字を描くためだけに
+  使い、ゲームには組み込まない（`tools/blender/` は `.gdignore` で書き出し対象外）。画像には OFL の表示義務はかからない。
+  入手元と本文は `tools/blender/fonts/README.md`（KAN-89）
 
 ## 2. Godot 本体と同梱サードパーティ
 

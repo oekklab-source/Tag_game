@@ -1200,3 +1200,22 @@ msgstr "Lost on points"
 
 msgid "同点で引き分け"
 msgstr "Tied on points"
+
+# --- 設定画面の問い合わせ欄 (KAN-71) ---
+msgid "お問い合わせ・不具合の報告"
+msgstr "Contact & Bug Reports"
+
+msgid "お問い合わせ: %s"
+msgstr "Contact: %s"
+
+msgid "不具合を報告するときは、上の版数と、下のログのファイル（godot.log）を添えてください"
+msgstr "When reporting a bug, please include the version above and the log file (godot.log) below."
+
+msgid "不具合を報告するときは、上の版数と、使っている端末・ブラウザの名前を書いてください"
+msgstr "When reporting a bug, please include the version above and the name of your device and browser."
+
+msgid "ログの場所: %s"
+msgstr "Log file: %s"
+
+msgid "ログのフォルダを開く"
+msgstr "Open Log Folder"
