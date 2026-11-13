@@ -33,11 +33,17 @@ const _RatingBackendClientScript := preload("res://autoload/rating_backend_clien
 ## bonus をroundしてから base = total - bonus で求めている）
 var last_delta_breakdown := {"total": 0, "base": 0, "bonus": 0}
 
+## KAN-81: rating-apiへ最後に送れた表示名。profile_updated は名前以外の変更でも発火するため、
+## 変化が無いのに毎回送らないための記憶(eos_manager.gd の _last_synced_display_name と同じ目的)。
+## 送信に失敗したときは更新しない(次の profile_updated か次回起動で再送する)
+var _last_pushed_display_name: String = ""
+
 ## ⑦RankingManagerはEosManagerよりも先にautoload初期化されるため、ここで
 ## eos_initializedへ接続してもシグナルの発火を取りこぼす心配は無い(project.godotの
 ## [autoload]順で保証されている)
 func _ready() -> void:
 	EosManager.eos_initialized.connect(_on_eos_initialized)
+	ProfileManager.profile_updated.connect(_push_display_name)
 
 
 ## ⑦EOS初期化成功時に起動時reconciliationを実行する。C-03 R-5で旧・切断ペナルティ
@@ -49,6 +55,20 @@ func _on_eos_initialized(success: bool) -> void:
 	if not success:
 		return
 	_reconcile_server_rating()
+
+
+## KAN-81: 公開ランキングに出す自分の表示名をrating-apiへ送る。サーバーは本人の既存の行にしか
+## 書かない(行が無い=claim前は not_claimed で何もしない)ので、claim成功後と照合時に呼ぶ。
+## 他の rating-api 呼び出しと同じゲート規約(USE_LIVE_RATING_BACKEND かつ EOS接続済み)
+func _push_display_name() -> void:
+	if not (BackendConfig.USE_LIVE_RATING_BACKEND and EosManager.is_eos_available):
+		return
+	var display_name := ProfileManager.player_name
+	if display_name == _last_pushed_display_name:
+		return
+	var res := await _RatingBackendClientScript.set_display_name(self, display_name)
+	if res.get("api_ok", false) and res.get("ok", false):
+		_last_pushed_display_name = display_name
 
 
 ## C-03 R-4: 起動時、サーバー権威のレートとローカル値を同期する。USE_LIVE_RATING_BACKENDが
@@ -70,8 +90,10 @@ func _reconcile_server_rating() -> void:
 		var claim_res := await _RatingBackendClientScript.claim_initial_rating(self, ProfileManager.rating)
 		if claim_res.get("api_ok", false) and claim_res.get("ok", false):
 			ProfileManager.mark_initial_rating_claimed()
+			_push_display_name()
 		return  # 初回claimは「補正」ではないのでUI通知はしない(差分が無いため)
 
+	_push_display_name()
 	var old_r := ProfileManager.rating
 	ProfileManager.apply_server_rating_snapshot(
 		int(res.get("rating", old_r)), int(res.get("highest_rating", ProfileManager.highest_rating)))

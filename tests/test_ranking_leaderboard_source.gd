@@ -38,21 +38,24 @@ func _ready() -> void:
 func _test_convert_rating_api_entries() -> void:
 	print("\n--- convert_rating_api_entries() ---")
 	var raw := [
-		{"rank": 1, "puid": "p1", "rating": 2100, "tier_id": "master", "tier_name": "マスター", "matches_played": 30},
-		{"rank": 2, "puid": "p2", "rating": 1980, "tier_id": "diamond", "tier_name": "ダイヤ", "matches_played": 12},
+		{"rank": 1, "display_name": "Taro", "rating": 2100, "tier_id": "master", "tier_name": "マスター", "matches_played": 30},
+		{"rank": 2, "display_name": "", "rating": 1980, "tier_id": "diamond", "tier_name": "ダイヤ", "matches_played": 12},
+		{"rank": 3, "rating": 1900, "tier_id": "diamond", "tier_name": "ダイヤ", "matches_played": 9},
 	]
 	var result: Array = RankingDialogScript.convert_rating_api_entries(raw)
 
-	_assert(result.size() == 2, "件数がそのまま渡る(2件)")
-	if result.size() == 2:
+	_assert(result.size() == 3, "件数がそのまま渡る(3件)")
+	if result.size() == 3:
 		var e0: Dictionary = result[0]
 		_assert(e0.get("rank") == 1, "rankがそのまま渡る")
-		_assert(e0.get("puid") == "p1", "puidがそのまま渡る")
+		_assert(e0.get("puid") == "", "puidは常に空(公開APIはPUIDを返さない、KAN-81)")
 		_assert(e0.get("score") == 2100, "scoreはratingフィールドから変換される")
-		_assert(e0.get("name") == "Player", "nameはEOS経路と同じ汎用\"Player\"固定になる")
+		_assert(e0.get("name") == "Taro", "nameはdisplay_nameがそのまま渡る")
 		var e1: Dictionary = result[1]
 		_assert(e1.get("rank") == 2, "2件目のrankもそのまま渡る")
 		_assert(e1.get("score") == 1980, "2件目のscoreもratingフィールドから変換される")
+		_assert(e1.get("name") == "Player", "display_nameが空なら汎用\"Player\"")
+		_assert(result[2].get("name") == "Player", "display_nameが無い(旧サーバー)場合も汎用\"Player\"")
 
 
 func _test_convert_rating_api_entries_empty() -> void:
