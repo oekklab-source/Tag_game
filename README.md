@@ -1682,6 +1682,7 @@ tools/run_all_tests.ps1       tests/*.tscn をまとめて流して集計する�
 tests/host_conflict.tscn      ポートが埋まっているときホストを弾いて理由を出すかの検証
 tests/costume_model.tscn      ④コスチューム・⑤帽子のデータモデル（所持・移行・整合性）を検証
 tests/shop_fitting.tscn       ショップの試着・まとめ買い・着替え・元に戻す・プレゼント可否の検証
+tests/legal_docs.tscn         法務文書の導線（同意画面・クレジットとショップのリンク・購入確認の表示事項）の検証
 tests/shop_clerk.tscn         ショップの店員さんの動き（見る相手・歩く・反応・吹き出しの追従）の検証
 tests/test_eos_credentials_check.tscn eos_credentials.cfg の検証ロジック（起動可否と出荷可否の境界）
 tests/hat_placement.gd        ⑤帽子の装着位置（Chestボーン基準オフセット）を目視調整するスクリプト

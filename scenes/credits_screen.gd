@@ -30,6 +30,21 @@ func _ready() -> void:
 	# 利用者の入力ではないが、ライセンス本文が en.po の msgid と一致して訳されるのを防ぐ
 	body.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	body.text = build_text()
+	_add_legal_links()
+
+
+## KAN-20: 法務3文書へのリンク。タイトル画面からはこの画面を通って辿れる。
+## 公開前（LegalDocs の URL が空）は出さない
+func _add_legal_links() -> void:
+	if not LegalDocs.published():
+		return
+	var top_bar := back_button.get_parent()
+	for kind in LegalDocs.KINDS:
+		var link := LinkButton.new()
+		link.text = LegalDocs.title(kind)
+		link.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		link.pressed.connect(LegalDocs.open.bind(kind))
+		top_bar.add_child(link)
 
 
 func build_text() -> String:

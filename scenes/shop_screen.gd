@@ -101,6 +101,11 @@ var _pending_confirm_action: Callable
 
 var _speech_tween: Tween
 
+## KAN-27: 購入確認に添える特商法の表記へのリンク（ジェムパックの購入のときだけ出す）
+var _confirm_legal_link: LinkButton
+
+const WEB_GEM_PURCHASE_NOTE := "Web版ではまだジェムを購入できません（買ったジェムをサーバーに残す仕組みの準備中です）"
+
 
 func _ready() -> void:
 	back_btn.pressed.connect(_on_back_pressed)
@@ -124,6 +129,7 @@ func _ready() -> void:
 	# 反映されない」症状(currency_changed自体は正しく発火・保存されているのに
 	# 表示だけ古いまま、という実機報告)を防ぐ
 	get_window().focus_entered.connect(_refresh_gem_label)
+	_setup_legal_links()
 	gem_overlay.hide()
 	gift_overlay.hide()
 	confirm_overlay.hide()
@@ -475,7 +481,7 @@ func _say(text: String) -> void:
 # --- ジェム(通貨パック) ---------------------------------------------------
 
 func _open_gem_overlay() -> void:
-	pack_status_label.text = ""
+	pack_status_label.text = tr(WEB_GEM_PURCHASE_NOTE) if OS.has_feature("web") else ""
 	gem_overlay.show()
 	gem_close_btn.grab_focus()
 
@@ -502,7 +508,7 @@ func _setup_pack_row() -> void:
 		vbox.add_child(name_lbl)
 
 		var price_lbl := Label.new()
-		price_lbl.text = String(def.get("display_price", ""))
+		price_lbl.text = tr("%s（税込）") % String(def.get("display_price", ""))
 		price_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		price_lbl.add_theme_color_override("font_color", Color(0.7, 0.8, 0.9))
 		vbox.add_child(price_lbl)
@@ -510,6 +516,11 @@ func _setup_pack_row() -> void:
 		var buy_btn := Button.new()
 		buy_btn.text = tr("購入する")
 		buy_btn.pressed.connect(_on_buy_pack_pressed.bind(id, buy_btn))
+		# KAN-24 で「Web 版のジェムはサーバー側の残高に持つ」と決めた。それ（KAN-80）が入るまでは
+		# 買ったジェムがブラウザの保存領域にしか残らず、サイトデータを消すと失われるので売らない
+		if OS.has_feature("web"):
+			buy_btn.disabled = true
+			buy_btn.tooltip_text = tr(WEB_GEM_PURCHASE_NOTE)
 		vbox.add_child(buy_btn)
 
 		box.add_child(vbox)
@@ -520,6 +531,7 @@ func _setup_pack_row() -> void:
 ## on_confirmは実行されない
 func _open_confirm_overlay(message: String, on_confirm: Callable) -> void:
 	confirm_message_label.text = message
+	_confirm_legal_link.visible = false
 	_pending_confirm_action = on_confirm
 	confirm_overlay.show()
 	# 誤ってEnterで即購入しないよう、既定は「やめる」(quit_menu.gdと同じ思想)
@@ -539,10 +551,25 @@ func _on_confirm_buy_pressed() -> void:
 
 
 func _on_buy_pack_pressed(pack_id: StringName, btn: Button) -> void:
+	_open_confirm_overlay(pack_confirm_text(pack_id), _do_buy_pack_pressed.bind(pack_id, btn))
+	# KAN-27: お金を払う購入だけ、特商法の表記へのリンクを添える（ジェムで買うアイテムには出さない）
+	_confirm_legal_link.visible = LegalDocs.published()
+
+
+## KAN-27: ジェムパック（実際のお金）の購入確認の文面。特商法の最終確認画面で示す事項
+## （数量・価格・支払時期・引渡時期・返品の可否）と、KAN-15 の判断（価格は税込と明記する・
+## 未成年は保護者の同意）を載せる。返金の条件は docs/TOKUSHOHO_DRAFT.md の「返品・キャンセル」と合わせる
+static func pack_confirm_text(pack_id: StringName) -> String:
 	var def := CurrencyPackCatalog.get_def(pack_id)
-	var msg := tr("『%s』を%sで購入します。よろしいですか？") % [
-		tr(String(def.get("name", ""))), String(def.get("display_price", ""))]
-	_open_confirm_overlay(msg, _do_buy_pack_pressed.bind(pack_id, btn))
+	var lines := PackedStringArray()
+	lines.append(TranslationServer.translate("『%s』（💎%d）を%s（税込）で購入します。") % [
+		TranslationServer.translate(String(def.get("name", ""))), int(def.get("gems", 0)),
+		String(def.get("display_price", ""))])
+	lines.append(TranslationServer.translate("・お支払い: 次に開く Stripe の画面で、決済が終わった時点"))
+	lines.append(TranslationServer.translate("・ジェムの付与: 決済の確認後すぐ"))
+	lines.append(TranslationServer.translate("・デジタルコンテンツのため、購入後の返品・返金はできません（二重決済などの不具合を除く）"))
+	lines.append(TranslationServer.translate("・未成年の方は、保護者の同意を得てから購入してください"))
+	return "\n".join(lines)
 
 
 ## ⑥実課金プロバイダはブラウザでのStripe決済を挟むため、処理中(最大約31分)は
@@ -592,6 +619,31 @@ func _do_buy_pack_pressed(pack_id: StringName, btn: Button) -> void:
 
 func _on_cancel_pack_pressed(_btn: Button) -> void:
 	PurchaseManager.cancel_pending_purchase()
+
+
+## KAN-20 / KAN-27: ジェム購入の画面に法務文書へのリンク、購入確認に特商法の表記へのリンクを置く。
+## 公開前（LegalDocs の URL が空）は出さない
+func _setup_legal_links() -> void:
+	_confirm_legal_link = LinkButton.new()
+	_confirm_legal_link.text = LegalDocs.title(&"tokushoho")
+	_confirm_legal_link.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_confirm_legal_link.pressed.connect(LegalDocs.open.bind(&"tokushoho"))
+	_confirm_legal_link.visible = false
+	var confirm_box := confirm_buy_btn.get_parent().get_parent()
+	confirm_box.add_child(_confirm_legal_link)
+	confirm_box.move_child(_confirm_legal_link, confirm_buy_btn.get_parent().get_index())
+	if not LegalDocs.published():
+		return
+	var links := HBoxContainer.new()
+	links.alignment = BoxContainer.ALIGNMENT_CENTER
+	links.add_theme_constant_override("separation", 24)
+	for kind in LegalDocs.KINDS:
+		var link := LinkButton.new()
+		link.text = LegalDocs.title(kind)
+		link.pressed.connect(LegalDocs.open.bind(kind))
+		links.add_child(link)
+	pack_row.get_parent().add_child(links)
+	pack_row.get_parent().move_child(links, pack_status_label.get_index())
 
 
 # --- 共通 -------------------------------------------------------------------

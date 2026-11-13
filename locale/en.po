@@ -607,8 +607,27 @@ msgstr "You already own this"
 msgid "ジェムが足りません"
 msgstr "Not enough Gems"
 
-msgid "『%s』を%sで購入します。よろしいですか？"
-msgstr "Buy \"%s\" for %s?"
+# KAN-27: ジェムパック(実際のお金)の購入確認。特商法の最終確認画面で示す事項と KAN-15 の判断
+msgid "『%s』（💎%d）を%s（税込）で購入します。"
+msgstr "Buy \"%s\" (💎%d) for %s (tax included)."
+
+msgid "・お支払い: 次に開く Stripe の画面で、決済が終わった時点"
+msgstr "- Payment: charged when you finish checkout on the Stripe page that opens next"
+
+msgid "・ジェムの付与: 決済の確認後すぐ"
+msgstr "- Gems: added right after the payment is confirmed"
+
+msgid "・デジタルコンテンツのため、購入後の返品・返金はできません（二重決済などの不具合を除く）"
+msgstr "- As digital content, purchases can't be returned or refunded (except for errors such as double charges)"
+
+msgid "・未成年の方は、保護者の同意を得てから購入してください"
+msgstr "- If you are a minor, get a parent's or guardian's consent before buying"
+
+msgid "%s（税込）"
+msgstr "%s (tax incl.)"
+
+msgid "Web版ではまだジェムを購入できません（買ったジェムをサーバーに残す仕組みの準備中です）"
+msgstr "Gems can't be bought in the Web version yet (we're preparing a way to keep purchased Gems on the server)."
 
 # KAN-19/20/21: 法務3文書(LegalDocs)と初回起動の同意画面(scenes/legal_consent.gd)
 msgid "利用規約"
