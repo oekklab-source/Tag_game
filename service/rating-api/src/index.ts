@@ -766,6 +766,9 @@ export async function handleLeaderboardTop(request: Request, env: Env): Promise<
 		return json({ ok: false, reason: "rate_limited" }, 429);
 	}
 
+	// C-03 R-10(RV-03): クライアント自己申告で作られた行(seeded_from_client=1)は、
+	// 実際に試合をこなすまで公開ランキングに載せない(claim上限1500と二重の対策。
+	// seeded_from_client列はR-2で監査用に用意したまま誰も読んでいなかったが、ここで実用途がついた)。
 	// 公開ランキングはPUIDを返さず、本人が /set-display-name で登録した表示名を返す(KAN-81)。
 	// 未登録(旧クライアント・名前未送信)の行は空文字で返り、クライアントが汎用名で表示する
 	const { results } = await env.DB.prepare(
