@@ -47,7 +47,7 @@
   Blender で3D化した。設定画そのものはビルドに入らない。主人公の元絵(`tools/blender/reference.png`)と
   バスケ衣装の設定画(`basketball_turnaround.png`)も生成AIで作ったもの(2026-10-19 オーナー申告。ツール名の記録なし)。
 - **画像**: アプリアイコン(`icon.png`・`icon.ico` の 64px 以上と Web 版のホーム画面アイコン)は、
-  ChatGPT の画像生成で作った元絵 `docs/concept/store/app_icon/reverse_tag_icon_1024.png` を縮めたもの
+  Gemini で作った元絵 `docs/concept/store/app_icon/reverse_tag_icon_1024.png` を縮めたもの
   (2026-11-13 オーナー申告。プロンプトの記録なし)。ビルドに入る。`icon.ico` の 16/32/48px だけは
   Blender スクリプトで描いたシンボル。
 - **画像(コード)**: 以前の仮アイコン `icon.svg` は Claude Code が SVG をコードとして書いた。
