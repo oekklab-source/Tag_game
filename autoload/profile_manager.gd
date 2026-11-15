@@ -69,6 +69,10 @@ var last_modified_unix: int = 0
 ## 0から作り直されてしまうため、ローカルにも記録を残す)
 var initial_rating_claimed: bool = false
 
+## KAN-21: 初回起動の同意画面で同意した版（LegalDocs.VERSION）。0 は未同意。
+## クラウドとの照合（merge_server_inventory）には入れない。端末ごとに一度出せば足りるため
+var legal_agreed_version: int = 0
+
 
 func _ready() -> void:
 	if not _acquire_instance_lock():
@@ -157,6 +161,7 @@ func _apply_data(data: Dictionary) -> void:
 	hunter_wins = int(data.get("hunter_wins", hunter_wins))
 	highest_rating = int(data.get("highest_rating", highest_rating))
 	casual_matches_played = int(data.get("casual_matches_played", casual_matches_played))
+	legal_agreed_version = int(data.get("legal_agreed_version", legal_agreed_version))
 
 	# ④コスチューム: schema_version が無い（＝旧セーブ、body_colorしか無い）場合は
 	# 選んでいた色を無駄にせず costume_colors[0] に引き継ぎ、costume_id は default にする
@@ -267,7 +272,8 @@ func to_save_dict() -> Dictionary:
 		"highest_rating": highest_rating,
 		"casual_matches_played": casual_matches_played,
 		"last_modified_unix": last_modified_unix,
-		"initial_rating_claimed": initial_rating_claimed
+		"initial_rating_claimed": initial_rating_claimed,
+		"legal_agreed_version": legal_agreed_version
 	}
 
 

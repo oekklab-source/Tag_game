@@ -16,7 +16,7 @@
 - `schema.sql`: レート台帳(`ratings`)・試合ログ(`match_log`、二重計上防止)・
   JWKSキャッシュ(`jwks_cache`)・レート制限カウンタ(`rate_limit_counters`)のD1スキーマ。
 - `src/index.ts`: HTTPエンドポイント本体(`/report-match` `/report-disconnect-penalty`
-  `/claim-initial-rating` `/rating` `/leaderboard-top`)。認証(`verifyIdToken`)は
+  `/claim-initial-rating` `/rating` `/set-display-name` `/leaderboard-top`)。認証(`verifyIdToken`)は
   [service/friend-api/src/index.ts](../friend-api/src/index.ts)から移植し、
   JWKSキャッシュ・レート制限のみKVではなくD1へ書き換えている。`/report-disconnect-penalty`は
   C-03 R-5で追加した、旧`service/friend-api`の`/report-penalty`・`/consume-penalty`
@@ -152,8 +152,11 @@ npx wrangler d1 execute tag-game-rating-db --local --command \
    → 出力された `database_id` を `wrangler.toml` の `[[d1_databases]].database_id` に設定する
 2. `npx wrangler d1 execute tag-game-rating-db --remote --file=schema.sql`
    (上記のローカル検証とは別に、本番D1にもスキーマを適用する必要がある)
+   **既に本番DBがある場合は schema.sql ではなく migrations/ を使う**。KAN-81 の表示名対応では
+   `npx wrangler d1 execute tag-game-rating-db --remote --file=migrations/0001_add_display_name.sql`
+   を、新しい Worker を**デプロイする前**に1回だけ流す(列が無いまま動かすと `/leaderboard-top` が失敗する)
 3. `npx wrangler deploy`
-4. デプロイ後、実機のEOS Connect ID Tokenを使って5エンドポイントを一通り手動で叩き、
+4. デプロイ後、実機のEOS Connect ID Tokenを使って6エンドポイントを一通り手動で叩き、
    401/200双方の応答を確認する(手順は上記のローカル検証と同じ、`X-Debug-Puid`の代わりに
    `Authorization: Bearer <実トークン>`を使う)
 5. `wrangler.toml`の`[vars]`に`ALLOW_DEBUG_AUTH`を絶対に書かないこと(`.dev.vars`限定)
@@ -178,14 +181,10 @@ npx wrangler d1 execute tag-game-rating-db --local --command \
   手段を持たない構造的限界)。被害上限は`MATCH_REPORT_LIMIT_PER_DAY`(150件/日・報告者PUID単位)
   だけで、完全に塞ぐにはEOSロビーのメンバー実在検証(ロードマップC-03 R-0)が要る。
   `docs/SECURITY_NOTES.md`の項目7に受容事項として記載済み。
-- **`/leaderboard-top`はPUIDを認証不要で列挙可能な形で返す**。
-  `service/friend-api/src/index.ts`は「PUIDそのものは公開しない」ことを設計原則としているが、
-  このエンドポイントは公開ランキングという性質上、上位N件のPUIDを一括列挙できてしまい
-  この原則と衝突する。それでもPUIDを含めている(自分の順位ハイライトには同率レート下での
-  本人特定にPUIDが要る。将来のランキング画面切替セッションでの名前解決join keyとしても
-  必要)。ただしPUID単体を知っているだけではフレンド追加も接触もできない
-  (friend-apiのフレンド追加は8桁コード経由のみ)ため実害は小さいと判断した。
-  `docs/SECURITY_NOTES.md`の項目8に記載済み(R-8)。
+- **`/leaderboard-top`はPUIDを返さない**(KAN-81)。以前はPUIDを含めていたが、プライバシー
+  ポリシー付録B-4の判断で、本人が`/set-display-name`で登録した表示名(`ratings.display_name`、
+  未登録は空文字)に置き換えた。自分の行の特定は認証付き`/rating`の`rank`で行う。
+  `docs/SECURITY_NOTES.md`の項目8参照。
 - KV書き込み無料枠(1日1,000件、`service/friend-api`/`service/commerce-api`と
   同一Cloudflareアカウントで共有)への影響を避けるためD1を選んだが、D1にも
   無料枠の上限はあるため、本番投入後は[docs/DEPLOYMENT_CHECKLIST.md](../../docs/DEPLOYMENT_CHECKLIST.md)

@@ -55,6 +55,8 @@ extends RefCounted
 ## "not declared in the current scope" になるケースがあるため
 ## （`autoload/game/rating_report.gd` の `_RatingBackendClientScript` と同じ理由）。
 
+const _RatingBackendClientScript := preload("res://autoload/rating_backend_client.gd")
+
 ## 退避先の拡張子。実ファイルの隣に置く（user:// はテスト実行機のローカルのみ）
 const BACKUP_SUFFIX := ".testbak"
 
@@ -71,6 +73,8 @@ static var _baks := {}
 static func backup(block_cloud: bool = true) -> Dictionary:
 	if block_cloud:
 		EosManager.cloud_sync_blocked_for_tests = true
+		# 本番の rating-api への書き込みも止める（autoload/rating_backend_client.gd の blocked_for_tests）
+		_RatingBackendClientScript.blocked_for_tests = true
 	return _backup_paths(_guarded_paths())
 
 

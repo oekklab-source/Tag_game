@@ -52,6 +52,9 @@ func refresh() -> void:
 ## 自動で切り替えない、他の全rating-apiエンドポイントの「失敗時は諦める」既存規約と同じ)
 func _refresh_from_rating_api() -> void:
 	var res := await _RatingBackendClientScript.get_leaderboard_top(self)
+	# 自分の順位は認証付きの /rating から取る(公開の /leaderboard-top はPUIDを返さないため、
+	# 行の puid 比較では自分を特定できない、KAN-81)。失敗しても一覧の表示は続ける
+	var my_res := await _RatingBackendClientScript.get_rating(self)
 	spinner.set_active(false)
 	if not (res.get("api_ok", false) and res.get("ok", false)):
 		status_label.text = tr("ランキングの取得に失敗しました。時間をおいて再度更新してください。")
@@ -60,24 +63,27 @@ func _refresh_from_rating_api() -> void:
 		return
 	status_label.text = tr("最新ランキングを取得しました")
 	status_label.remove_theme_color_override("font_color")
-	_render_entries(convert_rating_api_entries(res.get("entries", [])))
+	var my_rank := 0
+	if my_res.get("api_ok", false) and my_res.get("ok", false) and my_res.get("rank") != null:
+		my_rank = int(my_res.get("rank"))
+	_render_entries(convert_rating_api_entries(res.get("entries", [])), my_rank)
 
 
-## rating-apiの{rank,puid,rating,tier_id,tier_name,matches_played}形式を、
+## rating-apiの{rank,display_name,rating,tier_id,tier_name,matches_played}形式を、
 ## _render_entries()が期待する{rank,name,score,puid}形式に変換する純粋関数。
-## rating-apiはPUIDから表示名を解決していない(DBに保存していない)ため、他プレイヤーの
-## nameは汎用"Player"に固定する――EOS経路も同じ制約で既に"Player"固定(eos_manager.gd:503-512
-## のコメント参照)のため、これはrating-api切替による表示劣化ではない。自分の行の名前上書きは
-## _render_entries()内の既存is_my_entryロジックがそのまま処理するためここでは何もしない。
-## tier_id/tier_nameは使わない(クライアント側はRankingManager.tier_name(score)で再計算する)
+## 公開の/leaderboard-topはPUIDを返さず(KAN-81)、本人が登録した表示名を返す。未登録(空)の
+## 行は汎用"Player"にする。puidは常に空で、自分の行の判定はPUIDではなく順位(/ratingのrank)で
+## 行う(_render_entries()のmy_rank)。tier_id/tier_nameは使わない
+## (クライアント側はRankingManager.tier_name(score)で再計算する)
 static func convert_rating_api_entries(raw: Array) -> Array:
 	var out: Array = []
 	for e in raw:
+		var entry_name := str(e.get("display_name", ""))
 		out.append({
 			"rank": e.get("rank", 0),
-			"name": "Player",
+			"name": entry_name if not entry_name.is_empty() else "Player",
 			"score": e.get("rating", 0),
-			"puid": str(e.get("puid", "")),
+			"puid": "",
 		})
 	return out
 
@@ -100,7 +106,9 @@ func _on_leaderboard_loaded(entries: Array) -> void:
 	_render_entries(entries)
 
 
-func _render_entries(entries: Array) -> void:
+## my_rank > 0 のときは、その順位の行を自分の行として扱う(rating-api経路。PUIDが無いため)。
+## 0(EOS経路)なら従来どおりpuid・名前で判定する
+func _render_entries(entries: Array, my_rank: int = 0) -> void:
 	for child in rank_list_container.get_children():
 		child.queue_free()
 
@@ -147,7 +155,7 @@ func _render_entries(entries: Array) -> void:
 		# 反映されない(autoload/eos_manager.gd:_on_profile_updated_for_display_nameのコメント参照)。
 		# そのためリーダーボードのnameは古いままの場合があり、自分の行の表示だけは常に
 		# 最新の ProfileManager.player_name で上書きする
-		var is_my_entry := not entry_puid.is_empty() and entry_puid == EosManager.product_user_id
+		var is_my_entry := (not entry_puid.is_empty() and entry_puid == EosManager.product_user_id) or (my_rank > 0 and rank == my_rank)
 		var display_name: String = ProfileManager.player_name if is_my_entry else p_name
 
 		var name_lbl := Label.new()
@@ -167,7 +175,7 @@ func _render_entries(entries: Array) -> void:
 
 		# 自身のデータか判定: puidが両方に入っていればそれで判定する(表示名の鮮度に
 		# 依存しないため確実)。オフラインモック(puidが無い)では名前一致にフォールバックする
-		var is_me := is_my_entry or (entry_puid.is_empty() and p_name == ProfileManager.player_name)
+		var is_me := is_my_entry or (my_rank == 0 and entry_puid.is_empty() and p_name == ProfileManager.player_name)
 		if is_me:
 			my_rank_val.text = "#%d" % rank
 			my_rank_found = true

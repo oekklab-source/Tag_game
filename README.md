@@ -1561,6 +1561,8 @@ autoload/rating_backend_client.gd rating-api（/report-match /report-disconnect-
                               /claim-initial-rating /rating /leaderboard-top）のHTTPクライアント
 autoload/profile_manager.gd   プレイヤー名・カスタムカラー・戦績・レートのローカル/EOS管理
 autoload/backend_config.gd    friend-api/commerce-api/rating-api の URL と USE_LIVE_* フラグを一元管理
+autoload/legal_docs.gd        法務3文書（利用規約・プライバシーポリシー・特商法の表記）の公開URLと同意画面の版。
+                              URL が空の間は同意画面・リンクを出さない（公開したらここを埋めるだけ）
 autoload/eos_credentials_check.gd eos_credentials.cfg の検証（実行時の起動可否と出荷可否）。
                               EosManager と書き出しガードで共有
 addons/tag_game_export_guard/ Windows 書き出し時に eos_credentials.cfg の不備を知らせる
@@ -1619,6 +1621,7 @@ locale/en.po                  英語の翻訳（msgid は日本語の原文。�
 autoload/settings_manager.gd  マウス感度・音量・タッチ操作・表示言語・文字サイズの設定（user://settings.json）
 scenes/settings_screen.tscn(.gd) 設定画面（一番下に問い合わせ先・版数・ログの場所。KAN-71）
 scenes/credits_screen.tscn(.gd) クレジット・ライセンス画面（タイトル画面の左下から開く）
+scenes/legal_consent.gd       初回起動（と LegalDocs.VERSION を上げたとき）にタイトルへ重ねる法務文書の同意画面
 tools/serve.ps1               Cloudflare Tunnel を張って参加リンクを作る（外部公開用）
 tools/blender/character_common.py 着せ替えで共通の骨格・リグ・アニメ・書き出し。
                               服が増えてもここは触らない
@@ -1679,6 +1682,8 @@ tools/run_all_tests.ps1       tests/*.tscn をまとめて流して集計する�
 tests/host_conflict.tscn      ポートが埋まっているときホストを弾いて理由を出すかの検証
 tests/costume_model.tscn      ④コスチューム・⑤帽子のデータモデル（所持・移行・整合性）を検証
 tests/shop_fitting.tscn       ショップの試着・まとめ買い・着替え・元に戻す・プレゼント可否の検証
+tests/legal_docs.tscn         法務文書の導線（同意画面・クレジットとショップのリンク・購入確認の表示事項）の検証
+tests/price_ids_match.tscn    ジェムパックの Price ID・ジェム数がクライアントと commerce-api で一致しているかの検証
 tests/shop_clerk.tscn         ショップの店員さんの動き（見る相手・歩く・反応・吹き出しの追従）の検証
 tests/test_eos_credentials_check.tscn eos_credentials.cfg の検証ロジック（起動可否と出荷可否の境界）
 tests/hat_placement.gd        ⑤帽子の装着位置（Chestボーン基準オフセット）を目視調整するスクリプト
