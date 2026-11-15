@@ -35,4 +35,6 @@ const USE_LIVE_FRIEND_BACKEND := true
 ## RankingManager._reconcile_server_rating())はheadless自動テストでは検証できない。
 ## ⑤ここを一時的にtrueへ書き換えてtests/test_phase5_persistence.tscnを再実行し、
 ## 確認後に必ずfalseへ戻すこと(コミット前にこの一時変更が残っていないか確認する)
-const USE_LIVE_RATING_BACKEND := false
+## KAN-41: KAN-90 で D1 の作成とデプロイが済んだので true にした。**true のビルドの配布と同時に
+## 旧ビルドを置き換えること**（ずれると切断ペナルティが効かない期間ができる。DEPLOYMENT_CHECKLIST 9-3 (a)）
+const USE_LIVE_RATING_BACKEND := true
