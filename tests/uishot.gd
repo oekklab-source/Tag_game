@@ -11,17 +11,22 @@ extends Node
 ## --only-touch を付けるとタッチ操作UIの3枚だけ撮る(スマホ向け配置の確認用。全画面を撮ると数分かかる)
 ## --only-title を付けるとタイトル画面とクレジット画面(先頭・スクロール後)の3枚だけ撮る
 ## (KAN-51/32/45。タイトル・版数・ライセンス文の見た目の確認用)
+## --only-settings を付けると設定画面を先頭と一番下までスクロールした状態の2枚だけ撮る
+## (KAN-71。一番下の「お問い合わせ・不具合の報告」欄は、全画面の撮影では画面外になって写らない)
 
 func _ready() -> void:
 	var out := "."
 	var only_touch := false
 	var only_title := false
+	var only_settings := false
 	var args := OS.get_cmdline_user_args()
 	for i in args.size():
 		if args[i] == "--only-touch":
 			only_touch = true
 		if args[i] == "--only-title":
 			only_title = true
+		if args[i] == "--only-settings":
+			only_settings = true
 		if args[i] == "--shots" and i + 1 < args.size():
 			out = args[i + 1]
 		if args[i] == "--locale" and i + 1 < args.size():
@@ -36,6 +41,10 @@ func _ready() -> void:
 		return
 	if only_title:
 		await _shot_title_and_credits(out)
+		get_tree().quit()
+		return
+	if only_settings:
+		await _shot_settings(out)
 		get_tree().quit()
 		return
 
@@ -236,6 +245,21 @@ func _shot_title_and_credits(out: String) -> void:
 	body.scroll_to_line(body.get_line_count() / 3)
 	await _shot(out, "credits_screen_scrolled")
 	credits.queue_free()
+	await get_tree().process_frame
+
+
+func _shot_settings(out: String) -> void:
+	var screen: Node = load("res://scenes/settings_screen.tscn").instantiate()
+	get_tree().root.add_child(screen)
+	for i in 10:
+		await get_tree().process_frame
+	await _shot(out, "settings_screen")
+	var scroll: ScrollContainer = screen.get_node("ContentMargin/Scroll")
+	scroll.scroll_vertical = int(scroll.get_v_scroll_bar().max_value)
+	for i in 4:
+		await get_tree().process_frame
+	await _shot(out, "settings_screen_scrolled")
+	screen.queue_free()
 	await get_tree().process_frame
 
 

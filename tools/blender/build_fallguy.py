@@ -1,10 +1,10 @@
-"""Fall Guys 風・恐竜きぐるみキャラを一から組み立てて glTF に書き出すビルドスクリプト。
+"""豆型の恐竜きぐるみキャラを一から組み立てて glTF に書き出すビルドスクリプト。
 
     blender -b -P tools/blender/build_fallguy.py -- [--render <出力ディレクトリ>]
 
 出力:
     tools/blender/fallguy.blend       編集元（.gdignore で Godot のインポート対象外）
-    assets/character/fallguy.glb      Godot が読むモデル
+    assets/character/dino.glb         Godot が読むモデル
 
 体色（きぐるみのスーツ部分）だけを Body オブジェクトに集約してあり、Godot 側は
 material_override 一発で役割色（Runner=緑 / Hunter=赤）に差し替えられる。
@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from character_common import *  # noqa: E402,F403  骨格・リグ・アニメ・書き出し
 
 BLEND_PATH = os.path.join(PROJECT, "tools", "blender", "fallguy.blend")
-GLB_PATH = os.path.join(PROJECT, "assets", "character", "fallguy.glb")
+GLB_PATH = os.path.join(PROJECT, "assets", "character", "dino.glb")
 
 # ---- パステル配色（参考画像より）----
 COLORS = {

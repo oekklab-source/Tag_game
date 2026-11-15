@@ -99,7 +99,7 @@ func test_current_schema_roundtrip() -> void:
 ## 既存セーブのskin番号を変えず、バスケ08が3番目に追加されていることを確認する。
 func test_skin_catalog_compatibility() -> void:
 	assert(Humanoid.SKINS.size() >= 3)
-	assert(Humanoid.SKINS[0]["path"] == "res://assets/character/fallguy.glb")
+	assert(Humanoid.SKINS[0]["path"] == "res://assets/character/dino.glb")
 	assert(Humanoid.SKINS[1]["path"] == "res://assets/character/ninja.glb")
 	assert(Humanoid.SKINS[2]["path"] == "res://assets/character/outfits/basketball_prototype.glb")
 	assert(Humanoid.SKINS[3]["path"] == "res://assets/character/outfits/overalls.glb")

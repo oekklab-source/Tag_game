@@ -270,4 +270,6 @@ def main():
     print("render :", out)
 
 
-main()
+# build_cover_concepts.py が部品として import するので、直接実行したときだけ描く
+if __name__ == "__main__":
+    main()

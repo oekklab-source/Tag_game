@@ -101,7 +101,7 @@ func _run() -> void:
 		await process_frame
 		await process_frame
 		var img := root.get_texture().get_image()
-		# ファイル名はスキンの glb 名（fallguy / ninja）。表示名は日本語なので使わない
+		# ファイル名はスキンの glb 名（dino / ninja）。表示名は日本語なので使わない
 		var skin_key: String = String(Humanoid.SKINS[_skin]["path"]).get_file().get_basename()
 		var path := "%s/%s_%s.png" % [_out_dir, skin_key, pose[0]]
 		print(path, " -> ", error_string(img.save_png(path)))

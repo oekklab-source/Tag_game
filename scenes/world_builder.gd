@@ -441,7 +441,7 @@ static func _place(root: Node3D, scene: PackedScene, node_name: String,
 	return n.position
 
 
-## マリオ風のPOPな見た目の素。彩度の高いアルベドに弱い自己発光を足すことで、
+## カラフルでPOPな見た目の素。彩度の高いアルベドに弱い自己発光を足すことで、
 ## 影側の面が濁らず色が残る（gl_compatibility でも確実に効く）。
 static func pop_material(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()

@@ -33,7 +33,7 @@ Steamストアページ・ライブラリ・おすすめ欄等に使われる画
 [cover_image/SPEC.md](../cover_image/SPEC.md)と同じ核となるテーマ——鬼(赤)と逃走者(緑)の
 **非対称な対比**(「見えている側/見えていない側」「追う側/隠れる側」、README.mdの「## ルール」
 参照)——をキーアート系のアセット(Header Capsule / Main Capsule / Vertical Capsule /
-Library Header / Library Hero)に用いる。マップの雰囲気はマリオ風のカラフル・ポップ
+Library Header / Library Hero)に用いる。マップの雰囲気はカラフル・ポップ
 (160×160mの段丘状マップ、ゾーンごとのテーマ色、滑り台・マンホール・ダッシュパネル等の
 ギミック。詳細はREADME.mdの「## マップ」「## ギミック」参照)。
 

@@ -22,6 +22,11 @@ signal closed
 @onready var text_size_option: OptionButton = $ContentMargin/Scroll/MainVBox/TextSizeSection/Row/TextSizeOption
 @onready var reset_btn: Button = $ContentMargin/Scroll/MainVBox/ButtonsRow/ResetButton
 @onready var save_btn: Button = $ContentMargin/Scroll/MainVBox/ButtonsRow/SaveButton
+@onready var support_version_label: Label = $ContentMargin/Scroll/MainVBox/SupportSection/VersionLabel
+@onready var support_contact_label: Label = $ContentMargin/Scroll/MainVBox/SupportSection/ContactLabel
+@onready var support_hint_label: Label = $ContentMargin/Scroll/MainVBox/SupportSection/HintLabel
+@onready var log_path_label: Label = $ContentMargin/Scroll/MainVBox/SupportSection/LogPathLabel
+@onready var open_logs_btn: Button = $ContentMargin/Scroll/MainVBox/SupportSection/OpenLogsButton
 
 ## _refresh_sliders() でスライダーの値をSettingsManagerに合わせて書き戻す間、
 ## value_changed経由でSettingsManager.set_*()を再度呼んでしまうのを防ぐガード
@@ -39,6 +44,14 @@ const LANGUAGE_LABELS := ["自動", "日本語", "English"]
 ## L-10: 文字サイズ(倍率は SettingsManager.TEXT_SIZE_SCALES)
 const TEXT_SIZE_VALUES := ["normal", "large", "xlarge"]
 const TEXT_SIZE_LABELS := ["標準", "大", "特大"]
+
+## KAN-71: ユーザーからの問い合わせ窓口（KAN-14 でオーナーが決めた公開用アドレス。
+## EULA 第12条・プライバシーポリシー第13条・ストアページと同じ値にそろえること）。
+## クラッシュやエラーを自動で集める仕組みは無いので、報告にはここで案内する
+## 版数とログのファイルが再現の唯一の手掛かりになる
+const SUPPORT_EMAIL := "yuya.hamaguchi@solpinto.jp"
+## Godot の既定のログの出力先。プロジェクト設定で変えていればそちらを使う
+const DEFAULT_LOG_PATH := "user://logs/godot.log"
 
 
 func _ready() -> void:
@@ -59,10 +72,19 @@ func _ready() -> void:
 	text_size_option.item_selected.connect(_on_text_size_selected)
 	reset_btn.pressed.connect(_on_reset_pressed)
 	save_btn.pressed.connect(_on_save_pressed)
+	open_logs_btn.pressed.connect(_on_open_logs_pressed)
 	_refresh_sliders()
 	_refresh_touch_mode()
 	_refresh_language()
 	_refresh_text_size()
+	_refresh_support()
+
+
+## 問い合わせ欄の文言はスクリプトで組み立てる(版数・パスを差し込むため)ので、
+## .tscn 由来の文言と違って自動では訳し直されない。言語を切り替えたらここで作り直す
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
+		_refresh_support()
 
 
 func _refresh_sliders() -> void:
@@ -86,6 +108,46 @@ func _refresh_language() -> void:
 
 func _refresh_text_size() -> void:
 	text_size_option.select(maxi(TEXT_SIZE_VALUES.find(SettingsManager.text_size), 0))
+
+
+## KAN-71: 問い合わせ先・版数・ログの場所。版数はタイトル画面(title.gd、KAN-32)と同じ文言・
+## 同じ取り方にして、報告に書かれた版数がどちらの画面から写したものでも同じ形になるようにする
+func _refresh_support() -> void:
+	support_version_label.text = tr("Ver %s（通信 v%d）") % [
+		str(ProjectSettings.get_setting("application/config/version", "")),
+		GameManager.PROTOCOL_VERSION,
+	]
+	support_contact_label.text = tr("お問い合わせ: %s") % SUPPORT_EMAIL
+	# Web 版はログをファイルに書かない(ブラウザの中で動くため)。
+	# 開けないボタンや存在しない場所は出さず、代わりに環境を書いてもらう
+	var has_log_file := not OS.has_feature("web")
+	log_path_label.visible = has_log_file
+	open_logs_btn.visible = has_log_file
+	if has_log_file:
+		support_hint_label.text = tr("不具合を報告するときは、上の版数と、下のログのファイル（godot.log）を添えてください")
+		log_path_label.text = tr("ログの場所: %s") % log_file_path_for_display()
+	else:
+		support_hint_label.text = tr("不具合を報告するときは、上の版数と、使っている端末・ブラウザの名前を書いてください")
+
+
+## ログのファイルの OS 上の絶対パス(テストからも使う)
+static func log_file_path() -> String:
+	var path := str(ProjectSettings.get_setting("debug/file_logging/log_path", DEFAULT_LOG_PATH))
+	return ProjectSettings.globalize_path(path)
+
+
+## 画面に出す形。Windows では区切りを「\」にして、エクスプローラーのアドレス欄に
+## そのまま貼れるようにする(globalize_path は Windows でも「/」で返す)
+static func log_file_path_for_display() -> String:
+	var path := log_file_path()
+	return path.replace("/", "\\") if OS.has_feature("windows") else path
+
+
+func _on_open_logs_pressed() -> void:
+	var dir := log_file_path().get_base_dir()
+	# 起動直後などでフォルダがまだ無いと、エクスプローラーが「見つからない」と出すだけになる
+	DirAccess.make_dir_recursive_absolute(dir)
+	OS.shell_open(dir)
 
 
 func _update_sensitivity_label(value: float) -> void:
@@ -127,8 +189,9 @@ func _on_touch_mode_selected(index: int) -> void:
 
 
 ## タッチ操作と同じく即保存する。画面の作り直しは要らない: この画面の文言は
-## .tscn 由来(auto_translate)と OptionButton の項目だけで、どちらもロケール変更の
-## 通知でその場で訳し直される(数値ラベルは言語に依存しない)
+## .tscn 由来(auto_translate)と OptionButton の項目がほとんどで、どちらもロケール変更の
+## 通知でその場で訳し直される(数値ラベルは言語に依存しない)。スクリプトで組み立てる
+## 問い合わせ欄だけは _notification() で作り直す
 func _on_language_selected(index: int) -> void:
 	SettingsManager.set_language(LANGUAGE_VALUES[index])
 	SettingsManager.save_settings()

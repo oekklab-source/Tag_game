@@ -5,7 +5,7 @@ extends RefCounted
 ## Autoload にしていないのは、UI 側（costume_screen）と対戦中の見た目適用
 ## （humanoid.gd）の両方から Autoload の初期化順序に依存せず参照できるようにするため。
 ##
-## 塗り分けの単位は fallguy.glb の実構造に合わせてある:
+## 塗り分けの単位は dino.glb の実構造に合わせてある:
 ##   Body    (1面: Body)
 ##   Costume (5面: Skin / SpikePurple / Claw / SpikeYellow / SpikeBlue)
 ##   Face    (2面: FaceWhite / Pupil)
