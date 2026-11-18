@@ -61,8 +61,38 @@ As the Runner, use the map's heights and gimmicks to stay out of sight and survi
 Windows 10 / 11 (64-bit). **A keyboard and mouse are required**; gamepads are not supported.
 Online play needs an internet connection.
 
-> TODO(KAN-58 / 6.9): 日本語版と同じく、CPU・GPU・メモリ・ストレージの実測値と、ホストする側の前提条件を
-> 実測後に書く。
+> TODO(KAN-58 / 6.9): 日本語版と同じく、CPU・GPU・メモリ・ストレージの実測値を KAN-68 / 8.3 の
+> クリーンな PC で測ってから書く。執筆メモ(SmartScreen の文面の前提・ポート 7844 の根拠)は日本語版の同じ節を参照。
+
+### Installation
+
+Extract the downloaded zip **as a whole folder** and run `ReverseTag.exe` inside it.
+If you move `ReverseTag.exe` somewhere on its own, online play and hosting will stop working
+(it uses the DLLs and `cloudflared.exe` in the same folder). If you play through the itch.io app, just launch it.
+
+### Warning on First Launch (Windows SmartScreen)
+
+The first time you run the game, Windows may show "Windows protected your PC".
+This appears for apps that haven't been downloaded many times yet.
+Click "**More info**", then "**Run anyway**" to start the game.
+
+### Hosting a Room
+
+- Nothing extra to install. The connection that lets friends join over the internet
+  (a free, temporary Cloudflare tunnel address) is set up automatically by the bundled `cloudflared.exe`.
+  No router port forwarding is needed.
+- Windows Firewall may ask for permission the first time you host. If you only play with friends over
+  the internet, you can click "Cancel" (allow it if players on your home network will join).
+- You may not be able to host (you can still join) in these cases. The lobby shows the reason and what to do.
+  - Your antivirus quarantined or deleted `cloudflared.exe` (restore it, or extract the whole folder again)
+  - Running PowerShell is blocked on the PC (e.g. a work or school PC)
+  - Your network blocks outgoing connections to Cloudflare (port 7844)
+
+### Network Requirements
+
+- Joining, rankings, friends and buying Gems: outgoing HTTPS / WebSocket (port 443)
+- Hosting: the above, plus outgoing connections to Cloudflare (port 7844)
+- Buying Gems opens Stripe's checkout page in your default browser.
 
 ## 7. Notes and Known Limitations
 

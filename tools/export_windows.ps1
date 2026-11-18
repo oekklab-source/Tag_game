@@ -42,6 +42,13 @@
     どれか1つでも元ファイルが無ければ、上と同じ理由で exe を削除して exit 1 を返す
     （同梱物の欠けた配布物が手元に残って butler push されるのを防ぐ）。
 
+    出力先フォルダは書き出しの前に空にし、書き出しの後に中身が $ExpectedFiles と**ちょうど**
+    一致することを検査する（KAN-97）。フォルダごと butler push するので、前回の残り物も配布される。
+    2026-11-18 に、正式タイトルへの差し替え（KAN-51）前の旧名ビルド TagGame.exe が
+    export/windows/ に残っていたのを見つけた。空にするのは配布物らしいファイル（$ClearablePatterns）だけで、
+    それ以外のファイルやサブフォルダがあれば何も消さずに失敗する（-OutputPath にうっかり
+    別のフォルダを渡したときに、関係ないファイルを消さないため）。
+
     終了コード: 0 = 成功 / 1 = ガードが不備を検出、exe が出力されなかった、
     書き出し中に SCRIPT ERROR が出た、配布物に禁止パスが入っていた、
     または同梱物が見つからない / 124 = タイムアウト。
@@ -85,6 +92,25 @@ $ForbiddenPackPaths = @(
     '^res://skills-lock\.json$'
 )
 
+# 書き出し後の出力先フォルダにあるべきファイル（exe の名前は -OutputPath から足す）。
+# Godot が書き出す DLL と、下の同梱段でコピーするもの。
+# .github/workflows/windows-release.yml の「Verify distribution contents」の一覧と揃えること。
+# GDExtension を足して DLL が増えたら、ここで失敗するので両方に書き足す
+$ExpectedFiles = @(
+    'EOSSDK-Win64-Shipping.dll',
+    'libeosg.windows.template_release.x86_64.dll',
+    'xaudio2_9redist.dll',
+    'cloudflared.exe',
+    'msvcp140.dll',
+    'vcruntime140.dll',
+    'vcruntime140_1.dll',
+    '.itch.toml',
+    'THIRD_PARTY_LICENSES.txt',
+    'GODOT_LICENSES.txt'
+)
+# 書き出し前に出力先から消してよいファイル（配布物らしいものだけ。.DESCRIPTION 参照）
+$ClearablePatterns = @('*.exe', '*.dll', '*.pck', '*.txt', '.itch.toml')
+
 $ErrorActionPreference = 'Stop'
 
 if (-not $GodotExe) { $GodotExe = $DefaultGodotExe }
@@ -94,10 +120,25 @@ if (-not (Test-Path $GodotExe)) {
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $outFull = if ([System.IO.Path]::IsPathRooted($OutputPath)) { $OutputPath } else { Join-Path $repoRoot $OutputPath }
-New-Item -ItemType Directory -Force (Split-Path -Parent $outFull) | Out-Null
+$outDir = Split-Path -Parent $outFull
+New-Item -ItemType Directory -Force $outDir | Out-Null
 
-# 前回の exe が残っていると「今回出力されたか」を判定できないので先に消す
-Remove-Item $outFull -ErrorAction SilentlyContinue
+# 前回の残り物を消す（KAN-97）。前回の exe が残っていると「今回出力されたか」も判定できない。
+# 配布物らしくないものが1つでもあれば、何も消さずに止める（.DESCRIPTION 参照）
+$existing = @(Get-ChildItem -LiteralPath $outDir -Force)
+$unexpected = @($existing | Where-Object {
+    $item = $_
+    $item.PSIsContainer -or -not ($ClearablePatterns | Where-Object { $item.Name -like $_ })
+})
+if ($unexpected.Count -gt 0) {
+    $unexpected | Select-Object -First 10 | ForEach-Object { Write-Host "  配布物ではないもの: $($_.Name)" -ForegroundColor DarkYellow }
+    Write-Host "=> 出力先 $outDir に配布物ではないファイルかフォルダがあるため、何も消さずに exit 1 を返す（空のフォルダを指定するか、中身を確かめて手で片づける）" -ForegroundColor Red
+    exit 1
+}
+if ($existing.Count -gt 0) {
+    Write-Host "前回の出力を消す: $(($existing | ForEach-Object Name) -join ', ')" -ForegroundColor DarkGray
+    $existing | Remove-Item -Force
+}
 
 $allArgs = @('--headless', '--path', "`"$repoRoot`"", '--export-release', '"Windows Desktop"', "`"$outFull`"")
 Write-Host "実行: $GodotExe $($allArgs -join ' ')" -ForegroundColor Cyan
@@ -167,7 +208,6 @@ try {
 
     # ---- 同梱段（.DESCRIPTION 参照）。コピー元は「コピー先の名前 -> 元ファイル」で並べる ----
     if (-not $CloudflaredExe) { $CloudflaredExe = (Get-Command cloudflared -ErrorAction SilentlyContinue).Source }
-    $outDir = Split-Path -Parent $outFull
     $sys32 = Join-Path $env:SystemRoot 'System32'
     $bundle = [ordered]@{
         'cloudflared.exe'         = $CloudflaredExe
@@ -193,6 +233,19 @@ try {
         if ($missing -contains 'cloudflared.exe') {
             Write-Host "   cloudflared は 'winget install --id Cloudflare.cloudflared' で入れるか、-CloudflaredExe でパスを指定すること" -ForegroundColor Red
         }
+        exit 1
+    }
+
+    # 配布するフォルダの中身が一覧とちょうど一致するか（KAN-97。.DESCRIPTION 参照）
+    $want = @($ExpectedFiles) + @(Split-Path -Leaf $outFull)
+    $have = @(Get-ChildItem -LiteralPath $outDir -Force | ForEach-Object Name)
+    $lack = @($want | Where-Object { $have -notcontains $_ })
+    $extra = @($have | Where-Object { $want -notcontains $_ })
+    if ($lack.Count -gt 0 -or $extra.Count -gt 0) {
+        if ($lack.Count -gt 0) { Write-Host "  足りない: $($lack -join ', ')" -ForegroundColor DarkYellow }
+        if ($extra.Count -gt 0) { Write-Host "  余計: $($extra -join ', ')" -ForegroundColor DarkYellow }
+        Remove-Item $outFull -ErrorAction SilentlyContinue
+        Write-Host "=> 出力先の中身が配布物の一覧（`$ExpectedFiles）と一致しないため、exe を削除して exit 1 を返す（DLL が増えたなら `$ExpectedFiles と windows-release.yml の Verify に書き足す）" -ForegroundColor Red
         exit 1
     }
 
