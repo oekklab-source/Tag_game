@@ -70,8 +70,11 @@ func _run_client(world: Node) -> void:
 	print("CLIENT: ホストのプレイヤーを検出（権威=%d 自分=%d）"
 		% [remote.get_multiplayer_authority(), multiplayer.get_unique_id()])
 
-	var anim: AnimationPlayer = remote.get_node("Humanoid").find_child(
-		"AnimationPlayer", true, false)
+	# AnimationPlayer は毎サンプル取り直す。ホストの見た目（GameManager.peer_profiles）が
+	# 届いたときにスキンが 0 以外だと、humanoid.gd の set_skin() がモデルごと AnimationPlayer を
+	# 入れ替えるので、最初に掴んだものは解放される（2026-11-18、開発機の実プロフィールの
+	# スキンが 4 だったため "previously freed" で落ちた。ゲーム側は humanoid._anim を差し替えているので問題ない）
+	var humanoid: Node = remote.get_node("Humanoid")
 	# 走り出すまで待ってから、一定時間サンプリングする
 	var t := 0.0
 	var saw_run := 0
@@ -85,6 +88,7 @@ func _run_client(world: Node) -> void:
 		t += get_physics_process_delta_time()
 		if t < 1.0:
 			continue  # 走り始めの助走ぶんは数えない
+		var anim: AnimationPlayer = humanoid.find_child("AnimationPlayer", true, false)
 		samples += 1
 		speed_sum += remote.sync_speed
 		scale_sum += anim.speed_scale
