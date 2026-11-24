@@ -35,5 +35,11 @@ id = "0271ea03be114f18bcca6289e62cac57"
 [vars]
 EOS_CLIENT_ID = "xyza7891Y8hf8lR6EoUUo3FqGlAPT6gp"
 
+# 受け付ける EOS Deployment(本番の Live Deployment)。ID トークンの pfdid と照合し、開発機
+# (DevDeployment)のトークンは 401 にする(KAN-102/103)。EOS_CLIENT_ID と同じく秘密ではない
+# (リリース版 exe の eos_credentials.cfg に平文で入る値)。ローカルの wrangler dev で開発機の
+# トークンを通したいときは .dev.vars で DevDeployment の値に上書きする
+EOS_DEPLOYMENT_ID = "b3cb41c342504c1ebac0d8879fe600ff"
+
 # secrets(client_secret等)は不要: JWT検証はEpicの公開JWKSのみで完結し、
 # 外部API呼び出し・Webhook署名検証も行わないため

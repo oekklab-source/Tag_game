@@ -11,8 +11,21 @@ EOS Product User ID(PUID)をキーにした自前フレンドリスト用の軽�
 
 全エンドポイントは`Authorization: Bearer <EOS Connect ID Token>`ヘッダを必須とする。クライアントはbodyで
 PUIDを名乗らず、`EosManager.get_id_token()`が返すJWTを送る。Workerは`verifyIdToken()`でEpicの公開鍵
-(JWKS)を使い署名・`exp`・`iss`・`aud`を検証し、トークンの`sub`クレームを本人のPUIDとして採用する
+(JWKS)を使い署名・`exp`・`iss`・`aud`・`pfdid`を検証し、トークンの`sub`クレームを本人のPUIDとして採用する
 (bodyの`puid`は信用しない)。
+
+`pfdid`(トークンを発行した EOS Deployment)は `wrangler.toml` の `EOS_DEPLOYMENT_ID`(本番の Live Deployment)
+と一致しなければ 401 にする(KAN-102/103)。開発機は DevDeployment を使うので、開発機からの本物の
+トークンは本番では通らない。開発中のフレンド登録や戦績が本番の KV に混ざらないようにするため。
+ローカルの `wrangler dev` では、従来どおり `.dev.vars` の `ALLOW_DEBUG_AUTH=1` と `X-Debug-Puid` で確かめる。
+開発機の本物のトークンを通したいときは、`.dev.vars` に `EOS_DEPLOYMENT_ID=<DevDeployment の ID>` を書いて上書きする。
+
+## 単体テスト
+
+```
+npm test          # node --test src/index.test.ts(Node 22.18 以降。TS をそのまま読む)
+npx tsc --noEmit  # 型チェック(テストファイルは対象外)
+```
 
 ## セットアップ
 

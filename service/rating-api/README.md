@@ -23,7 +23,14 @@
   (「本人が次回ログイン時に自分で適用する預かり金」方式)の後継。対戦中の切断(鬼/逃走者/
   ホスト自身)1件につき、対象1名の敗北分をこのサービスのD1へ直接・権威的に反映する。
 - `src/index.test.ts`: バリデーション・レート制限キー生成など、D1やWorkers runtimeを
-  起動せずに検証できる純粋関数の単体テスト。
+  起動せずに検証できる純粋関数の単体テスト。KAN-103 で、テスト用の鍵で署名したトークンを
+  fetch ハンドラに通し、別 Deployment のトークンが 401 になることも確かめている。
+
+**認証で確かめるクレーム**: 署名・`exp`・`iss`・`aud`(クライアント ID)に加えて、`pfdid`(トークンを
+発行した EOS Deployment)が `wrangler.toml` の `EOS_DEPLOYMENT_ID`(本番の Live Deployment)と一致すること
+(KAN-102/103)。開発機は DevDeployment を使うので、開発中のテスト試合は本番の D1 に入らない。
+ローカルの `wrangler dev` で開発機の本物のトークンを通したいときは、`.dev.vars` に
+`EOS_DEPLOYMENT_ID=<DevDeployment の ID>` を書いて上書きする(`X-Debug-Puid` の確認には不要)。
 
 **実際のD1データベース作成(`wrangler d1 create`)・`wrangler deploy`はまだ実施していない**
 (ユーザー自身のCloudflareアカウント操作が必要なため、次のステップとして残っている)。
