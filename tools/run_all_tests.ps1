@@ -21,6 +21,12 @@
       4. 実際の EOS につなぐもの（test_eos_live_*）
          → 実クレデンシャルと実バックエンドへの副作用があるので、ヘッダの手順で手動実行する
 
+    流す前に `--headless --import` を1回流す（KAN-96）。git 管理外の .godot/global_script_class_cache.cfg は
+    エディタか --import でしか作り直されず、headless のテスト実行では更新されない。pull で新しい class_name が
+    入ったのにキャッシュが古いままだと、それを参照するスクリプトが全部「Identifier ... not declared」の
+    パースエラーになり、無関係なテストまで偽の FAIL / TIMEOUT になる（2026-11-18、LegalDocs で9本落ちた）。
+    CI（windows-release.yml の Import resources 段）が書き出しの前に --import するのと同じ理由。
+
     各テストの出力は $LogDir に1本ずつ残す（既定は %TEMP%\tag_game_tests\<日時>）。
     最後に「run_all_tests 結果: PASS=… FAIL=… TIMEOUT=…」を出し、全部通れば exit 0、
     1本でも落ちれば exit 1 を返す。
@@ -40,8 +46,11 @@
 .PARAMETER SkipTwoProcess
     2プロセス系を流さない（ポート 9999 を使うので、ゲームでホスト中の PC では付ける）。
 
+.PARAMETER SkipImport
+    流す前の --import を省く（直前に取り込んだばかりで、時間を節約したいとき）。
+
 .PARAMETER List
-    流さずに分類だけを表示する。
+    流さずに分類だけを表示する（--import も流さない）。
 
 .PARAMETER GodotExe
     Godot 実行ファイル。省略時は run_headless_test.ps1 と同じ既定値。
@@ -58,6 +67,7 @@ param(
     [string]$Filter = '*',
     [int]$TimeoutSec = 240,
     [switch]$SkipTwoProcess,
+    [switch]$SkipImport,
     [switch]$List,
     [string]$GodotExe,
     [string]$LogDir
@@ -136,6 +146,23 @@ if (-not $LogDir) {
 }
 New-Item -ItemType Directory -Force $LogDir | Out-Null
 Write-Host "ログ: $LogDir" -ForegroundColor DarkGray
+
+# ---- 取り込み（.DESCRIPTION 参照。KAN-96）----
+# 終了コードは判定に使わない（--import は取り込み後に非ゼロで終わることがある。windows-release.yml と同じ扱い）。
+# 本当に壊れたスクリプトは、このあと各テストの SCRIPT ERROR で拾える
+if (-not $SkipImport) {
+    $importLog = Join-Path $LogDir '_import'
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $imp = Start-Process -FilePath $GodotExe -ArgumentList @('--headless', '--path', "`"$repoRoot`"", '--import') `
+        -NoNewWindow -PassThru -RedirectStandardOutput "$importLog.out.txt" -RedirectStandardError "$importLog.err.txt"
+    if (-not $imp.WaitForExit(600000)) {
+        # 止めるのは自分が起動した PID だけ（run_headless_test.ps1 と同じ方針）
+        Stop-Process -Id $imp.Id -Force -ErrorAction SilentlyContinue
+        Write-Warning '取り込み（--import）が 600 秒で終わらなかったので止めた。テストはこのまま流す（古いキャッシュで偽の失敗が出うる）'
+    }
+    $sw.Stop()
+    Write-Host ("取り込み（--import）: {0:N1}s" -f $sw.Elapsed.TotalSeconds) -ForegroundColor DarkGray
+}
 
 $results = @()
 foreach ($t in $plan) {

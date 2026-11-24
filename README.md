@@ -1324,8 +1324,8 @@ butler status <ユーザー名>/<プロジェクト>:windows
 
 ```sh
 # project.godot の config/version を上げて main へ入れた後
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.9.0
+git push origin v0.9.0
 ```
 
 - **タグと `config/version` が一致しないと失敗する**（上の「版数の運用」を機械的に守らせるため）。
@@ -1343,24 +1343,41 @@ git push origin v0.1.0
 1. itch.io でプロジェクトを作る。**公開設定は Draft のまま**にしておく（下の「公開する前に」）。
 2. itch.io の Settings → API keys でキーを発行する。
 3. GitHub の Settings → Environments で `release` を作り、**Required reviewers** を設定し、
-   Deployment branches and tags を「タグ `v*` のみ」にする。
+   Deployment branches and tags を「`main` ブランチとタグ `v*`」に絞る。
    `BUTLER_API_KEY` は **itch.io のアカウント全体に効く鍵**で、environment で守らないと
    リポジトリへ書き込める人なら誰でもワークフローを書き換えて取り出せる。
+   `main` も許すのは、下の「手動実行での試運転」を main で流すため（タグだけにすると
+   `workflow_dispatch` が environment に弾かれて試運転できない）。どちらから走らせても
+   Required reviewers の承認が要るので、鍵の守りは変わらない。
 4. その environment に次を登録する:
 
    | 種類 | 名前 | 値 |
    | --- | --- | --- |
-   | secret | `EOS_CREDENTIALS_CFG_B64` | `eos_credentials.cfg` を base64 にしたもの |
+   | secret | `EOS_CREDENTIALS_CFG_B64` | **リリース用の** `eos_credentials.cfg` を base64 にしたもの（下記） |
    | secret | `BUTLER_API_KEY` | 手順2のキー |
    | variable | `ITCH_TARGET` | `<ユーザー名>/<プロジェクト>` |
 
+   **リリース版の cfg は開発機の cfg と `deployment_id` だけが違う**（KAN-35）。開発機の cfg は
+   Live サンドボックスの「DevDeployment」を指していて、リリース版は同じサンドボックスの
+   「Live Deployment」を指す。開発中のレート・クラウドセーブ・テストが書き込んだ値と、
+   本番のプレイヤーのデータを分けるため。開発機と2台目の PC の cfg は DevDeployment のままにする。
+   差し替えと登録は [tools/set_release_eos_secret.ps1](tools/set_release_eos_secret.ps1) で行う
+   （差し替えた cfg をディスクにもチャットにも出さず、`deployment_id` 以外が変わっていないことを確かめてから送る）:
+
    ```powershell
-   [Convert]::ToBase64String([IO.File]::ReadAllBytes('eos_credentials.cfg')) |
-       gh secret set EOS_CREDENTIALS_CFG_B64 --env release --repo oekklab-source/Tag_game
+   # Developer Portal の「製品設定 → サンドボックス → Live → デプロイメント」で
+   # Live Deployment の ID をコピーボタンでコピーしてから
+   pwsh tools/set_release_eos_secret.ps1 -DryRun   # 差し替えの確認だけ（何も送らない）
+   pwsh tools/set_release_eos_secret.ps1           # environment release に登録する
    ```
 
+5. Actions の「Windows release」を **main で手動実行**（`push_to_itch` はオフ）し、
+   Restore / Export / Verify / Smoke test が緑になることを確かめる（`gh workflow run windows-release.yml --ref main`）。
+
 `encryption_key` を含め、`eos_credentials.cfg` の値を変えたら Secrets も入れ直すこと
-（手元のビルドと CI のビルドで値が食い違うと、クラウドセーブを互いに復号できなくなる）。
+（手元のビルドと CI のビルドで値が食い違うと、クラウドセーブを互いに復号できなくなる。
+ただし Deployment が違えばクラウドセーブの置き場所自体が別なので、開発機の exe と
+リリース版の exe の間でセーブが共有されないのは仕様どおり）。
 
 #### 公開する前に（Draft → Public）
 

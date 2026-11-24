@@ -40,6 +40,9 @@ import { buildHunterRatings, calculateAllRatingChanges, roundHalfAwayFromZero, t
 export interface Env {
 	DB: D1Database;
 	EOS_CLIENT_ID: string;
+	// 受け付ける EOS Deployment(本番の Live Deployment)。ID トークンの pfdid と照合する
+	// (KAN-102/103、isAcceptedDeployment() 参照)。wrangler.toml の [vars] に置く非秘匿値
+	EOS_DEPLOYMENT_ID: string;
 	// ローカル開発専用のバイパス許可フラグ。.dev.vars(gitignore対象)でのみ設定する。
 	// wrangler.toml(コミット対象)には絶対に書かない
 	ALLOW_DEBUG_AUTH?: string;
@@ -801,6 +804,20 @@ export async function handleLeaderboardTop(request: Request, env: Env): Promise<
 // 認証(service/friend-api/src/index.ts からの移植。JWKSキャッシュ先だけKV→D1に変更)
 // ---------------------------------------------------------------------------
 
+/**
+ * ID トークンの発行元 Deployment(pfdid クレーム)が本番の Live Deployment かを確かめる(KAN-102/103)。
+ * 開発機は DevDeployment を使うが、製品もクライアントも同じなので aud は一致し、PUID も
+ * Deployment をまたいで同じになる見込み(EOS の PUID は製品単位)。ここで弾かないと、開発中の
+ * テスト試合が本番の D1 に混ざり、後から分けられない。
+ * EOS_DEPLOYMENT_ID が未設定・空なら全部拒否する(設定漏れのまま全 Deployment を黙って通さないため)。
+ * pfdid は 2026-11-24 に実機の ID トークンをデコードして、cfg の deployment_id と一致することを確認済み。
+ * ローカルの wrangler dev で開発機の本物のトークンを通したいときは、.dev.vars で
+ * EOS_DEPLOYMENT_ID を DevDeployment の値に上書きする(.dev.vars は [vars] より優先される)。
+ */
+export function isAcceptedDeployment(pfdid: unknown, env: Pick<Env, "EOS_DEPLOYMENT_ID">): boolean {
+	return typeof env.EOS_DEPLOYMENT_ID === "string" && env.EOS_DEPLOYMENT_ID !== "" && pfdid === env.EOS_DEPLOYMENT_ID;
+}
+
 /** Authorizationヘッダの EOS Connect ID Token(JWT)を検証し、成功したらsubクレーム(PUID)を返す */
 async function verifyIdToken(request: Request, env: Env): Promise<string | null> {
 	// ローカル開発専用のバイパス。env.ALLOW_DEBUG_AUTHは.dev.vars(gitignore対象)でのみ
@@ -824,7 +841,7 @@ async function verifyIdToken(request: Request, env: Env): Promise<string | null>
 	const [headerB64, payloadB64, signatureB64] = parts;
 
 	let header: { alg?: string; kid?: string };
-	let payload: { sub?: string; iss?: string; aud?: string; exp?: number };
+	let payload: { sub?: string; iss?: string; aud?: string; exp?: number; pfdid?: string };
 	try {
 		header = JSON.parse(new TextDecoder().decode(base64UrlDecode(headerB64)));
 		payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(payloadB64)));
@@ -839,6 +856,9 @@ async function verifyIdToken(request: Request, env: Env): Promise<string | null>
 		return null;
 	}
 	if (payload.aud !== env.EOS_CLIENT_ID) {
+		return null;
+	}
+	if (!isAcceptedDeployment(payload.pfdid, env)) {
 		return null;
 	}
 	if (!payload.exp || payload.exp * 1000 < Date.now()) {

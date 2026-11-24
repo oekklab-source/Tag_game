@@ -45,6 +45,10 @@ pwsh tools/run_headless_test.ps1 res://tests/<name>.tscn
 1本ずつ上のラッパーと同じ規則で流し、結果を集計する（全部通れば exit 0）。`-List` で分類だけを
 表示し、`-Filter 'test_phase*'` で絞れる。ゲームでホスト中の PC では、ポート 9999 がぶつかるので
 `-SkipTwoProcess` を付ける。全件で20分ほどかかる（2026-10-27 の実測で約18分・58本 PASS）。
+流す前に `--headless --import` を自動で1回流す（KAN-96。git 管理外のクラス名キャッシュが古いと、
+新しい `class_name` を参照するスクリプトが全部パースエラーになり、無関係なテストまで偽の失敗になる。
+2026-11-18 に9本がこれで落ちた）。`run_headless_test.ps1` で1本だけ流すときも、pull の後は先に
+`godot --headless --path . --import` を1回流すこと。
 
 ```powershell
 pwsh tools/run_all_tests.ps1

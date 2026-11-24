@@ -31,7 +31,8 @@
 `/consume-penalty` から統合、対象PUIDが自己申告のままという制約自体は変わらない）。
 EOS Connect ID Token 認証（`autoload/rating_backend_client.gd` →
 `service/rating-api/src/index.ts` の `verifyIdToken()`）により
-**「誰がこのリクエストを送ったか」は保証される**が、**「送信者が名乗った対象PUIDが実在の対戦相手か」**
+**「誰がこのリクエストを送ったか」は保証される**（2026-11-24 KAN-103 から、トークンを発行した
+Deployment が本番の Live Deployment であることも確かめる。開発機の DevDeployment のトークンは 401）が、**「送信者が名乗った対象PUIDが実在の対戦相手か」**
 はサーバ側では検証できない。改造クライアントが他人のPUIDを騙ってペナルティを送りつける経路は残る。
 
 **軽減策（実装済み）**: `rating_delta` を `-64〜-1` に制限し、報告者PUID単位で20件/日のレート制限を掛け、

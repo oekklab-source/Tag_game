@@ -31,8 +31,10 @@ import {
 	handleSetDisplayName,
 	sanitizeDisplayName,
 	setDisplayNameRateLimitKey,
+	isAcceptedDeployment,
 	type Env,
 } from "./index.js";
+import worker from "./index.js";
 
 test("isValidMatchId: 8〜128文字の英数字・アンダースコア・ハイフンのみ許可", () => {
 	assert.equal(isValidMatchId("test-match-0001"), true);
@@ -285,4 +287,73 @@ test("handleRating: 自分の行が公開ランキングに載らない間(seede
 	});
 	const body: any = await (await handleRating(env, "p-me")).json();
 	assert.equal(body.rank, null);
+});
+
+// ---------------------------------------------------------------------------
+// KAN-103: Live Deployment 以外の ID トークンを拒否する
+// ---------------------------------------------------------------------------
+
+test("isAcceptedDeployment: 一致だけ許可し、未設定・空・不一致・欠落は拒否", () => {
+	assert.equal(isAcceptedDeployment("live", { EOS_DEPLOYMENT_ID: "live" }), true);
+	assert.equal(isAcceptedDeployment("dev", { EOS_DEPLOYMENT_ID: "live" }), false);
+	assert.equal(isAcceptedDeployment(undefined, { EOS_DEPLOYMENT_ID: "live" }), false);
+	// 設定漏れのときに「どれでも通す」にならないこと
+	assert.equal(isAcceptedDeployment("", { EOS_DEPLOYMENT_ID: "" }), false);
+	assert.equal(isAcceptedDeployment(undefined, { EOS_DEPLOYMENT_ID: undefined as unknown as string }), false);
+});
+
+/** テスト用の RSA 鍵で、Epic と同じ形の ID トークン(RS256)を作る */
+async function makeTokenSigner() {
+	const pair = (await crypto.subtle.generateKey(
+		{ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+		true,
+		["sign", "verify"],
+	)) as CryptoKeyPair;
+	const pub = (await crypto.subtle.exportKey("jwk", pair.publicKey)) as JsonWebKey;
+	const kid = "test-kid";
+	const b64u = (b: Uint8Array | string) => Buffer.from(b).toString("base64url");
+	return {
+		jwks: { keys: [{ kty: pub.kty, n: pub.n, e: pub.e, kid }] },
+		async sign(claims: Record<string, unknown>): Promise<string> {
+			const head = b64u(JSON.stringify({ alg: "RS256", kid }));
+			const body = b64u(JSON.stringify(claims));
+			const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", pair.privateKey, new TextEncoder().encode(`${head}.${body}`));
+			return `${head}.${body}.${b64u(new Uint8Array(sig))}`;
+		},
+	};
+}
+
+test("fetch: pfdid が EOS_DEPLOYMENT_ID と違う本物の署名のトークンは 401、一致すれば通る", async () => {
+	const signer = await makeTokenSigner();
+	// jwks_cache だけ答え、ほかは「行なし・書き込み成功」を返す最小の D1
+	const DB = {
+		prepare(sql: string) {
+			return {
+				async first() {
+					return sql.includes("jwks_cache") ? { keys_json: JSON.stringify(signer.jwks), fetched_at: Date.now() } : null;
+				},
+				bind() {
+					return {
+						async first() { return null; },
+						async all() { return { results: [] }; },
+						async run() { return { meta: { changes: 1 } }; },
+					};
+				},
+			};
+		},
+	};
+	const env = { DB, EOS_CLIENT_ID: "client-x", EOS_DEPLOYMENT_ID: "live-dep" } as unknown as Env;
+	const claims = (pfdid?: string) => ({
+		sub: "p-1",
+		iss: "https://api.epicgames.dev/auth/v1/oauth",
+		aud: "client-x",
+		exp: Math.floor(Date.now() / 1000) + 3600,
+		...(pfdid === undefined ? {} : { pfdid }),
+	});
+	const call = async (token: string) =>
+		(await worker.fetch(new Request("https://example.test/rating", { method: "POST", headers: { Authorization: `Bearer ${token}` } }), env)).status;
+
+	assert.equal(await call(await signer.sign(claims("live-dep"))), 200);
+	assert.equal(await call(await signer.sign(claims("dev-dep"))), 401);
+	assert.equal(await call(await signer.sign(claims())), 401);
 });

@@ -7,7 +7,10 @@
     "types": ["@cloudflare/workers-types"],
     "strict": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // テストは node --test が型を外して直接走らせる。@types/node を足さないため型検査からは外す(KAN-103)
+  "exclude": ["src/**/*.test.ts"]
 }
